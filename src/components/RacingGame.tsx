@@ -48,7 +48,21 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
     if (raceState !== 'racing' || racers.length === 0) return;
 
     const startTime = Date.now();
-    const racerSpeeds = racers.map(() => Math.random() * 150 + 100); // pixels per second
+    const TRACK_LENGTH = FINISH_LINE - 50;
+    
+    // Generate speed changes for each racer
+    const racerSpeedProfiles = racers.map(() => {
+      const numChanges = Math.floor(Math.random() * 3) + 2; // 2-4 speed changes
+      const speeds: number[] = [];
+      
+      // Generate random speeds for each segment
+      for (let i = 0; i < numChanges; i++) {
+        speeds.push(Math.random() * 200 + 80); // 80-280 pixels per second
+      }
+      
+      return { speeds, segmentDistance: TRACK_LENGTH / numChanges };
+    });
+
     let finished = false;
 
     const animate = () => {
@@ -56,14 +70,44 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
 
       setRacers((prevRacers) => {
         const updated = prevRacers.map((racer, idx) => {
-          const distance = (racerSpeeds[idx] * elapsed) / 1000;
-          const x = Math.min(50 + distance, FINISH_LINE);
+          const profile = racerSpeedProfiles[idx];
+          
+          // Calculate distance by integrating through speed segments
+          let totalDistance = 0;
+          let timeRemaining = elapsed / 1000; // convert to seconds
+          let segmentIndex = 0;
+          
+          while (timeRemaining > 0 && segmentIndex < profile.speeds.length) {
+            const speed = profile.speeds[segmentIndex];
+            const segmentEnd = (segmentIndex + 1) * profile.segmentDistance;
+            const remainingInSegment = segmentEnd - (totalDistance % (profile.segmentDistance * profile.speeds.length));
+            
+            // Time to cross this segment at current speed
+            const timeForSegment = remainingInSegment / speed;
+            
+            if (timeRemaining >= timeForSegment) {
+              // Complete this segment
+              totalDistance += remainingInSegment;
+              timeRemaining -= timeForSegment;
+              segmentIndex++;
+            } else {
+              // Partial segment
+              totalDistance += speed * timeRemaining;
+              timeRemaining = 0;
+            }
+          }
+          
+          const x = Math.min(50 + totalDistance, FINISH_LINE);
           const isFinished = x >= FINISH_LINE;
+          
+          // Get current speed based on distance traveled
+          const currentSegment = Math.floor(totalDistance / profile.segmentDistance);
+          const currentSpeed = profile.speeds[Math.min(currentSegment, profile.speeds.length - 1)];
 
           return {
             ...racer,
             x,
-            speed: racerSpeeds[idx],
+            speed: currentSpeed,
             finished: isFinished,
           };
         });
