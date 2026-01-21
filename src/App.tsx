@@ -5,29 +5,34 @@ import { RacingGame } from './components/RacingGame';
 import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
+const ELIMINATED_KEY = 'gamified_picker_eliminated';
+
+// Load initial state from localStorage
+function loadFromStorage<T>(key: string, defaultValue: T): T {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : defaultValue;
+  } catch (e) {
+    console.error(`Failed to load ${key}`, e);
+    return defaultValue;
+  }
+}
 
 function App() {
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [eliminatedIds, setEliminatedIds] = useState<number[]>([]);
+  const [entries, setEntries] = useState<Entry[]>(() => loadFromStorage(STORAGE_KEY, []));
+  const [eliminatedIds, setEliminatedIds] = useState<number[]>(() => loadFromStorage(ELIMINATED_KEY, []));
   const [winner, setWinner] = useState<string | null>(null);
   const [showRace, setShowRace] = useState(false);
-
-  // Load entries from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        setEntries(JSON.parse(stored));
-      } catch (e) {
-        console.error('Failed to load entries', e);
-      }
-    }
-  }, []);
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   }, [entries]);
+
+  // Save eliminated IDs to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(ELIMINATED_KEY, JSON.stringify(eliminatedIds));
+  }, [eliminatedIds]);
 
   const handleEntriesChange = (newEntries: Entry[]) => {
     setEntries(newEntries);
