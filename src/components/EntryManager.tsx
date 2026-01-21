@@ -5,9 +5,10 @@ import './EntryManager.css';
 interface Props {
   entries: Entry[];
   onEntriesChange: (entries: Entry[]) => void;
+  eliminatedIds: number[];
 }
 
-export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange }) => {
+export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, eliminatedIds }) => {
   const [input, setInput] = useState('');
 
   const addEntry = () => {
@@ -54,19 +55,25 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange }) => {
       )}
 
       <div className="entries-list">
-        {entries.map((entry, idx) => (
-          <div key={entry.id} className="entry-item">
-            <span className="entry-number">{idx + 1}</span>
-            <span className="entry-name">{entry.name}</span>
-            <button
-              onClick={() => removeEntry(entry.id)}
-              className="remove-button"
-              title="Remove participant"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
+        {entries.map((entry, idx) => {
+          const isEliminated = eliminatedIds.includes(entry.id);
+          return (
+            <div key={entry.id} className={`entry-item ${isEliminated ? 'eliminated' : ''}`}>
+              <span className="entry-number">{idx + 1}</span>
+              <span className="entry-name">
+                {entry.name}
+                {isEliminated && <span className="eliminated-badge">Won</span>}
+              </span>
+              <button
+                onClick={() => removeEntry(entry.id)}
+                className="remove-button"
+                title="Remove participant"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       {entries.length === 0 && (

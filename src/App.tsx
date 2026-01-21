@@ -8,6 +8,7 @@ const STORAGE_KEY = 'gamified_picker_entries';
 
 function App() {
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [eliminatedIds, setEliminatedIds] = useState<number[]>([]);
   const [winner, setWinner] = useState<string | null>(null);
   const [showRace, setShowRace] = useState(false);
 
@@ -30,12 +31,14 @@ function App() {
 
   const handleEntriesChange = (newEntries: Entry[]) => {
     setEntries(newEntries);
+    // Clean up eliminated IDs if entries are removed from the list
+    setEliminatedIds((prev) => prev.filter((id) => newEntries.some((e) => e.id === id)));
   };
 
   const handleWinner = (winnerEntry: Entry) => {
     setWinner(winnerEntry.name);
-    // Remove winner from entries for next race
-    setEntries((prev) => prev.filter((e) => e.id !== winnerEntry.id));
+    // Add winner to eliminated list (don't remove from entries)
+    setEliminatedIds((prev) => [...prev, winnerEntry.id]);
   };
 
   const handleRaceComplete = () => {
@@ -43,7 +46,8 @@ function App() {
   };
 
   const startRace = () => {
-    if (entries.length < 2) {
+    const activeEntries = entries.filter((e) => !eliminatedIds.includes(e.id));
+    if (activeEntries.length < 2) {
       alert('Add at least 2 participants to start a race!');
       return;
     }
@@ -51,13 +55,23 @@ function App() {
     setWinner(null);
   };
 
+  const resetRace = () => {
+    // Reset eliminations, bringing all participants back to race
+    setEliminatedIds([]);
+    setWinner(null);
+    setShowRace(false);
+  };
+
   const resetAllEntries = () => {
-    if (window.confirm('Reset all participants?')) {
+    if (window.confirm('Clear all participants from the list?')) {
       setEntries([]);
+      setEliminatedIds([]);
       setWinner(null);
       setShowRace(false);
     }
   };
+
+  const activeEntries = entries.filter((e) => !eliminatedIds.includes(e.id));
 
   return (
     <div className="app">
@@ -69,25 +83,35 @@ function App() {
       <div className="app-container">
         <div className="sidebar">
           <h2>Participants</h2>
-          <EntryManager entries={entries} onEntriesChange={handleEntriesChange} />
+          <EntryManager 
+            entries={entries} 
+            onEntriesChange={handleEntriesChange}
+            eliminatedIds={eliminatedIds}
+          />
 
-          {entries.length >= 2 && (
+          {activeEntries.length >= 2 && (
             <button onClick={startRace} className="start-race-button">
-              🏁 Start Race ({entries.length})
+              🏁 Start Race ({activeEntries.length})
+            </button>
+          )}
+
+          {eliminatedIds.length > 0 && (
+            <button onClick={resetRace} className="reset-race-button">
+              🔄 Reset Race
             </button>
           )}
 
           {entries.length > 0 && (
             <button onClick={resetAllEntries} className="reset-button">
-              Reset All
+              Clear All
             </button>
           )}
         </div>
 
         <div className="main-content">
-          {showRace && entries.length >= 2 ? (
+          {showRace && activeEntries.length >= 2 ? (
             <RacingGame
-              entries={entries}
+              entries={activeEntries}
               onWinner={handleWinner}
               onRaceComplete={handleRaceComplete}
             />
@@ -121,7 +145,7 @@ function App() {
           {winner && (
             <div className="winner-info">
               <p>Last winner: <strong>{winner}</strong></p>
-              <p>Participants remaining: {entries.length}</p>
+              <p>Racing: {activeEntries.length} / {entries.length}</p>
             </div>
           )}
         </div>
