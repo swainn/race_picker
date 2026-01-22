@@ -38,10 +38,18 @@ function App() {
     setWinner(winnerEntry.name);
     // Add winner to eliminated list (don't remove from entries)
     setEliminatedIds((prev) => [...prev, winnerEntry.id]);
+    // Stop the race to show winner dialog
+    setShowRace(false);
   };
 
   const handleRaceComplete = () => {
-    setShowRace(false);
+    // This is called when user clicks "Next Race" button
+    setWinner(null);
+    // Automatically start the next race
+    const activeEntries = entries.filter((e) => !eliminatedIds.includes(e.id));
+    if (activeEntries.length >= 2) {
+      setShowRace(true);
+    }
   };
 
   const startRace = () => {
@@ -50,8 +58,8 @@ function App() {
       alert('Add at least 2 participants to start a race!');
       return;
     }
-    setShowRace(true);
     setWinner(null);
+    setShowRace(true);
   };
 
   const resetRace = () => {
@@ -75,7 +83,7 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🏁 Gamified Picker</h1>
+        <h1>🏁 Aquaveo Race Picker</h1>
         <p>Mario Kart Style Random Selection</p>
       </header>
 
@@ -108,40 +116,15 @@ function App() {
         </div>
 
         <div className="main-content">
-          {showRace && activeEntries.length >= 2 ? (
-            <RacingGame
-              entries={activeEntries}
-              onWinner={handleWinner}
-              onRaceComplete={handleRaceComplete}
-            />
-          ) : (
-            <div className="welcome-screen">
-              <div className="welcome-content">
-                <h2>Welcome to Gamified Picker!</h2>
-                <p>Add participants on the left, then watch them race!</p>
-                <div className="features">
-                  <div className="feature">
-                    <span className="feature-icon">🚗</span>
-                    <span>Exciting racing animations</span>
-                  </div>
-                  <div className="feature">
-                    <span className="feature-icon">🎲</span>
-                    <span>Randomized race outcomes</span>
-                  </div>
-                  <div className="feature">
-                    <span className="feature-icon">💾</span>
-                    <span>Auto-saves your list</span>
-                  </div>
-                  <div className="feature">
-                    <span className="feature-icon">🏆</span>
-                    <span>Winner elimination rounds</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          <RacingGame
+            entries={activeEntries}
+            onWinner={handleWinner}
+            onRaceComplete={handleRaceComplete}
+            isRacing={showRace}
+            currentWinner={winner}
+          />
 
-          {winner && (
+          {winner && !showRace && (
             <div className="winner-info">
               <p>Last winner: <strong>{winner}</strong></p>
               <p>Racing: {activeEntries.length} / {entries.length}</p>

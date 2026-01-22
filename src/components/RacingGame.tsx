@@ -14,34 +14,46 @@ interface Props {
   entries: Entry[];
   onWinner: (winner: Entry) => void;
   onRaceComplete: () => void;
+  isRacing: boolean;
+  currentWinner: string | null;
 }
 
-export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete }) => {
+export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete, isRacing, currentWinner }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [racers, setRacers] = useState<Racer[]>([]);
   const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
-  const [winner, setWinner] = useState<Entry | null>(null);
   const animationRef = useRef<number | undefined>(undefined);
 
   const FINISH_LINE = 700;
   const RACE_DURATION = 4500; // milliseconds
 
-  // Initialize racers
+  // Initialize racers whenever entries change
   useEffect(() => {
-    if (entries.length === 0) return;
-
-    const newRacers = entries.map((entry, index) => ({
+    // Always show at least 2 lanes
+    const displayEntries = entries.length > 0 ? entries : [];
+    
+    const newRacers = displayEntries.map((entry, index) => ({
       entry,
       x: 50,
       speed: 0,
-      color: generateColor(index, entries.length),
+      color: generateColor(index, Math.max(displayEntries.length, 2)),
       finished: false,
     }));
 
     setRacers(newRacers);
-    setRaceState('ready');
-    setWinner(null);
-  }, [entries]);
+    if (!isRacing) {
+      setRaceState('ready');
+    }
+  }, [entries, isRacing]);
+
+  // Start race when isRacing becomes true
+  useEffect(() => {
+    if (isRacing && racers.length > 0) {
+      setRaceState('racing');
+    } else if (!isRacing) {
+      setRaceState('ready');
+    }
+  }, [isRacing, racers.length]);
 
   // Start race
   useEffect(() => {
@@ -117,7 +129,6 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
           const firstFinisher = updated.find((r) => r.finished);
           if (firstFinisher) {
             finished = true;
-            setWinner(firstFinisher.entry);
             setRaceState('finished');
             onWinner(firstFinisher.entry);
           }
@@ -150,12 +161,14 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // Always show at least 2 lanes
+    const numLanes = Math.max(racers.length, 2);
+    const trackTop = 30;
+    const trackHeight = (canvas.height - 60) / numLanes;
+
     // Draw track
     ctx.fillStyle = '#505050';
-    const trackTop = 30;
-    const trackHeight = (canvas.height - 60) / racers.length;
-
-    racers.forEach((_, idx) => {
+    for (let idx = 0; idx < numLanes; idx++) {
       const y = trackTop + idx * trackHeight;
       ctx.fillRect(0, y, canvas.width, trackHeight);
       
@@ -166,7 +179,7 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
       ctx.moveTo(0, y + trackHeight);
       ctx.lineTo(canvas.width, y + trackHeight);
       ctx.stroke();
-    });
+    }
 
     // Draw finish line with checkered pattern
     const finishLineWidth = 30;
@@ -199,8 +212,7 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
 
     // Draw racers
     racers.forEach((racer, idx) => {
-      const trackTop = 30;
-      const trackHeight = (canvas.height - 60) / racers.length;
+      const trackHeight = (canvas.height - 60) / numLanes;
       const y = trackTop + idx * trackHeight + trackHeight / 2;
 
       // Draw car with wheels
@@ -271,35 +283,17 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
     ctx.stroke();
   };
 
-  const startRace = () => {
-    if (entries.length > 0) {
-      setRaceState('racing');
-    }
-  };
-
-  const resetRace = () => {
-    setRaceState('ready');
-    setWinner(null);
-    onRaceComplete();
-  };
-
   return (
     <div className="racing-game">
       <canvas ref={canvasRef} width={800} height={400} className="game-canvas" />
 
-      {raceState === 'ready' && (
-        <button onClick={startRace} className="race-button">
-          🏁 Start Race
-        </button>
-      )}
-
-      {raceState === 'finished' && winner && (
+      {currentWinner && !isRacing && (
         <div className="winner-display">
           <div className="winner-banner">
             <h2>🏆 WINNER 🏆</h2>
-            <p className="winner-name">{winner.name}</p>
-            <button onClick={resetRace} className="reset-button">
-              Pick Another
+            <p className="winner-name">{currentWinner}</p>
+            <button onClick={onRaceComplete} className="reset-button">
+              Next Race
             </button>
           </div>
         </div>
