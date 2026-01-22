@@ -138,6 +138,9 @@ function App() {
           <RacingGame
             key={resetKey}
             entries={activeEntries}
+            allEntries={entries}
+            eliminatedIds={eliminatedIds}
+            winOrder={winOrder}
             onWinner={handleWinner}
             onRaceComplete={handleRaceComplete}
             isRacing={showRace}

@@ -11,6 +11,7 @@ interface Racer {
   totalDistance?: number;
   previousSpeed?: number;
   spinAngle?: number;
+  laneIndex: number;
 }
 
 interface Particle {
@@ -24,14 +25,17 @@ interface Particle {
 }
 
 interface Props {
-  entries: Entry[];
+  entries: Entry[]; // active racers only
+  allEntries: Entry[]; // full list for lane labels
+  eliminatedIds: number[];
+  winOrder: Map<number, number>;
   onWinner: (winner: Entry) => void;
   onRaceComplete: () => void;
   isRacing: boolean;
   currentWinner: string | null;
 }
 
-export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete, isRacing, currentWinner }) => {
+export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds, winOrder, onWinner, onRaceComplete, isRacing, currentWinner }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [racers, setRacers] = useState<Racer[]>([]);
   const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
@@ -51,25 +55,9 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
     // Always show at least 2 lanes
     const displayEntries = entries.length > 0 ? entries : [];
     
-    const newRacers = displayEntries.map((entry, index) => ({
-      entry,
-      x: 50,
-      speed: 0,
-      color: generateColor(index, Math.max(displayEntries.length, 2)),
-      finished: false,
-      previousSpeed: 0,
-      spinAngle: 0,
-    }));
-
-    setRacers(newRacers);
-  }, [entries, raceState]);
-
-  // Start race when isRacing becomes true
-  useEffect(() => {
-    if (isRacing && racers.length > 0) {
-      // Reset positions when starting a new race
-      const displayEntries = entries.length > 0 ? entries : [];
-      const newRacers = displayEntries.map((entry, index) => ({
+    const newRacers = displayEntries.map((entry, index) => {
+      const laneIndex = Math.max(allEntries.findIndex((e) => e.id === entry.id), 0);
+      return {
         entry,
         x: 50,
         speed: 0,
@@ -77,13 +65,37 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
         finished: false,
         previousSpeed: 0,
         spinAngle: 0,
-      }));
+        laneIndex,
+      };
+    });
+
+    setRacers(newRacers);
+  }, [entries, raceState, allEntries]);
+
+  // Start race when isRacing becomes true
+  useEffect(() => {
+    if (isRacing && racers.length > 0) {
+      // Reset positions when starting a new race
+      const displayEntries = entries.length > 0 ? entries : [];
+      const newRacers = displayEntries.map((entry, index) => {
+        const laneIndex = Math.max(allEntries.findIndex((e) => e.id === entry.id), 0);
+        return {
+          entry,
+          x: 50,
+          speed: 0,
+          color: generateColor(index, Math.max(displayEntries.length, 2)),
+          finished: false,
+          previousSpeed: 0,
+          spinAngle: 0,
+          laneIndex,
+        };
+      });
       setRacers(newRacers);
       setRaceState('racing');
     } else if (!isRacing && raceState === 'racing') {
       setRaceState('ready');
     }
-  }, [isRacing, entries]);
+  }, [isRacing, entries, allEntries]);
 
   // Start race
   useEffect(() => {
@@ -91,6 +103,7 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
 
     const startTime = Date.now();
     const TRACK_LENGTH = FINISH_LINE - 50;
+    const totalLanes = Math.max(allEntries.length, 2);
     
     // Generate speed changes for each racer
     const racerSpeedProfiles = racers.map(() => {
@@ -194,17 +207,19 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
           
           // Check if car is slowing down significantly
           if (prevSpeed - currentSpeed > 20) {
-            const trackHeight = (400 - 60) / Math.max(prevRacers.length, 2);
+            const trackHeight = (400 - 60) / totalLanes;
             const trackTop = 30;
-            const y = trackTop + idx * trackHeight + trackHeight / 2;
+            const laneIndex = racer.laneIndex ?? idx;
+            const y = trackTop + laneIndex * trackHeight + trackHeight / 2;
             createSmokeParticles(racer.x, y);
           }
 
           // Check if car is speeding up significantly
           if (currentSpeed - prevSpeed > 20) {
-            const trackHeight = (400 - 60) / Math.max(prevRacers.length, 2);
+            const trackHeight = (400 - 60) / totalLanes;
             const trackTop = 30;
-            const y = trackTop + idx * trackHeight + trackHeight / 2;
+            const laneIndex = racer.laneIndex ?? idx;
+            const y = trackTop + laneIndex * trackHeight + trackHeight / 2;
             createFireParticles(racer.x, y);
           }
 
@@ -263,7 +278,7 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       clearInterval(particleInterval);
     };
-  }, [raceState, racers.length, onWinner]);
+  }, [raceState, racers.length, onWinner, allEntries.length]);
 
   // Draw canvas
   useEffect(() => {
@@ -277,8 +292,8 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Always show at least 2 lanes
-    const numLanes = Math.max(racers.length, 2);
+    // Always show at least 2 lanes; keep lanes for all participants even if eliminated
+    const numLanes = Math.max(allEntries.length, 2);
     const trackTop = 30;
     const trackHeight = (canvas.height - 60) / numLanes;
 
@@ -327,24 +342,38 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
     ctx.restore();
 
     // Draw racers
-    racers.forEach((racer, idx) => {
+    racers.forEach((racer) => {
       const trackHeight = (canvas.height - 60) / numLanes;
-      const y = trackTop + idx * trackHeight + trackHeight / 2;
-
-      // Static nameplates at start of lane only (to avoid overlap at finish)
-      ctx.fillStyle = '#fff';
-      ctx.font = '12px monospace';
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'left';
-      ctx.fillText(racer.entry.name, 18, y);
+      const laneY = trackTop + racer.laneIndex * trackHeight + trackHeight / 2;
 
       // Draw car with rotation effect
       ctx.save();
-      ctx.translate(racer.x, y);
+      ctx.translate(racer.x, laneY);
       ctx.rotate(racer.spinAngle || 0);
-      ctx.translate(-racer.x, -y);
-      drawCar(ctx, racer.x, y, racer.color);
+      ctx.translate(-racer.x, -laneY);
+      drawCar(ctx, racer.x, laneY, racer.color);
       ctx.restore();
+    });
+
+    // Static lane nameplates with placement
+    const getOrdinal = (n: number) => {
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    };
+
+    allEntries.forEach((entry, laneIdx) => {
+      const trackHeight = (canvas.height - 60) / numLanes;
+      const y = trackTop + laneIdx * trackHeight + trackHeight / 2;
+      const order = winOrder.get(entry.id);
+      const isEliminated = eliminatedIds.includes(entry.id);
+      const label = order ? `${entry.name} (${getOrdinal(order)})` : entry.name;
+
+      ctx.fillStyle = isEliminated ? '#bfbfbf' : '#fff';
+      ctx.font = '12px monospace';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, 18, y);
     });
 
     // Draw smoke particles
@@ -373,7 +402,7 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
     });
 
     return () => {};
-  }, [racers, particles]);
+  }, [racers, particles, allEntries, eliminatedIds, winOrder]);
 
   const drawCar = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
     const carWidth = 20;  // horizontal width (length)
