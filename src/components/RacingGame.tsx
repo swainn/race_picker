@@ -8,6 +8,7 @@ interface Racer {
   speed: number;
   color: string;
   finished: boolean;
+  totalDistance?: number;
 }
 
 interface Props {
@@ -27,8 +28,13 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
   const FINISH_LINE = 700;
   const RACE_DURATION = 4500; // milliseconds
 
-  // Initialize racers whenever entries change
+  // Initialize racers only when entries change AND we're not in the middle of a race or showing results
   useEffect(() => {
+    // Don't update racers if we're showing finished state or racing
+    if (raceState === 'finished' || raceState === 'racing') {
+      return;
+    }
+
     // Always show at least 2 lanes
     const displayEntries = entries.length > 0 ? entries : [];
     
@@ -41,19 +47,26 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
     }));
 
     setRacers(newRacers);
-    if (!isRacing) {
-      setRaceState('ready');
-    }
-  }, [entries, isRacing]);
+  }, [entries, raceState]);
 
   // Start race when isRacing becomes true
   useEffect(() => {
     if (isRacing && racers.length > 0) {
+      // Reset positions when starting a new race
+      const displayEntries = entries.length > 0 ? entries : [];
+      const newRacers = displayEntries.map((entry, index) => ({
+        entry,
+        x: 50,
+        speed: 0,
+        color: generateColor(index, Math.max(displayEntries.length, 2)),
+        finished: false,
+      }));
+      setRacers(newRacers);
       setRaceState('racing');
-    } else if (!isRacing) {
+    } else if (!isRacing && raceState === 'racing') {
       setRaceState('ready');
     }
-  }, [isRacing, racers.length]);
+  }, [isRacing, entries]);
 
   // Start race
   useEffect(() => {
@@ -69,7 +82,7 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
       
       // Generate random speeds for each segment
       for (let i = 0; i < numChanges; i++) {
-        speeds.push(Math.random() * 200 + 80); // 80-280 pixels per second
+        speeds.push(Math.random() * 160 + 120); // 120-280 pixels per second
       }
       
       return { speeds, segmentDistance: TRACK_LENGTH / numChanges };
@@ -119,15 +132,20 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
           return {
             ...racer,
             x,
+            totalDistance,
             speed: currentSpeed,
             finished: isFinished,
           };
         });
 
-        // Check if anyone finished
+        // Check if anyone finished - use distance as tiebreaker
         if (!finished) {
-          const firstFinisher = updated.find((r) => r.finished);
-          if (firstFinisher) {
+          const finishers = updated.filter((r) => r.finished);
+          if (finishers.length > 0) {
+            // Pick the one who traveled the farthest (tiebreaker for same-frame finishes)
+            const firstFinisher = finishers.reduce((prev, current) => 
+              (current.totalDistance || 0) > (prev.totalDistance || 0) ? current : prev
+            );
             finished = true;
             setRaceState('finished');
             onWinner(firstFinisher.entry);
