@@ -9,6 +9,17 @@ interface Racer {
   color: string;
   finished: boolean;
   totalDistance?: number;
+  previousSpeed?: number;
+  spinAngle?: number;
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
 }
 
 interface Props {
@@ -23,6 +34,7 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [racers, setRacers] = useState<Racer[]>([]);
   const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
+  const [particles, setParticles] = useState<Particle[]>([]);
   const animationRef = useRef<number | undefined>(undefined);
 
   const FINISH_LINE = 700;
@@ -44,6 +56,8 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
       speed: 0,
       color: generateColor(index, Math.max(displayEntries.length, 2)),
       finished: false,
+      previousSpeed: 0,
+      spinAngle: 0,
     }));
 
     setRacers(newRacers);
@@ -60,6 +74,8 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
         speed: 0,
         color: generateColor(index, Math.max(displayEntries.length, 2)),
         finished: false,
+        previousSpeed: 0,
+        spinAngle: 0,
       }));
       setRacers(newRacers);
       setRaceState('racing');
@@ -89,6 +105,27 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
     });
 
     let finished = false;
+
+    const createSmokeParticles = (x: number, y: number) => {
+      const newParticles: Particle[] = [];
+      const particleCount = 8;
+      
+      for (let i = 0; i < particleCount; i++) {
+        const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.5;
+        const speed = 30 + Math.random() * 40;
+        
+        newParticles.push({
+          x: x + (Math.random() - 0.5) * 10,
+          y: y + (Math.random() - 0.5) * 6,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 0.6,
+          maxLife: 0.6,
+        });
+      }
+      
+      setParticles((prev) => [...prev, ...newParticles]);
+    };
 
     const animate = () => {
       const elapsed = Date.now() - startTime;
@@ -128,12 +165,23 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
           // Get current speed based on distance traveled
           const currentSegment = Math.floor(totalDistance / profile.segmentDistance);
           const currentSpeed = profile.speeds[Math.min(currentSegment, profile.speeds.length - 1)];
+          const prevSpeed = racer.previousSpeed || currentSpeed;
+          
+          // Check if car is slowing down significantly
+          if (prevSpeed - currentSpeed > 20) {
+            const trackHeight = (400 - 60) / Math.max(prevRacers.length, 2);
+            const trackTop = 30;
+            const y = trackTop + idx * trackHeight + trackHeight / 2;
+            createSmokeParticles(racer.x, y);
+          }
 
           return {
             ...racer,
             x,
             totalDistance,
             speed: currentSpeed,
+            previousSpeed: currentSpeed,
+            spinAngle: prevSpeed - currentSpeed > 20 ? (racer.spinAngle || 0) + (Math.random() - 0.5) * 0.4 : (racer.spinAngle || 0) * 0.95,
             finished: isFinished,
           };
         });
@@ -160,10 +208,27 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
       }
     };
 
+    // Update particles
+    const particleInterval = setInterval(() => {
+      setParticles((prev) => {
+        const dt = 0.016; // ~60fps
+        return prev
+          .map((p) => ({
+            ...p,
+            x: p.x + p.vx * dt,
+            y: p.y + p.vy * dt,
+            life: p.life - dt,
+            vy: p.vy + 100 * dt, // gravity
+          }))
+          .filter((p) => p.life > 0);
+      });
+    }, 16);
+
     animationRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      clearInterval(particleInterval);
     };
   }, [raceState, racers.length, onWinner]);
 
@@ -233,8 +298,13 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
       const trackHeight = (canvas.height - 60) / numLanes;
       const y = trackTop + idx * trackHeight + trackHeight / 2;
 
-      // Draw car with wheels
+      // Draw car with rotation effect
+      ctx.save();
+      ctx.translate(racer.x, y);
+      ctx.rotate(racer.spinAngle || 0);
+      ctx.translate(-racer.x, -y);
       drawCar(ctx, racer.x, y, racer.color);
+      ctx.restore();
 
       // Name label
       ctx.fillStyle = '#fff';
@@ -243,8 +313,17 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
       ctx.fillText(racer.entry.name.substring(0, 8), racer.x, y + 18);
     });
 
+    // Draw smoke particles
+    particles.forEach((particle) => {
+      const opacity = particle.life / particle.maxLife;
+      ctx.fillStyle = `rgba(150, 150, 150, ${0.6 * opacity})`;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, 4 + Math.random() * 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
     return () => {};
-  }, [racers]);
+  }, [racers, particles]);
 
   const drawCar = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
     const carWidth = 20;  // horizontal width (length)
