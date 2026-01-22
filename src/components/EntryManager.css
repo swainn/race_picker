@@ -63,8 +63,8 @@
 
 .entries-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
   margin-bottom: 10px;
 }
 
@@ -112,9 +112,9 @@
 .entry-name {
   flex: 1;
   font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
   display: flex;
   align-items: center;
   gap: 6px;

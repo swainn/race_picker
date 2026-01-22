@@ -331,14 +331,12 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
       const trackHeight = (canvas.height - 60) / numLanes;
       const y = trackTop + idx * trackHeight + trackHeight / 2;
 
-      // Static nameplates at start and end of lane
+      // Static nameplates at start of lane only (to avoid overlap at finish)
       ctx.fillStyle = '#fff';
       ctx.font = '12px monospace';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
       ctx.fillText(racer.entry.name, 18, y);
-      ctx.textAlign = 'right';
-      ctx.fillText(racer.entry.name, canvas.width - 18, y);
 
       // Draw car with rotation effect
       ctx.save();
