@@ -151,7 +151,7 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Draw track
-    ctx.fillStyle = '#2a2a2a';
+    ctx.fillStyle = '#505050';
     const trackTop = 30;
     const trackHeight = (canvas.height - 60) / racers.length;
 
@@ -184,14 +184,8 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
       const trackHeight = (canvas.height - 60) / racers.length;
       const y = trackTop + idx * trackHeight + trackHeight / 2;
 
-      // Car body
-      ctx.fillStyle = racer.color;
-      ctx.fillRect(racer.x - 8, y - 10, 16, 20);
-
-      // Car outline
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(racer.x - 8, y - 10, 16, 20);
+      // Draw car with wheels
+      drawCar(ctx, racer.x, y, racer.color);
 
       // Name label
       ctx.fillStyle = '#fff';
@@ -202,6 +196,61 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
 
     return () => {};
   }, [racers]);
+
+  const drawCar = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const carWidth = 20;  // horizontal width (length)
+    const carHeight = 12;  // vertical height
+    const wheelRadius = 3;
+    const wheelOffsetY = 6;  // wheels offset vertically
+
+    // Draw wheels (top and bottom, visible on sides)
+    ctx.fillStyle = '#000';  // Black wheels
+    // Front top wheel
+    ctx.beginPath();
+    ctx.arc(x + 6, y - wheelOffsetY, wheelRadius, 0, Math.PI * 2);
+    ctx.fill();
+    // Front bottom wheel
+    ctx.beginPath();
+    ctx.arc(x + 6, y + wheelOffsetY, wheelRadius, 0, Math.PI * 2);
+    ctx.fill();
+    // Rear top wheel
+    ctx.beginPath();
+    ctx.arc(x - 6, y - wheelOffsetY, wheelRadius, 0, Math.PI * 2);
+    ctx.fill();
+    // Rear bottom wheel
+    ctx.beginPath();
+    ctx.arc(x - 6, y + wheelOffsetY, wheelRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw car body with rounded corners
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(x - carWidth / 2, y - carHeight / 2, carWidth, carHeight, 3);
+    ctx.fill();
+
+    // Draw spoiler at the back (left side)
+    ctx.fillStyle = '#222';
+    ctx.fillRect(x - carWidth / 2 - 3, y - carHeight / 2 + 2, 3, carHeight - 4);
+    ctx.fillRect(x - carWidth / 2 - 5, y - carHeight / 2 + 1, 2, carHeight - 2);
+
+    // Draw windshield (front window on the right side)
+    ctx.fillStyle = '#4af';
+    ctx.beginPath();
+    ctx.roundRect(x + carWidth / 2 - 6, y - carHeight / 2 + 2, 4, carHeight - 4, 2);
+    ctx.fill();
+
+    // Draw rear window (back window on the left side)
+    ctx.beginPath();
+    ctx.roundRect(x - carWidth / 2 + 2, y - carHeight / 2 + 2, 4, carHeight - 4, 2);
+    ctx.fill();
+
+    // Car outline with rounded corners
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x - carWidth / 2, y - carHeight / 2, carWidth, carHeight, 3);
+    ctx.stroke();
+  };
 
   const startRace = () => {
     if (entries.length > 0) {
