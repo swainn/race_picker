@@ -20,6 +20,7 @@ interface Particle {
   vy: number;
   life: number;
   maxLife: number;
+  type: 'smoke' | 'fire';
 }
 
 interface Props {
@@ -121,6 +122,30 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
           vy: Math.sin(angle) * speed,
           life: 0.6,
           maxLife: 0.6,
+          type: 'smoke',
+        });
+      }
+      
+      setParticles((prev) => [...prev, ...newParticles]);
+    };
+
+    const createFireParticles = (x: number, y: number) => {
+      const newParticles: Particle[] = [];
+      const particleCount = 6;
+      
+      for (let i = 0; i < particleCount; i++) {
+        // Fire shoots backward (in negative x direction) with upward bias
+        const angle = Math.PI + (Math.random() - 0.5) * 0.8;
+        const speed = 60 + Math.random() * 80;
+        
+        newParticles.push({
+          x: x + (Math.random() - 0.5) * 8,
+          y: y + (Math.random() - 0.5) * 4,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 40, // upward bias
+          life: 0.4,
+          maxLife: 0.4,
+          type: 'fire',
         });
       }
       
@@ -173,6 +198,14 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
             const trackTop = 30;
             const y = trackTop + idx * trackHeight + trackHeight / 2;
             createSmokeParticles(racer.x, y);
+          }
+
+          // Check if car is speeding up significantly
+          if (currentSpeed - prevSpeed > 20) {
+            const trackHeight = (400 - 60) / Math.max(prevRacers.length, 2);
+            const trackTop = 30;
+            const y = trackTop + idx * trackHeight + trackHeight / 2;
+            createFireParticles(racer.x, y);
           }
 
           return {
@@ -316,10 +349,26 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
     // Draw smoke particles
     particles.forEach((particle) => {
       const opacity = particle.life / particle.maxLife;
-      ctx.fillStyle = `rgba(150, 150, 150, ${0.6 * opacity})`;
-      ctx.beginPath();
-      ctx.arc(particle.x, particle.y, 4 + Math.random() * 2, 0, Math.PI * 2);
-      ctx.fill();
+      
+      if (particle.type === 'smoke') {
+        ctx.fillStyle = `rgba(150, 150, 150, ${0.6 * opacity})`;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, 4 + Math.random() * 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (particle.type === 'fire') {
+        // NOS-style blue flames
+        const hue = 200 + Math.random() * 20; // blue-cyan range
+        ctx.fillStyle = `hsla(${hue}, 100%, 60%, ${0.85 * opacity})`;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, 3 + Math.random() * 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Inner electric glow
+        ctx.fillStyle = `hsla(195, 100%, 75%, ${0.55 * opacity})`;
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, 1.5 + Math.random() * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
     });
 
     return () => {};
