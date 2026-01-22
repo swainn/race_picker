@@ -82,7 +82,7 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete,
       
       // Generate random speeds for each segment
       for (let i = 0; i < numChanges; i++) {
-        speeds.push(Math.random() * 160 + 120); // 120-280 pixels per second
+        speeds.push(Math.random() * 200 + 200); // 200-400 pixels per second
       }
       
       return { speeds, segmentDistance: TRACK_LENGTH / numChanges };

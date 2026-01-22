@@ -20,8 +20,10 @@ function loadFromStorage<T>(key: string, defaultValue: T): T {
 function App() {
   const [entries, setEntries] = useState<Entry[]>(() => loadFromStorage(STORAGE_KEY, []));
   const [eliminatedIds, setEliminatedIds] = useState<number[]>([]);
+  const [winOrder, setWinOrder] = useState<Map<number, number>>(new Map());
   const [winner, setWinner] = useState<string | null>(null);
   const [showRace, setShowRace] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
@@ -32,12 +34,25 @@ function App() {
     setEntries(newEntries);
     // Clean up eliminated IDs if entries are removed from the list
     setEliminatedIds((prev) => prev.filter((id) => newEntries.some((e) => e.id === id)));
+    // Clean up win order
+    setWinOrder((prev) => {
+      const newMap = new Map(prev);
+      newMap.forEach((_, id) => {
+        if (!newEntries.some((e) => e.id === id)) {
+          newMap.delete(id);
+        }
+      });
+      return newMap;
+    });
+    // Reset track view when entries change
+    setResetKey((prev) => prev + 1);
   };
 
   const handleWinner = (winnerEntry: Entry) => {
     setWinner(winnerEntry.name);
-    // Add winner to eliminated list (don't remove from entries)
+    // Add winner to eliminated list and track order
     setEliminatedIds((prev) => [...prev, winnerEntry.id]);
+    setWinOrder((prev) => new Map(prev).set(winnerEntry.id, prev.size + 1));
     // Stop the race to show winner dialog
     setShowRace(false);
   };
@@ -65,14 +80,17 @@ function App() {
   const resetRace = () => {
     // Reset eliminations, bringing all participants back to race
     setEliminatedIds([]);
+    setWinOrder(new Map());
     setWinner(null);
     setShowRace(false);
+    setResetKey((prev) => prev + 1); // Force track to reset
   };
 
   const resetAllEntries = () => {
     if (window.confirm('Clear all participants from the list?')) {
       setEntries([]);
       setEliminatedIds([]);
+      setWinOrder(new Map());
       setWinner(null);
       setShowRace(false);
     }
@@ -94,6 +112,7 @@ function App() {
             entries={entries} 
             onEntriesChange={handleEntriesChange}
             eliminatedIds={eliminatedIds}
+            winOrder={winOrder}
           />
 
           {activeEntries.length >= 2 && (
@@ -117,6 +136,7 @@ function App() {
 
         <div className="main-content">
           <RacingGame
+            key={resetKey}
             entries={activeEntries}
             onWinner={handleWinner}
             onRaceComplete={handleRaceComplete}

@@ -6,9 +6,10 @@ interface Props {
   entries: Entry[];
   onEntriesChange: (entries: Entry[]) => void;
   eliminatedIds: number[];
+  winOrder: Map<number, number>;
 }
 
-export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, eliminatedIds }) => {
+export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, eliminatedIds, winOrder }) => {
   const [input, setInput] = useState('');
 
   const addEntry = () => {
@@ -57,12 +58,19 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
       <div className="entries-list">
         {entries.map((entry, idx) => {
           const isEliminated = eliminatedIds.includes(entry.id);
+          const order = winOrder.get(entry.id);
+          const getOrdinal = (n: number) => {
+            const s = ['th', 'st', 'nd', 'rd'];
+            const v = n % 100;
+            return n + (s[(v - 20) % 10] || s[v] || s[0]);
+          };
+          
           return (
             <div key={entry.id} className={`entry-item ${isEliminated ? 'eliminated' : ''}`}>
               <span className="entry-number">{idx + 1}</span>
               <span className="entry-name">
                 {entry.name}
-                {isEliminated && <span className="eliminated-badge">Won</span>}
+                {isEliminated && order && <span className="eliminated-badge">{getOrdinal(order)}</span>}
               </span>
               <button
                 onClick={() => removeEntry(entry.id)}
