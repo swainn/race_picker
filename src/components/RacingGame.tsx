@@ -168,15 +168,34 @@ export const RacingGame: React.FC<Props> = ({ entries, onWinner, onRaceComplete 
       ctx.stroke();
     });
 
-    // Draw finish line
-    ctx.strokeStyle = '#fff';
+    // Draw finish line with checkered pattern
+    const finishLineWidth = 30;
+    const checkerSize = 10;
+    const finishLineHeight = canvas.height - 60;
+    
+    // Draw checkered pattern
+    for (let y = trackTop; y < trackTop + finishLineHeight; y += checkerSize) {
+      for (let x = 0; x < finishLineWidth; x += checkerSize) {
+        // Alternate black and white squares
+        const isBlack = ((Math.floor(y / checkerSize) + Math.floor(x / checkerSize)) % 2 === 0);
+        ctx.fillStyle = isBlack ? '#000' : '#fff';
+        ctx.fillRect(FINISH_LINE - finishLineWidth / 2 + x, y, checkerSize, checkerSize);
+      }
+    }
+    
+    // Draw "FINISH" text vertically centered on the finish line
+    ctx.save();
+    ctx.translate(FINISH_LINE, trackTop + finishLineHeight / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = '#000';
     ctx.lineWidth = 3;
-    ctx.setLineDash([10, 10]);
-    ctx.beginPath();
-    ctx.moveTo(FINISH_LINE, trackTop);
-    ctx.lineTo(FINISH_LINE, canvas.height - 30);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.strokeText('FINISH', 0, 0);
+    ctx.fillText('FINISH', 0, 0);
+    ctx.restore();
 
     // Draw racers
     racers.forEach((racer, idx) => {
