@@ -115,18 +115,6 @@ function App() {
             winOrder={winOrder}
           />
 
-          {activeEntries.length >= 2 && (
-            <button onClick={startRace} className="start-race-button">
-              🏁 Start Race ({activeEntries.length})
-            </button>
-          )}
-
-          {eliminatedIds.length > 0 && (
-            <button onClick={resetRace} className="reset-race-button">
-              🔄 Reset Race
-            </button>
-          )}
-
           {entries.length > 0 && (
             <button onClick={resetAllEntries} className="reset-button">
               Clear All
@@ -135,6 +123,20 @@ function App() {
         </div>
 
         <div className="main-content">
+          <div className="race-controls">
+            {activeEntries.length >= 2 && (
+              <button onClick={startRace} className="start-race-button">
+                🏁 Start Race ({activeEntries.length})
+              </button>
+            )}
+
+            {eliminatedIds.length > 0 && (
+              <button onClick={resetRace} className="reset-race-button">
+                🔄 Reset Race
+              </button>
+            )}
+          </div>
+
           <RacingGame
             key={resetKey}
             entries={activeEntries}
