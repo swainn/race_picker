@@ -101,8 +101,8 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🏁 Aquaveo Race Picker</h1>
-        <p>Mario Kart Style Random Selection</p>
+        <h1>🏁 Aquaveo Race Picker 🏁</h1>
+        <p>The Random Selection Tool for Winners!</p>
       </header>
 
       <div className="app-container">
