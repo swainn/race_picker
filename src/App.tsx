@@ -24,6 +24,7 @@ function App() {
   const [winner, setWinner] = useState<string | null>(null);
   const [showRace, setShowRace] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const [showFinalStandings, setShowFinalStandings] = useState(false);
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
@@ -60,8 +61,17 @@ function App() {
   const handleRaceComplete = () => {
     // This is called when user clicks "Next Race" button
     setWinner(null);
-    // Automatically start the next race
     const activeEntries = entries.filter((e) => !eliminatedIds.includes(e.id));
+    
+    // If only 1 racer left, close dialog briefly then declare them winner
+    if (activeEntries.length === 1) {
+      setTimeout(() => {
+        handleWinner(activeEntries[0]);
+      }, 300);
+      return;
+    }
+    
+    // Automatically start the next race
     if (activeEntries.length >= 2) {
       setShowRace(true);
     }
@@ -69,10 +79,20 @@ function App() {
 
   const startRace = () => {
     const activeEntries = entries.filter((e) => !eliminatedIds.includes(e.id));
-    if (activeEntries.length < 2) {
-      alert('Add at least 2 participants to start a race!');
+    if (activeEntries.length < 1) {
+      alert('Add at least 1 participant to start a race!');
       return;
     }
+    
+    // If only 1 racer left, close any open dialog then declare them winner
+    if (activeEntries.length === 1) {
+      setWinner(null);
+      setTimeout(() => {
+        handleWinner(activeEntries[0]);
+      }, 300);
+      return;
+    }
+    
     setWinner(null);
     setShowRace(true);
   };
@@ -83,6 +103,7 @@ function App() {
     setWinOrder(new Map());
     setWinner(null);
     setShowRace(false);
+    setShowFinalStandings(false);
     setResetKey((prev) => prev + 1); // Force track to reset
   };
 
@@ -93,6 +114,7 @@ function App() {
       setWinOrder(new Map());
       setWinner(null);
       setShowRace(false);
+      setShowFinalStandings(false);
     }
   };
 
@@ -124,7 +146,7 @@ function App() {
 
         <div className="main-content">
           <div className="race-controls">
-            {activeEntries.length >= 2 && (
+            {activeEntries.length >= 1 && (
               <button onClick={startRace} className="start-race-button">
                 🏁 Start Race ({activeEntries.length})
               </button>
@@ -145,6 +167,7 @@ function App() {
             winOrder={winOrder}
             onWinner={handleWinner}
             onRaceComplete={handleRaceComplete}
+            onShowFinalStandings={() => setShowFinalStandings(true)}
             isRacing={showRace}
             currentWinner={winner}
           />
@@ -155,6 +178,14 @@ function App() {
               <p>Racing: {activeEntries.length} / {entries.length}</p>
             </div>
           )}
+
+          {showFinalStandings && (
+            <FinalStandingsDialog
+              entries={entries}
+              winOrder={winOrder}
+              onClose={() => setShowFinalStandings(false)}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -162,3 +193,41 @@ function App() {
 }
 
 export default App;
+
+interface FinalStandingsProps {
+  entries: Entry[];
+  winOrder: Map<number, number>;
+  onClose: () => void;
+}
+
+function FinalStandingsDialog({ entries, winOrder, onClose }: FinalStandingsProps) {
+  // Sort entries by their win order
+  const standings = entries
+    .filter((e) => winOrder.has(e.id))
+    .sort((a, b) => (winOrder.get(a.id) || 0) - (winOrder.get(b.id) || 0));
+
+  const getOrdinal = (n: number) => {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  };
+
+  return (
+    <div className="dialog-overlay" onClick={onClose}>
+      <div className="standings-dialog" onClick={(e) => e.stopPropagation()}>
+        <h2>🏆 Final Standings 🏆</h2>
+        <div className="standings-list">
+          {standings.map((entry, idx) => (
+            <div key={entry.id} className="standing-entry">
+              <span className="standing-rank">{getOrdinal(idx + 1)}</span>
+              <span className="standing-name">{entry.name}</span>
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} className="close-standings-button">
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -31,11 +31,12 @@ interface Props {
   winOrder: Map<number, number>;
   onWinner: (winner: Entry) => void;
   onRaceComplete: () => void;
+  onShowFinalStandings?: () => void;
   isRacing: boolean;
   currentWinner: string | null;
 }
 
-export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds, winOrder, onWinner, onRaceComplete, isRacing, currentWinner }) => {
+export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds, winOrder, onWinner, onRaceComplete, onShowFinalStandings, isRacing, currentWinner }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [racers, setRacers] = useState<Racer[]>([]);
   const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
@@ -468,9 +469,15 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           <div className="winner-banner">
             <h2>🏆 WINNER 🏆</h2>
             <p className="winner-name">{currentWinner}</p>
-            <button onClick={onRaceComplete} className="reset-button">
-              Next Race
-            </button>
+            {entries.length === 0 ? (
+              <button onClick={onShowFinalStandings} className="final-standings-btn">
+                🏆 Final Standings
+              </button>
+            ) : (
+              <button onClick={onRaceComplete} className="next-race-btn">
+                ▶ Next Race
+              </button>
+            )}
           </div>
         </div>
       )}
