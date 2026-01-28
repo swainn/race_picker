@@ -24,7 +24,7 @@
 
 .entry-input:focus {
   outline: none;
-  border-color: #4ECDC4;
+  border-color: #236192;
 }
 
 .entry-input:disabled {
@@ -35,8 +35,8 @@
 
 .add-button {
   padding: 10px 16px;
-  background-color: #4ECDC4;
-  color: #fff;
+  background-color: #236192;
+  color: #F0EEE9;
   border: none;
   border-radius: 6px;
   font-weight: bold;
@@ -45,7 +45,7 @@
 }
 
 .add-button:hover:not(:disabled) {
-  background-color: #36b8ad;
+  background-color: #1a4d7a;
   transform: scale(1.05);
 }
 
@@ -81,7 +81,7 @@
 
 .entry-item:hover {
   background-color: #333;
-  border-color: #4ECDC4;
+  border-color: #236192;
 }
 
 .entry-item.eliminated {
@@ -96,8 +96,8 @@
 }
 
 .entry-number {
-  background-color: #4ECDC4;
-  color: #000;
+  background-color: #236192;
+  color: #F0EEE9;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -121,8 +121,8 @@
 }
 
 .eliminated-badge {
-  background-color: #FFD700;
-  color: #000;
+  background-color: #236192;
+  color: #F0EEE9;
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 3px;

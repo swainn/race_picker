@@ -7,7 +7,7 @@
 }
 
 .app-header {
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(90deg, #236192 0%, #1a4d7a 100%);
   padding: 20px 40px;
   text-align: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -45,14 +45,14 @@
 .sidebar h2 {
   margin: 0;
   font-size: 18px;
-  color: #4ECDC4;
+  color: #236192;
 }
 
 .start-race-button {
   padding: 12px 20px;
   font-size: 16px;
   font-weight: bold;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #236192 0%, #1a4d7a 100%);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -62,14 +62,14 @@
 
 .start-race-button:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 12px rgba(35, 97, 146, 0.4);
 }
 
 .reset-race-button {
   padding: 12px 20px;
   font-size: 16px;
   font-weight: bold;
-  background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+  background: linear-gradient(135deg, #236192 0%, #1a4d7a 100%);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -79,13 +79,12 @@
 
 .reset-race-button:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.4);
+  box-shadow: 0 4px 12px rgba(35, 97, 146, 0.4);
 }
 
 .reset-button {
   padding: 10px 16px;
-  font-size: 14px;
-  background-color: #FF6B6B;
+  background-color: #d32f2f;
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -94,7 +93,7 @@
 }
 
 .reset-button:hover {
-  background-color: #ff4d4d;
+  background-color: #b71c1c;
 }
 
 .main-content {
@@ -180,7 +179,7 @@
   background: #2a2a2a;
   padding: 15px 20px;
   border-radius: 6px;
-  border: 2px solid #4ECDC4;
+  border: 2px solid #236192;
   font-size: 14px;
   text-align: right;
 }
@@ -198,7 +197,7 @@
   padding: 10px 16px;
   font-size: 14px;
   font-weight: bold;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #236192 0%, #1a4d7a 100%);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -208,7 +207,7 @@
 
 .next-race-button:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 12px rgba(35, 97, 146, 0.4);
 }
 
 .final-standings-button {
@@ -216,8 +215,8 @@
   padding: 10px 16px;
   font-size: 14px;
   font-weight: bold;
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
-  color: #000;
+  background: linear-gradient(135deg, #236192 0%, #1a4d7a 100%);
+  color: #F0EEE9;
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -226,7 +225,7 @@
 
 .final-standings-button:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(35, 97, 146, 0.4);
 }
 
 .dialog-overlay {
@@ -244,7 +243,7 @@
 
 .standings-dialog {
   background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-  border: 3px solid #FFD700;
+  border: 3px solid #236192;
   border-radius: 12px;
   padding: 32px;
   max-width: 500px;
@@ -258,8 +257,8 @@
 .standings-dialog h2 {
   margin: 0 0 24px;
   font-size: 32px;
-  color: #FFD700;
-  text-shadow: 0 2px 8px rgba(255, 215, 0, 0.5);
+  color: #236192;
+  text-shadow: 0 2px 8px rgba(35, 97, 146, 0.5);
 }
 
 .standings-list {
@@ -282,13 +281,13 @@
 
 .standing-entry:hover {
   background-color: #333;
-  border-color: #FFD700;
+  border-color: #236192;
   transform: translateX(4px);
 }
 
 .standing-entry:nth-child(1) .standing-rank {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
-  color: #000;
+  background: linear-gradient(135deg, #236192 0%, #1a4d7a 100%);
+  color: #F0EEE9;
 }
 
 .standing-entry:nth-child(2) .standing-rank {
@@ -302,8 +301,8 @@
 }
 
 .standing-rank {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #236192 0%, #1a4d7a 100%);
+  color: #F0EEE9;
   font-weight: bold;
   font-size: 16px;
   padding: 8px 12px;
@@ -323,8 +322,8 @@
 
 .close-standings-button {
   padding: 12px 24px;
-  background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #236192 0%, #1a4d7a 100%);
+  color: #F0EEE9;
   border: none;
   border-radius: 6px;
   font-weight: bold;
@@ -335,7 +334,7 @@
 
 .close-standings-button:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(78, 205, 196, 0.4);
+  box-shadow: 0 4px 12px rgba(35, 97, 146, 0.4);
 }
 
 @media (max-width: 768px) {
