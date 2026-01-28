@@ -5,6 +5,14 @@ import { RacingGame } from './components/RacingGame';
 import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
+const GROUPS_STORAGE_KEY = 'gamified_picker_groups';
+
+interface Group {
+  id: number;
+  name: string;
+  entries: Entry[];
+  timestamp: number;
+}
 
 // Load initial state from localStorage
 function loadFromStorage<T>(key: string, defaultValue: T): T {
@@ -25,6 +33,9 @@ function App() {
   const [showRace, setShowRace] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const [showFinalStandings, setShowFinalStandings] = useState(false);
+  const [groups, setGroups] = useState<Group[]>(() => loadFromStorage(GROUPS_STORAGE_KEY, []));
+  const [showGroupManager, setShowGroupManager] = useState(false);
+  const [groupNameInput, setGroupNameInput] = useState('');
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
@@ -118,6 +129,49 @@ function App() {
     }
   };
 
+  const saveGroup = () => {
+    if (entries.length === 0) {
+      alert('Cannot save an empty group!');
+      return;
+    }
+    
+    const groupName = groupNameInput.trim() || `Group ${new Date().toLocaleDateString()}`;
+    
+    const newGroup: Group = {
+      id: Date.now(),
+      name: groupName,
+      entries: [...entries],
+      timestamp: Date.now()
+    };
+    
+    const updatedGroups = [...groups, newGroup];
+    setGroups(updatedGroups);
+    localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(updatedGroups));
+    setGroupNameInput('');
+    alert(`Group "${groupName}" saved successfully!`);
+  };
+
+  const loadGroup = (groupId: number) => {
+    const group = groups.find(g => g.id === groupId);
+    if (group) {
+      setEntries(group.entries);
+      setEliminatedIds([]);
+      setWinOrder(new Map());
+      setWinner(null);
+      setShowRace(false);
+      setShowFinalStandings(false);
+      setShowGroupManager(false);
+    }
+  };
+
+  const deleteGroup = (groupId: number) => {
+    if (window.confirm('Delete this group?')) {
+      const updatedGroups = groups.filter(g => g.id !== groupId);
+      setGroups(updatedGroups);
+      localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(updatedGroups));
+    }
+  };
+
   const activeEntries = entries.filter((e) => !eliminatedIds.includes(e.id));
 
   return (
@@ -142,6 +196,48 @@ function App() {
               Clear All
             </button>
           )}
+
+          <div className="group-controls">
+            <h3>💾 Groups</h3>
+            <input
+              type="text"
+              value={groupNameInput}
+              onChange={(e) => setGroupNameInput(e.target.value)}
+              placeholder="Group name..."
+              className="group-name-input"
+              onKeyPress={(e) => e.key === 'Enter' && saveGroup()}
+            />
+            <button onClick={saveGroup} className="save-group-button">
+              Save Current Group
+            </button>
+            
+            {groups.length > 0 && (
+              <button onClick={() => setShowGroupManager(!showGroupManager)} className="manage-groups-button">
+                {showGroupManager ? 'Hide Groups' : 'View Groups'} ({groups.length})
+              </button>
+            )}
+
+            {showGroupManager && (
+              <div className="groups-list">
+                {groups.map((group) => (
+                  <div key={group.id} className="group-item">
+                    <div className="group-info">
+                      <p className="group-name">{group.name}</p>
+                      <p className="group-count">{group.entries.length} participants</p>
+                    </div>
+                    <div className="group-buttons">
+                      <button onClick={() => loadGroup(group.id)} className="load-group-button">
+                        Load
+                      </button>
+                      <button onClick={() => deleteGroup(group.id)} className="delete-group-button">
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="main-content">

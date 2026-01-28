@@ -28,10 +28,18 @@ Aquaveo Race Picker is a web application that gamifies random selection. Instead
 - **Persistent Track Layout**: All participants keep their lane visible throughout the tournament, even after elimination
 - **Win Tracking**: Displays participant rankings (1st, 2nd, 3rd, etc.) on the track
 - **Final Standings Dialog**: Shows all participants ranked by finish order when the tournament completes
-- **Local Storage**: Participant list is automatically saved and persists across sessions
+- **Group Saving**: Save multiple participant lists to use later
+  - Save current participant list with a custom name
+  - View and manage saved groups
+  - Load any saved group to quickly switch participant lists
+  - Delete groups no longer needed
+  - All groups persist with localStorage
+- **Local Storage**: Participant list and groups are automatically saved and persist across sessions
 - **Responsive Design**: Works on different screen sizes with a sidebar participant manager
 
 ## How to Use
+
+### Running Races
 
 1. **Add Participants**: Enter names in the sidebar and click "Add" (up to 12 participants)
 2. **Start a Race**: Click "🏁 Start Race" when ready
@@ -39,6 +47,25 @@ Aquaveo Race Picker is a web application that gamifies random selection. Instead
 4. **View Winner**: When someone crosses the finish line, their name appears as the winner
 5. **Continue**: Click "▶ Next Race" to continue with remaining participants, or "Final Standings" when only one remains
 6. **See Rankings**: View the final standings showing all participants in order
+
+### Managing Groups
+
+1. **Save a Group**: 
+   - Build your participant list in the sidebar
+   - Enter a name in the group name input field (or leave blank for auto-name)
+   - Click "Save Current Group"
+   
+2. **Load a Group**:
+   - Click "View Groups" to see all saved groups
+   - Click "Load" on any group to switch to that participant list
+   
+3. **Delete a Group**:
+   - Click "View Groups" 
+   - Click "Delete" on any group to remove it
+   
+4. **Switch Between Groups**:
+   - Groups can be switched at any time
+   - When you load a group, the race state resets automatically
 
 ## Technology Stack
 
