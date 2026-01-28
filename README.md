@@ -1,73 +1,91 @@
-# React + TypeScript + Vite
+# 🏁 Aquaveo Race Picker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A Mario Kart-inspired random selection tool that turns picking winners into an exciting racing game!
 
-Currently, two official plugins are available:
+## Screenshots
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Racing Game
+![Racing Game](screenshots/racing.png)
 
-## React Compiler
+### Winner Announcement
+![Winner Announcement](screenshots/winner.png)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Final Standings
+![Final Standings](screenshots/standings.png)
 
-## Expanding the ESLint configuration
+## About
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Aquaveo Race Picker is a web application that gamifies random selection. Instead of simply picking names from a list, participants are displayed as racing cars on a track, competing in dynamic races where the winner of each race is eliminated from the pool. This continues until all participants have been ranked, creating an engaging and fun way to determine winners or process selections.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Features
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- **Interactive Racing Track**: Canvas-based 2D overhead view of cars racing to the finish line
+- **Dynamic Speed Mechanics**: Each racer experiences 2-4 random speed changes throughout the race (200-400 px/s) for unpredictable outcomes
+- **Visual Effects**: 
+  - Smoke particles emit when cars slow down significantly
+  - Blue NOS-style flame particles when cars accelerate
+  - Spinning effects during deceleration for realism
+- **Persistent Track Layout**: All participants keep their lane visible throughout the tournament, even after elimination
+- **Win Tracking**: Displays participant rankings (1st, 2nd, 3rd, etc.) on the track
+- **Final Standings Dialog**: Shows all participants ranked by finish order when the tournament completes
+- **Local Storage**: Participant list is automatically saved and persists across sessions
+- **Responsive Design**: Works on different screen sizes with a sidebar participant manager
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## How to Use
+
+1. **Add Participants**: Enter names in the sidebar and click "Add" (up to 12 participants)
+2. **Start a Race**: Click "🏁 Start Race" when ready
+3. **Watch the Race**: The canvas shows all participants racing to the finish line
+4. **View Winner**: When someone crosses the finish line, their name appears as the winner
+5. **Continue**: Click "▶ Next Race" to continue with remaining participants, or "Final Standings" when only one remains
+6. **See Rankings**: View the final standings showing all participants in order
+
+## Technology Stack
+
+- **React 18** with TypeScript
+- **Vite** for fast build and HMR
+- **HTML5 Canvas** for race animations (60fps)
+- **CSS3** with gradients and animations
+- **localStorage** for data persistence
+
+## Getting Started
+
+### Prerequisites
+- Node.js 16+
+- npm or yarn
+
+### Installation
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+The application will start at `http://localhost:5174`
+
+### Building
+
+```bash
+npm run build
+```
+
+## Architecture
+
+- **App.tsx**: Main state management and winner dialog logic
+- **RacingGame.tsx**: Canvas rendering and race mechanics
+- **EntryManager.tsx**: Participant list UI
+- **App.css**: Main app styling and dialog designs
+- **RacingGame.css**: Canvas and winner banner styling
+
+## Future Enhancements
+
+- Sound effects for races and winners
+- Customizable race parameters
+- Export results functionality
+- Multiplayer network support
+- Advanced car customization
