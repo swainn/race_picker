@@ -351,7 +351,21 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       // Draw car or boat with rotation effect
       ctx.save();
       ctx.translate(racer.x, laneY);
-      ctx.rotate(racer.spinAngle || 0);
+      
+      // Add rocking motion for boats based on horizontal position
+      let totalRotation = racer.spinAngle || 0;
+      if (mode === 'boat') {
+        const rockAmount = Math.sin((racer.x + performance.now() / 500) * 0.02) * 0.15; // gentle rocking
+        totalRotation += rockAmount;
+      }
+      
+      ctx.rotate(totalRotation);
+      
+      // Flip boats horizontally so they face forward
+      if (mode === 'boat') {
+        ctx.scale(-1, 1);
+      }
+      
       ctx.translate(-racer.x, -laneY);
       if (mode === 'boat') {
         drawBoat(ctx, racer.x, laneY, racer.color);
