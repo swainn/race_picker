@@ -36,6 +36,7 @@ function App() {
   const [groups, setGroups] = useState<Group[]>(() => loadFromStorage(GROUPS_STORAGE_KEY, []));
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
+  const [racingMode, setRacingMode] = useState<'car' | 'boat'>('car');
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
@@ -177,8 +178,14 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🏁 Aquaveo Race Picker 🏁</h1>
+        <h1>{racingMode === 'car' ? '🏁' : '⛵'} Aquaveo Race Picker {racingMode === 'car' ? '🏁' : '⛵'}</h1>
         <p>The Random Selection Tool for Winners!</p>
+        <button 
+          onClick={() => setRacingMode(mode => mode === 'car' ? 'boat' : 'car')} 
+          className="mode-toggle-button"
+        >
+          {racingMode === 'car' ? '🚗 Switch to Boats' : '⛵ Switch to Cars'}
+        </button>
       </header>
 
       <div className="app-container">
@@ -266,6 +273,7 @@ function App() {
             onShowFinalStandings={() => setShowFinalStandings(true)}
             isRacing={showRace}
             currentWinner={winner}
+            mode={racingMode}
           />
 
           {winner && !showRace && (

@@ -19,11 +19,15 @@ Aquaveo Race Picker is a web application that gamifies random selection. Instead
 
 ## Features
 
-- **Interactive Racing Track**: Canvas-based 2D overhead view of cars racing to the finish line
+- **Racing Modes**: Toggle between car racing and boat racing modes
+  - **Car Mode**: Classic Mario Kart-style racing with detailed car models
+  - **Boat Mode**: Nautical racing with sailboats complete with sails and bow waves
+  - Easy one-click toggle in the header
+- **Interactive Racing Track**: Canvas-based 2D overhead view with racers moving to the finish line
 - **Dynamic Speed Mechanics**: Each racer experiences 2-4 random speed changes throughout the race (200-400 px/s) for unpredictable outcomes
 - **Visual Effects**: 
-  - Smoke particles emit when cars slow down significantly
-  - Blue NOS-style flame particles when cars accelerate
+  - Smoke particles emit when racers slow down significantly
+  - Blue NOS-style flame particles when racers accelerate
   - Spinning effects during deceleration for realism
 - **Persistent Track Layout**: All participants keep their lane visible throughout the tournament, even after elimination
 - **Win Tracking**: Displays participant rankings (1st, 2nd, 3rd, etc.) on the track
@@ -38,6 +42,12 @@ Aquaveo Race Picker is a web application that gamifies random selection. Instead
 - **Responsive Design**: Works on different screen sizes with a sidebar participant manager
 
 ## How to Use
+
+### Switching Racing Modes
+
+- Click the **"Switch to Boats"** or **"Switch to Cars"** button in the header
+- The racing mode toggles between cars and boats
+- The header emojis and vehicle visuals update instantly
 
 ### Running Races
 

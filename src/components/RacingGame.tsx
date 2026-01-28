@@ -34,9 +34,10 @@ interface Props {
   onShowFinalStandings?: () => void;
   isRacing: boolean;
   currentWinner: string | null;
+  mode: 'car' | 'boat';
 }
 
-export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds, winOrder, onWinner, onRaceComplete, onShowFinalStandings, isRacing, currentWinner }) => {
+export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds, winOrder, onWinner, onRaceComplete, onShowFinalStandings, isRacing, currentWinner, mode }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [racers, setRacers] = useState<Racer[]>([]);
   const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
@@ -347,12 +348,16 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       const trackHeight = (canvas.height - 60) / numLanes;
       const laneY = trackTop + racer.laneIndex * trackHeight + trackHeight / 2;
 
-      // Draw car with rotation effect
+      // Draw car or boat with rotation effect
       ctx.save();
       ctx.translate(racer.x, laneY);
       ctx.rotate(racer.spinAngle || 0);
       ctx.translate(-racer.x, -laneY);
-      drawCar(ctx, racer.x, laneY, racer.color);
+      if (mode === 'boat') {
+        drawBoat(ctx, racer.x, laneY, racer.color);
+      } else {
+        drawCar(ctx, racer.x, laneY, racer.color);
+      }
       ctx.restore();
     });
 
@@ -457,6 +462,81 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.roundRect(x - carWidth / 2, y - carHeight / 2, carWidth, carHeight, 3);
+    ctx.stroke();
+  };
+
+  const drawBoat = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const boatWidth = 22;  // horizontal width (length)
+    const boatHeight = 14;  // vertical height
+    
+    // Draw boat hull (elongated ellipse shape)
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    // Create boat hull using bezier curves for a more boat-like shape
+    ctx.moveTo(x - boatWidth / 2, y);
+    ctx.bezierCurveTo(
+      x - boatWidth / 2, y - boatHeight / 2,
+      x + boatWidth / 2, y - boatHeight / 2,
+      x + boatWidth / 2, y
+    );
+    ctx.bezierCurveTo(
+      x + boatWidth / 2, y + boatHeight / 2,
+      x - boatWidth / 2, y + boatHeight / 2,
+      x - boatWidth / 2, y
+    );
+    ctx.fill();
+
+    // Draw deck (lighter section in the middle)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, boatWidth / 2 - 2, boatHeight / 2 - 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw sail mast (vertical line)
+    ctx.strokeStyle = '#8B4513';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y - boatHeight / 2);
+    ctx.lineTo(x - 2, y - boatHeight / 2 - 12);
+    ctx.stroke();
+
+    // Draw sail (triangular)
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y - boatHeight / 2 - 12); // top of mast
+    ctx.lineTo(x - 2, y - boatHeight / 2); // bottom of mast
+    ctx.lineTo(x + 8, y - boatHeight / 2 - 6); // sail point
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw boat outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - boatWidth / 2, y);
+    ctx.bezierCurveTo(
+      x - boatWidth / 2, y - boatHeight / 2,
+      x + boatWidth / 2, y - boatHeight / 2,
+      x + boatWidth / 2, y
+    );
+    ctx.bezierCurveTo(
+      x + boatWidth / 2, y + boatHeight / 2,
+      x - boatWidth / 2, y + boatHeight / 2,
+      x - boatWidth / 2, y
+    );
+    ctx.stroke();
+
+    // Draw water splash at front (bow wave)
+    ctx.strokeStyle = '#4af';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + boatWidth / 2 - 1, y - 3);
+    ctx.lineTo(x + boatWidth / 2 + 2, y - 4);
+    ctx.moveTo(x + boatWidth / 2 - 1, y + 3);
+    ctx.lineTo(x + boatWidth / 2 + 2, y + 4);
     ctx.stroke();
   };
 
