@@ -319,18 +319,30 @@ function FinalStandingsDialog({ entries, winOrder, onClose }: FinalStandingsProp
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="standings-dialog" onClick={(e) => e.stopPropagation()}>
-        <h2>🏆 Final Standings 🏆</h2>
-        <div className="standings-list">
-          {standings.map((entry, idx) => (
-            <div key={entry.id} className="standing-entry">
-              <span className="standing-rank">{getOrdinal(idx + 1)}</span>
-              <span className="standing-name">{entry.name}</span>
-            </div>
-          ))}
+        <div className="standings-header">
+          <h2>🏆 Final Standings 🏆</h2>
+          <button
+            type="button"
+            className="standings-close-x"
+            aria-label="Close final standings"
+            onClick={onClose}
+          >
+            ×
+          </button>
         </div>
-        <button onClick={onClose} className="close-standings-button">
-          Close
-        </button>
+        <div className="standings-body">
+          <div className="standings-list">
+            {standings.map((entry, idx) => (
+              <div key={entry.id} className="standing-entry">
+                <span className="standing-rank">{getOrdinal(idx + 1)}</span>
+                <span className="standing-name">{entry.name}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={onClose} className="close-standings-button">
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );

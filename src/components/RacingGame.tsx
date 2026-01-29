@@ -481,18 +481,21 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
 
   const drawBoat = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
     const boatWidth = 22;  // horizontal width (length)
-    const boatHeight = 14;  // vertical height
+    const boatHeight = 7;  // vertical height (reduced from 14)
     
     // Draw boat hull with flat back, flat top, and curved nose
     // Drawing with bow on left so it points right after the flip
     ctx.fillStyle = color;
     ctx.beginPath();
     
-    // Start at back-top corner (right when facing forward after flip)
+    // Start at back-top corner (right when facing forward after flip) - 90 degree corner
     ctx.moveTo(x + boatWidth / 2, y - boatHeight / 2);
     
-    // Top edge to nose
+    // Top edge to nose with sharp 90 degree corner at top-left
     ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2);
+    
+    // Sharp downward line from top-left corner
+    ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2 + 1.5);
     
     // Curved nose (front/bow) - left side before flip
     ctx.quadraticCurveTo(
@@ -510,13 +513,13 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     // Draw deck (lighter section in the middle)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.beginPath();
-    ctx.moveTo(x + boatWidth / 2 - 4, y - boatHeight / 2 + 3);
-    ctx.lineTo(x - boatWidth / 2 + 6, y - boatHeight / 2 + 3);
+    ctx.moveTo(x + boatWidth / 2 - 4, y - boatHeight / 2 + 1.5);
+    ctx.lineTo(x - boatWidth / 2 + 6, y - boatHeight / 2 + 1.5);
     ctx.quadraticCurveTo(
       x - boatWidth / 2 + 2, y,
-      x - boatWidth / 2 + 6, y + boatHeight / 2 - 3
+      x - boatWidth / 2 + 6, y + boatHeight / 2 - 1.5
     );
-    ctx.lineTo(x + boatWidth / 2 - 4, y + boatHeight / 2 - 3);
+    ctx.lineTo(x + boatWidth / 2 - 4, y + boatHeight / 2 - 1.5);
     ctx.closePath();
     ctx.fill();
 
@@ -528,14 +531,14 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.lineTo(x + 2, y - boatHeight / 2 - 12);
     ctx.stroke();
 
-    // Draw sail (triangular)
+    // Draw sail (triangular) - flipped on vertical axis
     ctx.fillStyle = '#fff';
     ctx.strokeStyle = '#ddd';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x + 2, y - boatHeight / 2 - 12); // top of mast
     ctx.lineTo(x + 2, y - boatHeight / 2); // bottom of mast
-    ctx.lineTo(x - 8, y - boatHeight / 2 - 6); // sail point
+    ctx.lineTo(x + 8, y - boatHeight / 2 - 6); // sail point (flipped)
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
@@ -548,8 +551,12 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     // Start at back-top corner
     ctx.moveTo(x + boatWidth / 2, y - boatHeight / 2);
     
-    // Top edge to nose
+    // Top edge to nose with sharp corner
     ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2);
+    
+    // Sharp downward line from top-left corner
+    ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2 + 1.5);
+    
     ctx.quadraticCurveTo(
       x - boatWidth / 2 - 2, y,
       x - boatWidth / 2 + 4, y + boatHeight / 2
@@ -562,14 +569,14 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.closePath();
     ctx.stroke();
 
-    // Draw water splash at front (bow wave)
+    // Draw water splash at back (stern wake) - moved to back of boat
     ctx.strokeStyle = '#4af';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x - boatWidth / 2 + 1, y - 3);
-    ctx.lineTo(x - boatWidth / 2 - 2, y - 4);
-    ctx.moveTo(x - boatWidth / 2 + 1, y + 3);
-    ctx.lineTo(x - boatWidth / 2 - 2, y + 4);
+    ctx.moveTo(x + boatWidth / 2 - 1, y - 3);
+    ctx.lineTo(x + boatWidth / 2 + 2, y - 4);
+    ctx.moveTo(x + boatWidth / 2 - 1, y + 3);
+    ctx.lineTo(x + boatWidth / 2 + 2, y + 4);
     ctx.stroke();
   };
 
