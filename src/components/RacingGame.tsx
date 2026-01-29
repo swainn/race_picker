@@ -34,7 +34,7 @@ interface Props {
   onShowFinalStandings?: () => void;
   isRacing: boolean;
   currentWinner: string | null;
-  mode: 'car' | 'boat';
+  mode: 'car' | 'boat' | 'plane' | 'balloon' | 'rocket';
 }
 
 export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds, winOrder, onWinner, onRaceComplete, onShowFinalStandings, isRacing, currentWinner, mode }) => {
@@ -369,6 +369,17 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       ctx.translate(-racer.x, -laneY);
       if (mode === 'boat') {
         drawBoat(ctx, racer.x, laneY, racer.color);
+      } else if (mode === 'plane') {
+        drawPlane(ctx, racer.x, laneY, racer.color);
+      } else if (mode === 'balloon') {
+        drawBalloon(ctx, racer.x, laneY, racer.color);
+      } else if (mode === 'rocket') {
+        ctx.save();
+        ctx.translate(racer.x, laneY);
+        ctx.rotate(Math.PI / 2);
+        ctx.translate(-racer.x, -laneY);
+        drawRocket(ctx, racer.x, laneY, racer.color);
+        ctx.restore();
       } else {
         drawCar(ctx, racer.x, laneY, racer.color);
       }
@@ -577,6 +588,204 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.lineTo(x + boatWidth / 2 + 2, y - 4);
     ctx.moveTo(x + boatWidth / 2 - 1, y + 3);
     ctx.lineTo(x + boatWidth / 2 + 2, y + 4);
+    ctx.stroke();
+  };
+
+  const drawPlane = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const planeWidth = 24;  // horizontal width (length)
+    const planeHeight = 20;  // vertical height (wingspan)
+    
+    // Draw main fuselage (body)
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    // Pointed nose at front (right)
+    ctx.moveTo(x + planeWidth / 2, y);
+    // Top of fuselage
+    ctx.lineTo(x + planeWidth / 2 - 6, y - 3);
+    ctx.lineTo(x - planeWidth / 2, y - 3);
+    // Tail
+    ctx.lineTo(x - planeWidth / 2 - 2, y - 3);
+    ctx.lineTo(x - planeWidth / 2, y);
+    // Bottom of tail
+    ctx.lineTo(x - planeWidth / 2 - 2, y + 3);
+    // Bottom of fuselage
+    ctx.lineTo(x - planeWidth / 2, y + 3);
+    ctx.lineTo(x + planeWidth / 2 - 6, y + 3);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw wings (horizontal across)
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    // Top wing
+    ctx.moveTo(x - 2, y - 3);
+    ctx.lineTo(x + 4, y - 3);
+    ctx.lineTo(x + 4, y - planeHeight / 2);
+    ctx.lineTo(x + 2, y - planeHeight / 2);
+    ctx.lineTo(x - 2, y - planeHeight / 2 + 2);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Bottom wing
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y + 3);
+    ctx.lineTo(x + 4, y + 3);
+    ctx.lineTo(x + 4, y + planeHeight / 2);
+    ctx.lineTo(x + 2, y + planeHeight / 2);
+    ctx.lineTo(x - 2, y + planeHeight / 2 - 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw cockpit window
+    ctx.fillStyle = '#4af';
+    ctx.beginPath();
+    ctx.arc(x + planeWidth / 2 - 8, y, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw fuselage outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + planeWidth / 2, y);
+    ctx.lineTo(x + planeWidth / 2 - 6, y - 3);
+    ctx.lineTo(x - planeWidth / 2, y - 3);
+    ctx.lineTo(x - planeWidth / 2 - 2, y - 3);
+    ctx.lineTo(x - planeWidth / 2, y);
+    ctx.lineTo(x - planeWidth / 2 - 2, y + 3);
+    ctx.lineTo(x - planeWidth / 2, y + 3);
+    ctx.lineTo(x + planeWidth / 2 - 6, y + 3);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Draw wing outlines
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y - 3);
+    ctx.lineTo(x + 4, y - 3);
+    ctx.lineTo(x + 4, y - planeHeight / 2);
+    ctx.lineTo(x + 2, y - planeHeight / 2);
+    ctx.lineTo(x - 2, y - planeHeight / 2 + 2);
+    ctx.closePath();
+    ctx.stroke();
+    
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y + 3);
+    ctx.lineTo(x + 4, y + 3);
+    ctx.lineTo(x + 4, y + planeHeight / 2);
+    ctx.lineTo(x + 2, y + planeHeight / 2);
+    ctx.lineTo(x - 2, y + planeHeight / 2 - 2);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Draw jet stream / contrails at back
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - planeWidth / 2 - 2, y);
+    ctx.lineTo(x - planeWidth / 2 - 8, y);
+    ctx.stroke();
+  };
+
+  const drawBalloon = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const balloonRadiusX = 10;
+    const balloonRadiusY = 13;
+    const basketWidth = 8;
+    const basketHeight = 6;
+
+    // Balloon envelope
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 6, balloonRadiusX, balloonRadiusY, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Balloon highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(x - 3, y - 9, balloonRadiusX / 3, balloonRadiusY / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Basket
+    ctx.fillStyle = '#8B5A2B';
+    ctx.fillRect(x - basketWidth / 2, y + 8, basketWidth, basketHeight);
+
+    // Basket outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - basketWidth / 2, y + 8, basketWidth, basketHeight);
+
+    // Ropes
+    ctx.strokeStyle = '#d2b48c';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - 5, y + 2);
+    ctx.lineTo(x - basketWidth / 2, y + 8);
+    ctx.moveTo(x + 5, y + 2);
+    ctx.lineTo(x + basketWidth / 2, y + 8);
+    ctx.stroke();
+
+    // Envelope outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 6, balloonRadiusX, balloonRadiusY, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+
+  const drawRocket = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const rocketWidth = 10;
+    const rocketHeight = 24;
+    const finSize = 5;
+
+    // Rocket body
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(x - rocketWidth / 2, y - rocketHeight / 2, rocketWidth, rocketHeight, 4);
+    ctx.fill();
+
+    // Nose cone
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(x, y - rocketHeight / 2 - 6);
+    ctx.lineTo(x - rocketWidth / 2, y - rocketHeight / 2 + 2);
+    ctx.lineTo(x + rocketWidth / 2, y - rocketHeight / 2 + 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Window
+    ctx.fillStyle = '#4af';
+    ctx.beginPath();
+    ctx.arc(x, y - 2, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Side fins
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x - rocketWidth / 2, y + rocketHeight / 4);
+    ctx.lineTo(x - rocketWidth / 2 - finSize, y + rocketHeight / 2 - 2);
+    ctx.lineTo(x - rocketWidth / 2, y + rocketHeight / 2 - 2);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(x + rocketWidth / 2, y + rocketHeight / 4);
+    ctx.lineTo(x + rocketWidth / 2 + finSize, y + rocketHeight / 2 - 2);
+    ctx.lineTo(x + rocketWidth / 2, y + rocketHeight / 2 - 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Flame exhaust
+    ctx.fillStyle = '#FF6B00';
+    ctx.beginPath();
+    ctx.moveTo(x - 3, y + rocketHeight / 2);
+    ctx.lineTo(x, y + rocketHeight / 2 + 8);
+    ctx.lineTo(x + 3, y + rocketHeight / 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x - rocketWidth / 2, y - rocketHeight / 2, rocketWidth, rocketHeight, 4);
     ctx.stroke();
   };
 
