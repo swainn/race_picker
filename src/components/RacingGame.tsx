@@ -209,7 +209,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           
           // Check if car is slowing down significantly
           if (prevSpeed - currentSpeed > 20) {
-            const trackHeight = (400 - 60) / totalLanes;
+            const trackHeight = (600 - 60) / totalLanes;
             const trackTop = 30;
             const laneIndex = racer.laneIndex ?? idx;
             const y = trackTop + laneIndex * trackHeight + trackHeight / 2;
@@ -218,7 +218,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
 
           // Check if car is speeding up significantly
           if (currentSpeed - prevSpeed > 20) {
-            const trackHeight = (400 - 60) / totalLanes;
+            const trackHeight = (600 - 60) / totalLanes;
             const trackTop = 30;
             const laneIndex = racer.laneIndex ?? idx;
             const y = trackTop + laneIndex * trackHeight + trackHeight / 2;
@@ -483,35 +483,49 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     const boatWidth = 22;  // horizontal width (length)
     const boatHeight = 14;  // vertical height
     
-    // Draw boat hull (elongated ellipse shape)
+    // Draw boat hull with flat back, flat top, and curved nose
+    // Drawing with bow on left so it points right after the flip
     ctx.fillStyle = color;
     ctx.beginPath();
-    // Create boat hull using bezier curves for a more boat-like shape
-    ctx.moveTo(x - boatWidth / 2, y);
-    ctx.bezierCurveTo(
-      x - boatWidth / 2, y - boatHeight / 2,
-      x + boatWidth / 2, y - boatHeight / 2,
-      x + boatWidth / 2, y
+    
+    // Start at back-top corner (right when facing forward after flip)
+    ctx.moveTo(x + boatWidth / 2, y - boatHeight / 2);
+    
+    // Top edge to nose
+    ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2);
+    
+    // Curved nose (front/bow) - left side before flip
+    ctx.quadraticCurveTo(
+      x - boatWidth / 2 - 2, y, // control point
+      x - boatWidth / 2 + 4, y + boatHeight / 2
     );
-    ctx.bezierCurveTo(
-      x + boatWidth / 2, y + boatHeight / 2,
-      x - boatWidth / 2, y + boatHeight / 2,
-      x - boatWidth / 2, y
-    );
+    
+    // Bottom flat section from nose to stern
+    ctx.lineTo(x + boatWidth / 2, y + boatHeight / 2);
+    
+    // Flat back (stern) - right side before flip, close the path
+    ctx.closePath();
     ctx.fill();
 
     // Draw deck (lighter section in the middle)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
     ctx.beginPath();
-    ctx.ellipse(x, y, boatWidth / 2 - 2, boatHeight / 2 - 2, 0, 0, Math.PI * 2);
+    ctx.moveTo(x + boatWidth / 2 - 4, y - boatHeight / 2 + 3);
+    ctx.lineTo(x - boatWidth / 2 + 6, y - boatHeight / 2 + 3);
+    ctx.quadraticCurveTo(
+      x - boatWidth / 2 + 2, y,
+      x - boatWidth / 2 + 6, y + boatHeight / 2 - 3
+    );
+    ctx.lineTo(x + boatWidth / 2 - 4, y + boatHeight / 2 - 3);
+    ctx.closePath();
     ctx.fill();
 
     // Draw sail mast (vertical line)
     ctx.strokeStyle = '#8B4513';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x - 2, y - boatHeight / 2);
-    ctx.lineTo(x - 2, y - boatHeight / 2 - 12);
+    ctx.moveTo(x + 2, y - boatHeight / 2);
+    ctx.lineTo(x + 2, y - boatHeight / 2 - 12);
     ctx.stroke();
 
     // Draw sail (triangular)
@@ -519,44 +533,49 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.strokeStyle = '#ddd';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x - 2, y - boatHeight / 2 - 12); // top of mast
-    ctx.lineTo(x - 2, y - boatHeight / 2); // bottom of mast
-    ctx.lineTo(x + 8, y - boatHeight / 2 - 6); // sail point
+    ctx.moveTo(x + 2, y - boatHeight / 2 - 12); // top of mast
+    ctx.lineTo(x + 2, y - boatHeight / 2); // bottom of mast
+    ctx.lineTo(x - 8, y - boatHeight / 2 - 6); // sail point
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // Draw boat outline
+    // Draw boat outline with proper shape
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(x - boatWidth / 2, y);
-    ctx.bezierCurveTo(
-      x - boatWidth / 2, y - boatHeight / 2,
-      x + boatWidth / 2, y - boatHeight / 2,
-      x + boatWidth / 2, y
+    
+    // Start at back-top corner
+    ctx.moveTo(x + boatWidth / 2, y - boatHeight / 2);
+    
+    // Top edge to nose
+    ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2);
+    ctx.quadraticCurveTo(
+      x - boatWidth / 2 - 2, y,
+      x - boatWidth / 2 + 4, y + boatHeight / 2
     );
-    ctx.bezierCurveTo(
-      x + boatWidth / 2, y + boatHeight / 2,
-      x - boatWidth / 2, y + boatHeight / 2,
-      x - boatWidth / 2, y
-    );
+    
+    // Bottom edge back to stern
+    ctx.lineTo(x + boatWidth / 2, y + boatHeight / 2);
+    
+    // Flat back
+    ctx.closePath();
     ctx.stroke();
 
     // Draw water splash at front (bow wave)
     ctx.strokeStyle = '#4af';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x + boatWidth / 2 - 1, y - 3);
-    ctx.lineTo(x + boatWidth / 2 + 2, y - 4);
-    ctx.moveTo(x + boatWidth / 2 - 1, y + 3);
-    ctx.lineTo(x + boatWidth / 2 + 2, y + 4);
+    ctx.moveTo(x - boatWidth / 2 + 1, y - 3);
+    ctx.lineTo(x - boatWidth / 2 - 2, y - 4);
+    ctx.moveTo(x - boatWidth / 2 + 1, y + 3);
+    ctx.lineTo(x - boatWidth / 2 - 2, y + 4);
     ctx.stroke();
   };
 
   return (
     <div className="racing-game">
-      <canvas ref={canvasRef} width={800} height={400} className="game-canvas" />
+      <canvas ref={canvasRef} width={800} height={600} className="game-canvas" />
 
       {currentWinner && !isRacing && (
         <div className="winner-display">
@@ -584,6 +603,9 @@ function generateColor(index: number, _total: number): string {
     '#FF6B6B', '#4ECDC4', '#FFE66D', '#95E1D3',
     '#F38181', '#AA96DA', '#FCBAD3', '#A8D8EA',
     '#FF8B94', '#D4A5A5', '#9BC995', '#C7CEEA',
+    '#FFB4A2', '#E5989B', '#B5838D', '#6D6875',
+    '#FF1744', '#00B0FF', '#76FF03', '#FFD600',
+    '#F50057', '#651FFF',
   ];
   return colors[index % colors.length];
 }

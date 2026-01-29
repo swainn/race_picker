@@ -13,7 +13,7 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
   const [input, setInput] = useState('');
 
   const addEntry = () => {
-    if (input.trim() && entries.length < 12) {
+    if (input.trim() && entries.length < 20) {
       const newEntry: Entry = {
         id: Date.now(),
         name: input.trim(),
@@ -43,16 +43,16 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
           onKeyPress={handleKeyPress}
           placeholder="Enter participant name..."
           maxLength={20}
-          disabled={entries.length >= 12}
+          disabled={entries.length >= 20}
           className="entry-input"
         />
-        <button onClick={addEntry} disabled={entries.length >= 12} className="add-button">
+        <button onClick={addEntry} disabled={entries.length >= 20} className="add-button">
           + Add
         </button>
       </div>
 
-      {entries.length >= 12 && (
-        <p className="limit-message">Maximum 12 participants reached</p>
+      {entries.length >= 20 && (
+        <p className="limit-message">Maximum 20 participants reached</p>
       )}
 
       <div className="entries-list">

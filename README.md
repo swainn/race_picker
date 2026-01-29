@@ -51,7 +51,7 @@ Aquaveo Race Picker is a web application that gamifies random selection. Instead
 
 ### Running Races
 
-1. **Add Participants**: Enter names in the sidebar and click "Add" (up to 12 participants)
+1. **Add Participants**: Enter names in the sidebar and click "Add" (up to 20 participants)
 2. **Start a Race**: Click "🏁 Start Race" when ready
 3. **Watch the Race**: The canvas shows all participants racing to the finish line
 4. **View Winner**: When someone crosses the finish line, their name appears as the winner
