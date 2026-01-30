@@ -47,10 +47,22 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
   const [racers, setRacers] = useState<Racer[]>([]);
   const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
   const [particles, setParticles] = useState<Particle[]>([]);
+  const [tickerTime, setTickerTime] = useState(0);
   const animationRef = useRef<number | undefined>(undefined);
 
   const FINISH_LINE = 700;
+  const LABEL_PADDING = 24;
   const RACE_DURATION = 4500; // milliseconds
+
+  useEffect(() => {
+    let frameId: number;
+    const animateTicker = (time: number) => {
+      setTickerTime(time);
+      frameId = requestAnimationFrame(animateTicker);
+    };
+    frameId = requestAnimationFrame(animateTicker);
+    return () => cancelAnimationFrame(frameId);
+  }, []);
 
   const shuffleArray = <T,>(array: T[]) => {
     const result = [...array];
@@ -427,19 +439,46 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       return n + (s[(v - 20) % 10] || s[v] || s[0]);
     };
 
-    allEntries.forEach((entry, laneIdx) => {
+    const labelAreaX = FINISH_LINE + LABEL_PADDING;
+    const labelAreaWidth = canvas.width - labelAreaX - LABEL_PADDING;
+    const labelAreaY = trackTop;
+    const labelAreaHeight = finishLineHeight;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(labelAreaX, labelAreaY, labelAreaWidth, labelAreaHeight);
+    ctx.clip();
+
+    ctx.font = '12px monospace';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+
+    const labelData = allEntries.map((entry, laneIdx) => {
       const trackHeight = (canvas.height - 60) / numLanes;
       const y = trackTop + laneIdx * trackHeight + trackHeight / 2;
       const order = winOrder.get(entry.id);
       const isEliminated = eliminatedIds.includes(entry.id);
       const label = order ? `${entry.name} (${getOrdinal(order)})` : entry.name;
-
-      ctx.fillStyle = isEliminated ? '#bfbfbf' : '#fff';
-      ctx.font = '12px monospace';
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'left';
-      ctx.fillText(label, 18, y);
+      const textWidth = ctx.measureText(label).width;
+      return { label, y, isEliminated, textWidth };
     });
+
+    const maxLabelWidth = Math.max(...labelData.map((item) => item.textWidth), 0);
+    const speed = 30; // pixels per second
+    const gap = Math.max(40, labelAreaWidth * 0.2);
+    const cycle = maxLabelWidth + gap;
+    const offset = ((tickerTime / 1000) * speed) % cycle;
+
+    labelData.forEach(({ label, y, isEliminated }) => {
+      ctx.fillStyle = isEliminated ? '#bfbfbf' : '#fff';
+      const labelX = FINISH_LINE + LABEL_PADDING;
+      const animatedX = labelX - offset;
+
+      ctx.fillText(label, animatedX, y);
+      ctx.fillText(label, animatedX + cycle, y);
+    });
+
+    ctx.restore();
 
     // Draw smoke particles
     particles.forEach((particle) => {
@@ -467,7 +506,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     });
 
     return () => {};
-  }, [racers, particles, allEntries, eliminatedIds, winOrder]);
+  }, [racers, particles, allEntries, eliminatedIds, winOrder, tickerTime]);
 
   const drawCar = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
     const carWidth = 20;  // horizontal width (length)
@@ -878,7 +917,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
 
   return (
     <div className="racing-game">
-      <canvas ref={canvasRef} width={800} height={600} className="game-canvas" />
+      <canvas ref={canvasRef} width={840} height={600} className="game-canvas" />
 
       {currentWinner && !isRacing && (
         <div className="winner-display">
