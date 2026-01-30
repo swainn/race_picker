@@ -34,7 +34,7 @@ interface Props {
   onShowFinalStandings?: () => void;
   isRacing: boolean;
   currentWinner: string | null;
-  mode: 'car' | 'boat' | 'plane' | 'balloon' | 'rocket';
+  mode: 'car' | 'boat' | 'plane' | 'balloon' | 'rocket' | 'duck';
 }
 
 export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds, winOrder, onWinner, onRaceComplete, onShowFinalStandings, isRacing, currentWinner, mode }) => {
@@ -380,6 +380,8 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         ctx.translate(-racer.x, -laneY);
         drawRocket(ctx, racer.x, laneY, racer.color);
         ctx.restore();
+      } else if (mode === 'duck') {
+        drawDuck(ctx, racer.x, laneY, racer.color);
       } else {
         drawCar(ctx, racer.x, laneY, racer.color);
       }
@@ -787,6 +789,59 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.beginPath();
     ctx.roundRect(x - rocketWidth / 2, y - rocketHeight / 2, rocketWidth, rocketHeight, 4);
     ctx.stroke();
+  };
+
+  const drawDuck = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const duckWidth = 20;
+    const duckHeight = 12;
+
+    ctx.save();
+    ctx.translate(x, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-x, 0);
+
+    // Body
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y, duckWidth / 2, duckHeight / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wing highlight
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x + 3, y + 1, 5, 0, Math.PI * 1.2);
+    ctx.stroke();
+
+    // Outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(x, y, duckWidth / 2, duckHeight / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Head
+    ctx.fillStyle = '#FFD54F';
+    ctx.beginPath();
+    ctx.arc(x - 8, y - 4, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Beak
+    ctx.fillStyle = '#F57C00';
+    ctx.beginPath();
+    ctx.moveTo(x - 13, y - 4);
+    ctx.lineTo(x - 18, y - 2);
+    ctx.lineTo(x - 13, y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Eye
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x - 8, y - 5, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   };
 
   return (

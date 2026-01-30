@@ -36,7 +36,7 @@ function App() {
   const [groups, setGroups] = useState<Group[]>(() => loadFromStorage(GROUPS_STORAGE_KEY, []));
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
-  const [racingMode, setRacingMode] = useState<'car' | 'boat' | 'plane' | 'balloon' | 'rocket'>('car');
+  const [racingMode, setRacingMode] = useState<'car' | 'boat' | 'plane' | 'balloon' | 'rocket' | 'duck'>('car');
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
@@ -178,7 +178,7 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>{racingMode === 'car' ? '🏁' : racingMode === 'boat' ? '⛵' : racingMode === 'plane' ? '✈️' : racingMode === 'balloon' ? '🎈' : '🚀'} Aquaveo Race Picker {racingMode === 'car' ? '🏁' : racingMode === 'boat' ? '⛵' : racingMode === 'plane' ? '✈️' : racingMode === 'balloon' ? '🎈' : '🚀'}</h1>
+        <h1>{racingMode === 'car' ? '🏁' : racingMode === 'boat' ? '⛵' : racingMode === 'plane' ? '✈️' : racingMode === 'balloon' ? '🎈' : racingMode === 'rocket' ? '🚀' : '🦆'} Aquaveo Race Picker {racingMode === 'car' ? '🏁' : racingMode === 'boat' ? '⛵' : racingMode === 'plane' ? '✈️' : racingMode === 'balloon' ? '🎈' : racingMode === 'rocket' ? '🚀' : '🦆'}</h1>
         <p>The Random Selection Tool for Winners!</p>
         <div className="mode-toggle" role="radiogroup" aria-label="Racing mode">
           <label className="mode-option">
@@ -230,6 +230,16 @@ function App() {
               onChange={() => setRacingMode('rocket')}
             />
             <span>🚀 Rockets</span>
+          </label>
+          <label className="mode-option">
+            <input
+              type="radio"
+              name="racingMode"
+              value="duck"
+              checked={racingMode === 'duck'}
+              onChange={() => setRacingMode('duck')}
+            />
+            <span>🦆 Ducks</span>
           </label>
         </div>
       </header>

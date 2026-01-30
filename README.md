@@ -19,12 +19,13 @@ Aquaveo Race Picker is a web application that gamifies random selection. Instead
 
 ## Features
 
-- **Racing Modes**: Toggle between car racing, boat racing, plane racing, hot air balloon, and rocket modes
-   - **Car Mode**: Classic Mario Kart-style racing with detailed car models
-   - **Boat Mode**: Nautical racing with sailboats complete with sails and bow waves
-   - **Plane Mode**: Aerial racing with airplanes featuring wings and contrails
-   - **Balloon Mode**: Hot air balloons with baskets and rope rigging
-   - **Rocket Mode**: Sleek rockets with fins, nose cone, and flame exhaust
+- **Racing Modes**: Toggle between car racing, boat racing, plane racing, hot air balloon, rocket, and duck modes
+  - **Car Mode**: Classic Mario Kart-style racing with detailed car models
+  - **Boat Mode**: Nautical racing with sailboats complete with sails and bow waves
+  - **Plane Mode**: Aerial racing with airplanes featuring wings and contrails
+  - **Balloon Mode**: Hot air balloons with baskets and rope rigging
+  - **Rocket Mode**: Sleek rockets with fins, nose cone, and flame exhaust
+  - **Duck Mode**: Cute ducks with beaks and wings
    - Easy one-click toggle in the header to cycle through all modes
 - **Interactive Racing Track**: Canvas-based 2D overhead view with racers moving to the finish line
 - **Dynamic Speed Mechanics**: Each racer experiences 2-4 random speed changes throughout the race (200-400 px/s) for unpredictable outcomes
@@ -48,8 +49,8 @@ Aquaveo Race Picker is a web application that gamifies random selection. Instead
 
 ### Switching Racing Modes
 
-- Click the **"Switch to Boats"**, **"Switch to Planes"**, **"Switch to Balloons"**, **"Switch to Rockets"**, or **"Switch to Cars"** button in the header
-- The racing mode cycles between cars, boats, planes, balloons, and rockets
+- Click the **"Switch to Boats"**, **"Switch to Planes"**, **"Switch to Balloons"**, **"Switch to Rockets"**, **"Switch to Ducks"**, or **"Switch to Cars"** button in the header
+- The racing mode cycles between cars, boats, planes, balloons, rockets, and ducks
 - The header emojis and vehicle visuals update instantly
 
 ### Running Races
