@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../types';
 import './RacingGame.css';
 
+const VEHICLE_MODES = ['car', 'boat', 'plane', 'balloon', 'rocket', 'duck'] as const;
+type VehicleMode = (typeof VEHICLE_MODES)[number];
+type RacingMode = VehicleMode | 'mixed';
+
 interface Racer {
   entry: Entry;
   x: number;
@@ -12,6 +16,7 @@ interface Racer {
   previousSpeed?: number;
   spinAngle?: number;
   laneIndex: number;
+  vehicleMode: VehicleMode;
 }
 
 interface Particle {
@@ -34,7 +39,7 @@ interface Props {
   onShowFinalStandings?: () => void;
   isRacing: boolean;
   currentWinner: string | null;
-  mode: 'car' | 'boat' | 'plane' | 'balloon' | 'rocket' | 'duck';
+  mode: RacingMode;
 }
 
 export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds, winOrder, onWinner, onRaceComplete, onShowFinalStandings, isRacing, currentWinner, mode }) => {
@@ -47,6 +52,27 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
   const FINISH_LINE = 700;
   const RACE_DURATION = 4500; // milliseconds
 
+  const shuffleArray = <T,>(array: T[]) => {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  };
+
+  const assignMixedModes = (count: number): VehicleMode[] => {
+    const assignments: VehicleMode[] = [];
+    let pool = shuffleArray(VEHICLE_MODES);
+    for (let i = 0; i < count; i++) {
+      if (pool.length === 0) {
+        pool = shuffleArray(VEHICLE_MODES);
+      }
+      assignments.push(pool.pop() as VehicleMode);
+    }
+    return assignments;
+  };
+
   // Initialize racers only when entries change AND we're not in the middle of a race or showing results
   useEffect(() => {
     // Don't update racers if we're showing finished state or racing
@@ -57,6 +83,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     // Always show at least 2 lanes
     const displayEntries = entries.length > 0 ? entries : [];
     
+    const mixedModes = mode === 'mixed' ? assignMixedModes(displayEntries.length) : [];
     const newRacers = displayEntries.map((entry, index) => {
       const laneIndex = Math.max(allEntries.findIndex((e) => e.id === entry.id), 0);
       return {
@@ -68,17 +95,19 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         previousSpeed: 0,
         spinAngle: 0,
         laneIndex,
+        vehicleMode: mode === 'mixed' ? mixedModes[index] : mode,
       };
     });
 
     setRacers(newRacers);
-  }, [entries, raceState, allEntries]);
+  }, [entries, raceState, allEntries, mode]);
 
   // Start race when isRacing becomes true
   useEffect(() => {
     if (isRacing && racers.length > 0) {
       // Reset positions when starting a new race
       const displayEntries = entries.length > 0 ? entries : [];
+      const mixedModes = mode === 'mixed' ? assignMixedModes(displayEntries.length) : [];
       const newRacers = displayEntries.map((entry, index) => {
         const laneIndex = Math.max(allEntries.findIndex((e) => e.id === entry.id), 0);
         return {
@@ -90,6 +119,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           previousSpeed: 0,
           spinAngle: 0,
           laneIndex,
+          vehicleMode: mode === 'mixed' ? mixedModes[index] : mode,
         };
       });
       setRacers(newRacers);
@@ -97,7 +127,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     } else if (!isRacing && raceState === 'racing') {
       setRaceState('ready');
     }
-  }, [isRacing, entries, allEntries]);
+  }, [isRacing, entries, allEntries, mode]);
 
   // Start race
   useEffect(() => {
@@ -352,9 +382,11 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       ctx.save();
       ctx.translate(racer.x, laneY);
       
+      const renderMode = mode === 'mixed' ? racer.vehicleMode : mode;
+
       // Add rocking motion for boats based on horizontal position
       let totalRotation = racer.spinAngle || 0;
-      if (mode === 'boat') {
+      if (renderMode === 'boat') {
         const rockAmount = Math.sin((racer.x + performance.now() / 500) * 0.02) * 0.15; // gentle rocking
         totalRotation += rockAmount;
       }
@@ -362,25 +394,25 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       ctx.rotate(totalRotation);
       
       // Flip boats horizontally so they face forward
-      if (mode === 'boat') {
+      if (renderMode === 'boat') {
         ctx.scale(-1, 1);
       }
       
       ctx.translate(-racer.x, -laneY);
-      if (mode === 'boat') {
+      if (renderMode === 'boat') {
         drawBoat(ctx, racer.x, laneY, racer.color);
-      } else if (mode === 'plane') {
+      } else if (renderMode === 'plane') {
         drawPlane(ctx, racer.x, laneY, racer.color);
-      } else if (mode === 'balloon') {
+      } else if (renderMode === 'balloon') {
         drawBalloon(ctx, racer.x, laneY, racer.color);
-      } else if (mode === 'rocket') {
+      } else if (renderMode === 'rocket') {
         ctx.save();
         ctx.translate(racer.x, laneY);
         ctx.rotate(Math.PI / 2);
         ctx.translate(-racer.x, -laneY);
         drawRocket(ctx, racer.x, laneY, racer.color);
         ctx.restore();
-      } else if (mode === 'duck') {
+      } else if (renderMode === 'duck') {
         drawDuck(ctx, racer.x, laneY, racer.color);
       } else {
         drawCar(ctx, racer.x, laneY, racer.color);
