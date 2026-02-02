@@ -6,7 +6,7 @@ import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
 const GROUPS_STORAGE_KEY = 'gamified_picker_groups';
-type VehicleMode = 'car' | 'boat' | 'plane' | 'balloon' | 'rocket' | 'duck';
+type VehicleMode = 'car' | 'boat' | 'plane' | 'balloon' | 'rocket' | 'duck' | 'snail' | 'turtle' | 'cat' | 'dog';
 type RacingMode = VehicleMode | 'mixed';
 
 interface Group {
@@ -191,6 +191,14 @@ function App() {
         return '🚀';
       case 'duck':
         return '🦆';
+      case 'snail':
+        return '🐌';
+      case 'turtle':
+        return '🐢';
+      case 'cat':
+        return '🐱';
+      case 'dog':
+        return '🐶';
       case 'mixed':
         return '🎲';
       default:
@@ -353,6 +361,46 @@ function App() {
                 onChange={() => setRacingMode('duck')}
               />
               <span>🦆 Ducks</span>
+            </label>
+            <label className="mode-option">
+              <input
+                type="radio"
+                name="racingMode"
+                value="snail"
+                checked={racingMode === 'snail'}
+                onChange={() => setRacingMode('snail')}
+              />
+              <span>🐌 Snails</span>
+            </label>
+            <label className="mode-option">
+              <input
+                type="radio"
+                name="racingMode"
+                value="turtle"
+                checked={racingMode === 'turtle'}
+                onChange={() => setRacingMode('turtle')}
+              />
+              <span>🐢 Turtles</span>
+            </label>
+            <label className="mode-option">
+              <input
+                type="radio"
+                name="racingMode"
+                value="cat"
+                checked={racingMode === 'cat'}
+                onChange={() => setRacingMode('cat')}
+              />
+              <span>🐱 Cats</span>
+            </label>
+            <label className="mode-option">
+              <input
+                type="radio"
+                name="racingMode"
+                value="dog"
+                checked={racingMode === 'dog'}
+                onChange={() => setRacingMode('dog')}
+              />
+              <span>🐶 Dogs</span>
             </label>
             <label className="mode-option">
               <input

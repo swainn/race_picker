@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../types';
 import './RacingGame.css';
 
-const VEHICLE_MODES = ['car', 'boat', 'plane', 'balloon', 'rocket', 'duck'] as const;
+const VEHICLE_MODES = ['car', 'boat', 'plane', 'balloon', 'rocket', 'duck', 'snail', 'turtle', 'cat', 'dog'] as const;
 type VehicleMode = (typeof VEHICLE_MODES)[number];
 type RacingMode = VehicleMode | 'mixed';
 
@@ -426,6 +426,14 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         ctx.restore();
       } else if (renderMode === 'duck') {
         drawDuck(ctx, racer.x, laneY, racer.color);
+      } else if (renderMode === 'snail') {
+        drawSnail(ctx, racer.x, laneY, racer.color);
+      } else if (renderMode === 'turtle') {
+        drawTurtle(ctx, racer.x, laneY, racer.color);
+      } else if (renderMode === 'cat') {
+        drawCat(ctx, racer.x, laneY, racer.color);
+      } else if (renderMode === 'dog') {
+        drawDog(ctx, racer.x, laneY, racer.color);
       } else {
         drawCar(ctx, racer.x, laneY, racer.color);
       }
@@ -913,6 +921,214 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.fill();
 
     ctx.restore();
+  };
+
+  const drawSnail = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const bodyWidth = 24;
+    const bodyHeight = 8;
+
+    // Foot/body
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(x - bodyWidth / 2, y + 1, bodyWidth, bodyHeight, 4);
+    ctx.fill();
+
+    // Head (front)
+    ctx.beginPath();
+    ctx.ellipse(x + bodyWidth / 2 - 2, y + 1, 4, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(x - bodyWidth / 2, y + 1, bodyWidth, bodyHeight, 4);
+    ctx.stroke();
+
+    // Shell (bigger, distinct)
+    ctx.fillStyle = '#F4E7C5';
+    ctx.beginPath();
+    ctx.arc(x - 6, y - 2, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Shell outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(x - 6, y - 2, 7, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Shell spiral
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x - 6, y - 2, 4.5, 0.4, Math.PI * 1.9);
+    ctx.stroke();
+
+    // Antennae (stalks)
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + bodyWidth / 2 - 3, y - 1);
+    ctx.lineTo(x + bodyWidth / 2 + 3, y - 7);
+    ctx.moveTo(x + bodyWidth / 2 - 5, y - 1);
+    ctx.lineTo(x + bodyWidth / 2 + 1, y - 7);
+    ctx.stroke();
+
+    // Eyes
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x + bodyWidth / 2 + 3, y - 7, 1, 0, Math.PI * 2);
+    ctx.arc(x + bodyWidth / 2 + 1, y - 7, 1, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  const drawTurtle = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const shellWidth = 20;
+    const shellHeight = 12;
+
+    // Shell
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y, shellWidth / 2, shellHeight / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Shell outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(x, y, shellWidth / 2, shellHeight / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Head
+    ctx.fillStyle = '#8BC34A';
+    ctx.beginPath();
+    ctx.arc(x + 11, y - 1, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Legs
+    ctx.fillStyle = '#7CB342';
+    ctx.beginPath();
+    ctx.arc(x - 6, y - 6, 2, 0, Math.PI * 2);
+    ctx.arc(x - 6, y + 6, 2, 0, Math.PI * 2);
+    ctx.arc(x + 2, y - 6, 2, 0, Math.PI * 2);
+    ctx.arc(x + 2, y + 6, 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x + 12, y - 2, 1, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  const drawCat = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const bodyWidth = 18;
+    const bodyHeight = 10;
+
+    // Body
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(x + 10, y - 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ears
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x + 7, y - 8);
+    ctx.lineTo(x + 9, y - 12);
+    ctx.lineTo(x + 11, y - 8);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(x + 11, y - 8);
+    ctx.lineTo(x + 13, y - 12);
+    ctx.lineTo(x + 15, y - 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Tail
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 10, y + 2);
+    ctx.quadraticCurveTo(x - 16, y - 2, x - 12, y - 8);
+    ctx.stroke();
+
+    // Eyes
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x + 8.5, y - 3, 1, 0, Math.PI * 2);
+    ctx.arc(x + 12, y - 3, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  };
+
+  const drawDog = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    const bodyWidth = 20;
+    const bodyHeight = 10;
+
+    // Body
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(x + 11, y - 1, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ear
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.beginPath();
+    ctx.ellipse(x + 9, y - 6, 3, 4, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Snout
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x + 16, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Nose
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x + 18, y, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 10, y + 2);
+    ctx.quadraticCurveTo(x - 16, y + 4, x - 14, y + 10);
+    ctx.stroke();
+
+    // Eyes
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(x + 10, y - 2, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outline
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
   };
 
   return (
