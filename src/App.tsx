@@ -310,7 +310,7 @@ function App() {
                 checked={racingMode === 'car'}
                 onChange={() => setRacingMode('car')}
               />
-              <span>🚗 Cars</span>
+              <span>🧗 Climbers</span>
             </label>
             <label className="mode-option">
               <input
@@ -320,7 +320,7 @@ function App() {
                 checked={racingMode === 'boat'}
                 onChange={() => setRacingMode('boat')}
               />
-              <span>⛵ Boats</span>
+              <span>🐒 Monkeys</span>
             </label>
             <label className="mode-option">
               <input
@@ -330,7 +330,7 @@ function App() {
                 checked={racingMode === 'plane'}
                 onChange={() => setRacingMode('plane')}
               />
-              <span>✈️ Planes</span>
+              <span>🦎 Lizards</span>
             </label>
             <label className="mode-option">
               <input

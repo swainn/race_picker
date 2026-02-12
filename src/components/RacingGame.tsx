@@ -8,7 +8,7 @@ type RacingMode = VehicleMode | 'mixed';
 
 interface Racer {
   entry: Entry;
-  x: number;
+  y: number;
   speed: number;
   color: string;
   finished: boolean;
@@ -17,6 +17,15 @@ interface Racer {
   spinAngle?: number;
   laneIndex: number;
   vehicleMode: VehicleMode;
+  lateralPos?: number;
+  lateralTarget?: number;
+  lateralStartPos?: number;
+  lateralStartTime?: number;
+  lateralDuration?: number;
+  knockedOut?: boolean;
+  isFalling?: boolean;
+  fallY?: number;
+  fallVelocity?: number;
 }
 
 interface Particle {
@@ -26,7 +35,7 @@ interface Particle {
   vy: number;
   life: number;
   maxLife: number;
-  type: 'smoke' | 'fire';
+  type: 'fire';
 }
 
 interface Props {
@@ -50,8 +59,21 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
   const [tickerTime, setTickerTime] = useState(0);
   const animationRef = useRef<number | undefined>(undefined);
 
-  const FINISH_LINE = 700;
-  const LABEL_PADDING = 24;
+  const CANVAS_WIDTH = 840;
+  const CANVAS_HEIGHT = 600;
+  const TRACK_PADDING = 30;
+  const getTrackWidth = (laneCount: number) => {
+    const minWidth = 200;
+    const maxWidth = CANVAS_WIDTH * 0.4;
+    const perLane = 22;
+    return Math.min(maxWidth, Math.max(minWidth, laneCount * perLane));
+  };
+  const LABEL_AREA_HEIGHT = 0;
+  const TRACK_TOP = TRACK_PADDING;
+  const TRACK_BOTTOM = CANVAS_HEIGHT - TRACK_PADDING - LABEL_AREA_HEIGHT;
+  const TRACK_HEIGHT = TRACK_BOTTOM - TRACK_TOP;
+  const FINISH_LINE = TRACK_TOP + 15;
+  const START_LINE = TRACK_BOTTOM - 15;
   const RACE_DURATION = 4500; // milliseconds
 
   useEffect(() => {
@@ -100,7 +122,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       const laneIndex = Math.max(allEntries.findIndex((e) => e.id === entry.id), 0);
       return {
         entry,
-        x: 50,
+        y: START_LINE,
         speed: 0,
         color: generateColor(index, Math.max(displayEntries.length, 2)),
         finished: false,
@@ -108,6 +130,15 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         spinAngle: 0,
         laneIndex,
         vehicleMode: mode === 'mixed' ? mixedModes[index] : mode,
+        lateralPos: laneIndex,
+        lateralTarget: laneIndex,
+        lateralStartPos: laneIndex,
+        lateralStartTime: 0,
+        lateralDuration: 0,
+        knockedOut: false,
+        isFalling: false,
+        fallY: START_LINE,
+        fallVelocity: 0,
       };
     });
 
@@ -124,7 +155,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         const laneIndex = Math.max(allEntries.findIndex((e) => e.id === entry.id), 0);
         return {
           entry,
-          x: 50,
+          y: START_LINE,
           speed: 0,
           color: generateColor(index, Math.max(displayEntries.length, 2)),
           finished: false,
@@ -132,6 +163,15 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           spinAngle: 0,
           laneIndex,
           vehicleMode: mode === 'mixed' ? mixedModes[index] : mode,
+          lateralPos: laneIndex,
+          lateralTarget: laneIndex,
+          lateralStartPos: laneIndex,
+          lateralStartTime: 0,
+          lateralDuration: 0,
+          knockedOut: false,
+          isFalling: false,
+          fallY: START_LINE,
+          fallVelocity: 0,
         };
       });
       setRacers(newRacers);
@@ -146,8 +186,11 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     if (raceState !== 'racing' || racers.length === 0) return;
 
     const startTime = Date.now();
-    const TRACK_LENGTH = FINISH_LINE - 50;
+    const TRACK_LENGTH = START_LINE - FINISH_LINE;
     const totalLanes = Math.max(allEntries.length, 2);
+    const trackWidth = getTrackWidth(totalLanes);
+    const laneWidth = trackWidth / totalLanes;
+    const trackLeft = (CANVAS_WIDTH - trackWidth) / 2;
     
     // Generate speed changes for each racer
     const racerSpeedProfiles = racers.map(() => {
@@ -164,56 +207,40 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
 
     let finished = false;
 
-    const createSmokeParticles = (x: number, y: number) => {
-      const newParticles: Particle[] = [];
-      const particleCount = 8;
-      
-      for (let i = 0; i < particleCount; i++) {
-        const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.5;
-        const speed = 30 + Math.random() * 40;
-        
-        newParticles.push({
-          x: x + (Math.random() - 0.5) * 10,
-          y: y + (Math.random() - 0.5) * 6,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          life: 0.6,
-          maxLife: 0.6,
-          type: 'smoke',
-        });
-      }
-      
-      setParticles((prev) => [...prev, ...newParticles]);
-    };
 
-    const createFireParticles = (x: number, y: number) => {
-      const newParticles: Particle[] = [];
-      const particleCount = 6;
-      
-      for (let i = 0; i < particleCount; i++) {
-        // Fire shoots backward (in negative x direction) with upward bias
-        const angle = Math.PI + (Math.random() - 0.5) * 0.8;
-        const speed = 60 + Math.random() * 80;
-        
-        newParticles.push({
-          x: x + (Math.random() - 0.5) * 8,
-          y: y + (Math.random() - 0.5) * 4,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed - 40, // upward bias
-          life: 0.4,
-          maxLife: 0.4,
-          type: 'fire',
-        });
-      }
-      
-      setParticles((prev) => [...prev, ...newParticles]);
-    };
+
+    let lastFrameTime = startTime;
 
     const animate = () => {
-      const elapsed = Date.now() - startTime;
+      const now = Date.now();
+      const elapsed = now - startTime;
+      const deltaSeconds = Math.max(0.001, (now - lastFrameTime) / 1000);
+      lastFrameTime = now;
 
       setRacers((prevRacers) => {
         const updated = prevRacers.map((racer, idx) => {
+          if (racer.knockedOut) {
+            const gravity = 900;
+            const currentFallY = racer.isFalling ? (racer.fallY ?? racer.y) : START_LINE;
+            const currentVelocity = racer.isFalling ? (racer.fallVelocity ?? 0) : 0;
+            const nextVelocity = currentVelocity + gravity * deltaSeconds;
+            const nextY = Math.min(START_LINE, currentFallY + nextVelocity * deltaSeconds);
+            const landed = nextY >= START_LINE;
+
+            return {
+              ...racer,
+              y: nextY,
+              fallY: nextY,
+              fallVelocity: landed ? 0 : nextVelocity,
+              isFalling: landed ? false : true,
+              totalDistance: 0,
+              speed: 0,
+              previousSpeed: 0,
+              spinAngle: 0,
+              finished: false,
+            };
+          }
+
           const profile = racerSpeedProfiles[idx];
           
           // Calculate distance by integrating through speed segments
@@ -241,46 +268,96 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
             }
           }
           
-          const x = Math.min(50 + totalDistance, FINISH_LINE);
-          const isFinished = x >= FINISH_LINE;
+          const y = Math.max(START_LINE - totalDistance, FINISH_LINE);
+          const isFinished = y <= FINISH_LINE;
           
           // Get current speed based on distance traveled
           const currentSegment = Math.floor(totalDistance / profile.segmentDistance);
           const currentSpeed = profile.speeds[Math.min(currentSegment, profile.speeds.length - 1)];
           const prevSpeed = racer.previousSpeed || currentSpeed;
           
-          // Check if car is slowing down significantly
-          if (prevSpeed - currentSpeed > 20) {
-            const trackHeight = (600 - 60) / totalLanes;
-            const trackTop = 30;
-            const laneIndex = racer.laneIndex ?? idx;
-            const y = trackTop + laneIndex * trackHeight + trackHeight / 2;
-            createSmokeParticles(racer.x, y);
+          // Blue flame effects removed
+
+          let lateralPos = racer.lateralPos ?? racer.laneIndex ?? idx;
+          let lateralTarget = racer.lateralTarget ?? lateralPos;
+          let lateralStartPos = racer.lateralStartPos ?? lateralPos;
+          let lateralStartTime = racer.lateralStartTime ?? 0;
+          let lateralDuration = racer.lateralDuration ?? 0;
+          const lateralElapsed = elapsed - lateralStartTime;
+          const lateralFinished = lateralDuration <= 0 || lateralElapsed >= lateralDuration;
+
+          if (lateralFinished && Math.random() < 0.06) {
+            const currentLane = Math.round(lateralPos);
+            const stepOptions = [currentLane - 1, currentLane, currentLane + 1]
+              .filter((lane) => lane >= 0 && lane < totalLanes);
+            let nextTarget = stepOptions[Math.floor(Math.random() * stepOptions.length)];
+            if (nextTarget === lateralTarget && stepOptions.length > 1) {
+              nextTarget = stepOptions[(stepOptions.indexOf(nextTarget) + 1) % stepOptions.length];
+            }
+            lateralStartPos = lateralPos;
+            lateralTarget = nextTarget;
+            lateralStartTime = elapsed;
+            lateralDuration = 350 + Math.random() * 650;
           }
 
-          // Check if car is speeding up significantly
-          if (currentSpeed - prevSpeed > 20) {
-            const trackHeight = (600 - 60) / totalLanes;
-            const trackTop = 30;
-            const laneIndex = racer.laneIndex ?? idx;
-            const y = trackTop + laneIndex * trackHeight + trackHeight / 2;
-            createFireParticles(racer.x, y);
+          if (lateralDuration > 0) {
+            const t = Math.min(1, Math.max(0, (elapsed - lateralStartTime) / lateralDuration));
+            const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            lateralPos = lateralStartPos + (lateralTarget - lateralStartPos) * eased;
           }
+
+          lateralPos = Math.max(0, Math.min(totalLanes - 1, lateralPos));
 
           return {
             ...racer,
-            x,
+            y,
             totalDistance,
             speed: currentSpeed,
             previousSpeed: currentSpeed,
             spinAngle: prevSpeed - currentSpeed > 20 ? (racer.spinAngle || 0) + (Math.random() - 0.5) * 0.4 : (racer.spinAngle || 0) * 0.95,
             finished: isFinished,
+            lateralPos,
+            lateralTarget,
+            lateralStartPos,
+            lateralStartTime,
+            lateralDuration,
           };
         });
 
+        const withCollisions = updated.map((r) => ({ ...r }));
+        const collisionY = 14;
+        const collisionX = laneWidth * 0.35;
+
+        for (let i = 0; i < withCollisions.length; i++) {
+          const racerA = withCollisions[i];
+          if (racerA.finished || racerA.knockedOut) continue;
+          const lanePosA = racerA.lateralPos ?? racerA.laneIndex;
+          const xA = trackLeft + lanePosA * laneWidth + laneWidth / 2;
+
+          for (let j = i + 1; j < withCollisions.length; j++) {
+            const racerB = withCollisions[j];
+            if (racerB.finished || racerB.knockedOut) continue;
+            const lanePosB = racerB.lateralPos ?? racerB.laneIndex;
+            const xB = trackLeft + lanePosB * laneWidth + laneWidth / 2;
+
+            if (Math.abs(racerA.y - racerB.y) < collisionY && Math.abs(xA - xB) < collisionX) {
+              const trailing = racerA.y > racerB.y ? racerA : racerB;
+              trailing.knockedOut = true;
+              trailing.isFalling = true;
+              trailing.fallY = trailing.y;
+              trailing.fallVelocity = 0;
+              trailing.totalDistance = 0;
+              trailing.speed = 0;
+              trailing.previousSpeed = 0;
+              trailing.spinAngle = 0;
+              trailing.finished = false;
+            }
+          }
+        }
+
         // Check if anyone finished - use distance as tiebreaker
         if (!finished) {
-          const finishers = updated.filter((r) => r.finished);
+          const finishers = withCollisions.filter((r) => r.finished);
           if (finishers.length > 0) {
             // Pick the one who traveled the farthest (tiebreaker for same-frame finishes)
             const firstFinisher = finishers.reduce((prev, current) => 
@@ -292,35 +369,19 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           }
         }
 
-        return updated;
+        return withCollisions;
       });
 
-      if (!finished && elapsed < RACE_DURATION) {
+      const hasFalling = racers.some((r) => r.isFalling);
+      if ((!finished && elapsed < RACE_DURATION) || hasFalling) {
         animationRef.current = requestAnimationFrame(animate);
       }
     };
-
-    // Update particles
-    const particleInterval = setInterval(() => {
-      setParticles((prev) => {
-        const dt = 0.016; // ~60fps
-        return prev
-          .map((p) => ({
-            ...p,
-            x: p.x + p.vx * dt,
-            y: p.y + p.vy * dt,
-            life: p.life - dt,
-            vy: p.vy + 100 * dt, // gravity
-          }))
-          .filter((p) => p.life > 0);
-      });
-    }, 16);
 
     animationRef.current = requestAnimationFrame(animate);
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      clearInterval(particleInterval);
     };
   }, [raceState, racers.length, onWinner, allEntries.length]);
 
@@ -338,68 +399,58 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
 
     // Always show at least 2 lanes; keep lanes for all participants even if eliminated
     const numLanes = Math.max(allEntries.length, 2);
-    const trackTop = 30;
-    const trackHeight = (canvas.height - 60) / numLanes;
+    const trackWidth = getTrackWidth(numLanes);
+    const trackLeft = (canvas.width - trackWidth) / 2;
+    const laneWidth = trackWidth / numLanes;
 
-    // Draw track
-    ctx.fillStyle = '#505050';
+    // Draw track (vertical lanes)
+    ctx.fillStyle = '#4a4a4a';
     for (let idx = 0; idx < numLanes; idx++) {
-      const y = trackTop + idx * trackHeight;
-      ctx.fillRect(0, y, canvas.width, trackHeight);
-      
-      // Draw lane lines
-      ctx.strokeStyle = '#444';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, y + trackHeight);
-      ctx.lineTo(canvas.width, y + trackHeight);
-      ctx.stroke();
+      const x = trackLeft + idx * laneWidth;
+      ctx.fillRect(x, TRACK_TOP, laneWidth, TRACK_HEIGHT);
     }
 
     // Draw finish line with checkered pattern
-    const finishLineWidth = 30;
+    const finishLineHeight = 30;
     const checkerSize = 10;
-    const finishLineHeight = canvas.height - 60;
+    const finishLineWidth = trackWidth;
     
     // Draw checkered pattern
-    for (let y = trackTop; y < trackTop + finishLineHeight; y += checkerSize) {
+    for (let y = 0; y < finishLineHeight; y += checkerSize) {
       for (let x = 0; x < finishLineWidth; x += checkerSize) {
-        // Alternate black and white squares
         const isBlack = ((Math.floor(y / checkerSize) + Math.floor(x / checkerSize)) % 2 === 0);
         ctx.fillStyle = isBlack ? '#000' : '#fff';
-        ctx.fillRect(FINISH_LINE - finishLineWidth / 2 + x, y, checkerSize, checkerSize);
+        ctx.fillRect(trackLeft + x, FINISH_LINE - finishLineHeight / 2 + y, checkerSize, checkerSize);
       }
     }
-    
-    // Draw "FINISH" text vertically centered on the finish line
+
+    // Draw "FINISH" text centered on the finish line
     ctx.save();
-    ctx.translate(FINISH_LINE, trackTop + finishLineHeight / 2);
-    ctx.rotate(-Math.PI / 2);
     ctx.fillStyle = '#FFD700';
-    ctx.font = 'bold 20px monospace';
+    ctx.font = 'bold 18px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 3;
-    ctx.strokeText('FINISH', 0, 0);
-    ctx.fillText('FINISH', 0, 0);
+    ctx.strokeText('FINISH', canvas.width / 2, FINISH_LINE);
+    ctx.fillText('FINISH', canvas.width / 2, FINISH_LINE);
     ctx.restore();
 
     // Draw racers
     racers.forEach((racer) => {
-      const trackHeight = (canvas.height - 60) / numLanes;
-      const laneY = trackTop + racer.laneIndex * trackHeight + trackHeight / 2;
+      const lanePosition = racer.lateralPos ?? racer.laneIndex;
+      const laneX = trackLeft + lanePosition * laneWidth + laneWidth / 2;
 
-      // Draw car or boat with rotation effect
+      // Draw climbers with rotation to face upward
       ctx.save();
-      ctx.translate(racer.x, laneY);
+      ctx.translate(laneX, racer.y);
       
       const renderMode = mode === 'mixed' ? racer.vehicleMode : mode;
 
-      // Add rocking motion for boats based on horizontal position
-      let totalRotation = racer.spinAngle || 0;
+      // Add rocking motion for boats based on vertical position
+      let totalRotation = -Math.PI / 2 + (racer.spinAngle || 0);
       if (renderMode === 'boat') {
-        const rockAmount = Math.sin((racer.x + performance.now() / 500) * 0.02) * 0.15; // gentle rocking
+        const rockAmount = Math.sin((racer.y + performance.now() / 500) * 0.02) * 0.15; // gentle rocking
         totalRotation += rockAmount;
       }
       
@@ -410,32 +461,49 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         ctx.scale(-1, 1);
       }
       
-      ctx.translate(-racer.x, -laneY);
-      if (renderMode === 'boat') {
-        drawBoat(ctx, racer.x, laneY, racer.color);
+      ctx.translate(-laneX, -racer.y);
+      if (renderMode === 'car') {
+        ctx.save();
+        ctx.translate(laneX, racer.y);
+        ctx.rotate(Math.PI / 2);
+        ctx.translate(-laneX, -racer.y);
+        drawClimber(ctx, laneX, racer.y, racer.color);
+        ctx.restore();
+      } else if (renderMode === 'boat') {
+        ctx.save();
+        ctx.translate(laneX, racer.y);
+        ctx.rotate(-Math.PI / 2);
+        ctx.translate(-laneX, -racer.y);
+        drawMonkey(ctx, laneX, racer.y, racer.color);
+        ctx.restore();
       } else if (renderMode === 'plane') {
-        drawPlane(ctx, racer.x, laneY, racer.color);
+        drawLizard(ctx, laneX, racer.y, racer.color);
       } else if (renderMode === 'balloon') {
-        drawBalloon(ctx, racer.x, laneY, racer.color);
+        ctx.save();
+        ctx.translate(laneX, racer.y);
+        ctx.rotate(Math.PI / 2);
+        ctx.translate(-laneX, -racer.y);
+        drawBalloon(ctx, laneX, racer.y, racer.color);
+        ctx.restore();
       } else if (renderMode === 'rocket') {
         ctx.save();
-        ctx.translate(racer.x, laneY);
+        ctx.translate(laneX, racer.y);
         ctx.rotate(Math.PI / 2);
-        ctx.translate(-racer.x, -laneY);
-        drawRocket(ctx, racer.x, laneY, racer.color);
+        ctx.translate(-laneX, -racer.y);
+        drawRocket(ctx, laneX, racer.y, racer.color);
         ctx.restore();
       } else if (renderMode === 'duck') {
-        drawDuck(ctx, racer.x, laneY, racer.color);
+        drawDuck(ctx, laneX, racer.y, racer.color);
       } else if (renderMode === 'snail') {
-        drawSnail(ctx, racer.x, laneY, racer.color);
+        drawSnail(ctx, laneX, racer.y, racer.color);
       } else if (renderMode === 'turtle') {
-        drawTurtle(ctx, racer.x, laneY, racer.color);
+        drawTurtle(ctx, laneX, racer.y, racer.color);
       } else if (renderMode === 'cat') {
-        drawCat(ctx, racer.x, laneY, racer.color);
+        drawCat(ctx, laneX, racer.y, racer.color);
       } else if (renderMode === 'dog') {
-        drawDog(ctx, racer.x, laneY, racer.color);
+        drawDog(ctx, laneX, racer.y, racer.color);
       } else {
-        drawCar(ctx, racer.x, laneY, racer.color);
+        drawClimber(ctx, laneX, racer.y, racer.color);
       }
       ctx.restore();
     });
@@ -447,127 +515,114 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       return n + (s[(v - 20) % 10] || s[v] || s[0]);
     };
 
-    const labelAreaX = FINISH_LINE + LABEL_PADDING;
-    const labelAreaWidth = canvas.width - labelAreaX - LABEL_PADDING;
-    const labelAreaY = trackTop;
-    const labelAreaHeight = finishLineHeight;
+    // Labels removed for cleaner climbing wall
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(labelAreaX, labelAreaY, labelAreaWidth, labelAreaHeight);
-    ctx.clip();
-
-    ctx.font = '12px monospace';
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-
-    const labelData = allEntries.map((entry, laneIdx) => {
-      const trackHeight = (canvas.height - 60) / numLanes;
-      const y = trackTop + laneIdx * trackHeight + trackHeight / 2;
-      const order = winOrder.get(entry.id);
-      const isEliminated = eliminatedIds.includes(entry.id);
-      const label = order ? `${entry.name} (${getOrdinal(order)})` : entry.name;
-      const textWidth = ctx.measureText(label).width;
-      return { label, y, isEliminated, textWidth };
-    });
-
-    const maxLabelWidth = Math.max(...labelData.map((item) => item.textWidth), 0);
-    const speed = 30; // pixels per second
-    const gap = Math.max(40, labelAreaWidth * 0.2);
-    const cycle = maxLabelWidth + gap;
-    const offset = ((tickerTime / 1000) * speed) % cycle;
-
-    labelData.forEach(({ label, y, isEliminated }) => {
-      ctx.fillStyle = isEliminated ? '#bfbfbf' : '#fff';
-      const labelX = FINISH_LINE + LABEL_PADDING;
-      const animatedX = labelX - offset;
-
-      ctx.fillText(label, animatedX, y);
-      ctx.fillText(label, animatedX + cycle, y);
-    });
-
-    ctx.restore();
-
-    // Draw smoke particles
-    particles.forEach((particle) => {
-      const opacity = particle.life / particle.maxLife;
-      
-      if (particle.type === 'smoke') {
-        ctx.fillStyle = `rgba(150, 150, 150, ${0.6 * opacity})`;
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, 4 + Math.random() * 2, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (particle.type === 'fire') {
-        // NOS-style blue flames
-        const hue = 200 + Math.random() * 20; // blue-cyan range
-        ctx.fillStyle = `hsla(${hue}, 100%, 60%, ${0.85 * opacity})`;
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, 3 + Math.random() * 3, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Inner electric glow
-        ctx.fillStyle = `hsla(195, 100%, 75%, ${0.55 * opacity})`;
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, 1.5 + Math.random() * 1.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
+    // Particle effects removed
 
     return () => {};
   }, [racers, particles, allEntries, eliminatedIds, winOrder, tickerTime]);
 
-  const drawCar = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const carWidth = 20;  // horizontal width (length)
-    const carHeight = 12;  // vertical height
-    const wheelRadius = 3;
-    const wheelOffsetY = 6;  // wheels offset vertically
-
-    // Draw wheels (top and bottom, visible on sides)
-    ctx.fillStyle = '#000';  // Black wheels
-    // Front top wheel
-    ctx.beginPath();
-    ctx.arc(x + 6, y - wheelOffsetY, wheelRadius, 0, Math.PI * 2);
-    ctx.fill();
-    // Front bottom wheel
-    ctx.beginPath();
-    ctx.arc(x + 6, y + wheelOffsetY, wheelRadius, 0, Math.PI * 2);
-    ctx.fill();
-    // Rear top wheel
-    ctx.beginPath();
-    ctx.arc(x - 6, y - wheelOffsetY, wheelRadius, 0, Math.PI * 2);
-    ctx.fill();
-    // Rear bottom wheel
-    ctx.beginPath();
-    ctx.arc(x - 6, y + wheelOffsetY, wheelRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Draw car body with rounded corners
+  const drawClimber = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    // Body
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.roundRect(x - carWidth / 2, y - carHeight / 2, carWidth, carHeight, 3);
+    ctx.roundRect(x - 4, y - 6, 8, 12, 3);
     ctx.fill();
 
-    // Draw spoiler at the back (left side)
-    ctx.fillStyle = '#222';
-    ctx.fillRect(x - carWidth / 2 - 3, y - carHeight / 2 + 2, 3, carHeight - 4);
-    ctx.fillRect(x - carWidth / 2 - 5, y - carHeight / 2 + 1, 2, carHeight - 2);
-
-    // Draw windshield (front window on the right side)
-    ctx.fillStyle = '#4af';
+    // Head
+    ctx.fillStyle = '#FFD9B3';
     ctx.beginPath();
-    ctx.roundRect(x + carWidth / 2 - 6, y - carHeight / 2 + 2, 4, carHeight - 4, 2);
+    ctx.arc(x, y - 10, 4, 0, Math.PI * 2);
     ctx.fill();
 
-    // Draw rear window (back window on the left side)
-    ctx.beginPath();
-    ctx.roundRect(x - carWidth / 2 + 2, y - carHeight / 2 + 2, 4, carHeight - 4, 2);
-    ctx.fill();
-
-    // Car outline with rounded corners
+    // Arms reaching
     ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 3, y - 3);
+    ctx.lineTo(x - 8, y - 8);
+    ctx.moveTo(x + 3, y - 3);
+    ctx.lineTo(x + 8, y - 8);
+    ctx.stroke();
+
+    // Legs
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y + 6);
+    ctx.lineTo(x - 6, y + 12);
+    ctx.moveTo(x + 2, y + 6);
+    ctx.lineTo(x + 6, y + 12);
+    ctx.stroke();
+
+    // Harness line
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(x - carWidth / 2, y - carHeight / 2, carWidth, carHeight, 3);
+    ctx.moveTo(x, y + 6);
+    ctx.lineTo(x, y + 14);
+    ctx.stroke();
+  };
+
+  const drawMonkey = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    // Body
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, 6, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(x, y - 6, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Face
+    ctx.fillStyle = '#F2C19C';
+    ctx.beginPath();
+    ctx.ellipse(x, y - 5, 4, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Ears
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x - 6, y - 6, 2.5, 0, Math.PI * 2);
+    ctx.arc(x + 6, y - 6, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail curl
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x + 6, y + 6, 5, 0.3, Math.PI * 1.4);
+    ctx.stroke();
+  };
+
+  const drawLizard = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
+    // Body
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, 10, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    ctx.beginPath();
+    ctx.ellipse(x + 9, y, 4, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 8, y + 2);
+    ctx.quadraticCurveTo(x - 14, y + 6, x - 10, y + 12);
+    ctx.stroke();
+
+    // Legs
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y + 4);
+    ctx.lineTo(x - 6, y + 8);
+    ctx.moveTo(x + 2, y + 4);
+    ctx.lineTo(x + 6, y + 8);
     ctx.stroke();
   };
 
@@ -1133,7 +1188,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
 
   return (
     <div className="racing-game">
-      <canvas ref={canvasRef} width={840} height={600} className="game-canvas" />
+      <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
 
       {currentWinner && !isRacing && (
         <div className="winner-display">
