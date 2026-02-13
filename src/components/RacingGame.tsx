@@ -38,6 +38,21 @@ interface Particle {
   type: 'fire';
 }
 
+interface Obstacle {
+  x: number;
+  y: number;
+  vy: number;
+  vx: number;
+  size: number;
+}
+
+interface Bird {
+  x: number;
+  y: number;
+  vx: number;
+  size: number;
+}
+
 interface Props {
   entries: Entry[]; // active racers only
   allEntries: Entry[]; // full list for lane labels
@@ -55,16 +70,20 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [racers, setRacers] = useState<Racer[]>([]);
   const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
+  const [obstacles, setObstacles] = useState<Obstacle[]>([]);
+  const obstaclesRef = useRef<Obstacle[]>([]);
+  const [birds, setBirds] = useState<Bird[]>([]);
+  const birdsRef = useRef<Bird[]>([]);
   const [particles, setParticles] = useState<Particle[]>([]);
   const [tickerTime, setTickerTime] = useState(0);
   const animationRef = useRef<number | undefined>(undefined);
 
-  const CANVAS_WIDTH = 840;
+  const CANVAS_WIDTH = 400;
   const CANVAS_HEIGHT = 600;
   const TRACK_PADDING = 30;
   const getTrackWidth = (laneCount: number) => {
     const minWidth = 200;
-    const maxWidth = CANVAS_WIDTH * 0.4;
+    const maxWidth = CANVAS_WIDTH * 0.9;
     const perLane = 22;
     return Math.min(maxWidth, Math.max(minWidth, laneCount * perLane));
   };
@@ -143,6 +162,10 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     });
 
     setRacers(newRacers);
+    setObstacles([]);
+    obstaclesRef.current = [];
+    setBirds([]);
+    birdsRef.current = [];
   }, [entries, raceState, allEntries, mode]);
 
   // Start race when isRacing becomes true
@@ -175,6 +198,10 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         };
       });
       setRacers(newRacers);
+      setObstacles([]);
+      obstaclesRef.current = [];
+      setBirds([]);
+      birdsRef.current = [];
       setRaceState('racing');
     } else if (!isRacing && raceState === 'racing') {
       setRaceState('ready');
@@ -216,6 +243,59 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       const elapsed = now - startTime;
       const deltaSeconds = Math.max(0.001, (now - lastFrameTime) / 1000);
       lastFrameTime = now;
+
+      const spawnChance = 0.02;
+      const obstacleGate = Math.ceil(Math.max(allEntries.length, 1) / 3);
+      const birdGate = Math.ceil((Math.max(allEntries.length, 1) * 2) / 3);
+      const allowObstacles = winOrder.size >= obstacleGate;
+      const allowBirds = winOrder.size >= birdGate;
+      const updatedObstacles = obstaclesRef.current
+        .map((obstacle) => ({
+          ...obstacle,
+          x: obstacle.x + obstacle.vx * deltaSeconds,
+          y: obstacle.y + obstacle.vy * deltaSeconds,
+        }))
+        .filter((obstacle) => obstacle.y < START_LINE + 40);
+
+      if (allowObstacles && Math.random() < spawnChance) {
+        const size = 12 + Math.random() * 10;
+        const driftDir = Math.random() < 0.5 ? -1 : 1;
+        updatedObstacles.push({
+          x: trackLeft + Math.random() * trackWidth,
+          y: FINISH_LINE - 20,
+          vx: driftDir * (40 + Math.random() * 60),
+          vy: 260 + Math.random() * 160,
+          size,
+        });
+      }
+
+      obstaclesRef.current = updatedObstacles;
+      setObstacles(updatedObstacles);
+
+      const birdSpawnChance = 0.03;
+      const updatedBirds = birdsRef.current
+        .map((bird) => ({
+          ...bird,
+          x: bird.x + bird.vx * deltaSeconds,
+        }))
+        .map((bird) => {
+          if (bird.x < trackLeft - 40) return { ...bird, x: trackLeft + trackWidth + 40 };
+          if (bird.x > trackLeft + trackWidth + 40) return { ...bird, x: trackLeft - 40 };
+          return bird;
+        });
+
+      if (allowBirds && updatedBirds.length < 7 && Math.random() < birdSpawnChance) {
+        const size = 16 + Math.random() * 10;
+        updatedBirds.push({
+          x: trackLeft - 30,
+          y: FINISH_LINE + 30 + Math.random() * (TRACK_HEIGHT - 60),
+          vx: 160 + Math.random() * 120,
+          size,
+        });
+      }
+
+      birdsRef.current = updatedBirds;
+      setBirds(updatedBirds);
 
       setRacers((prevRacers) => {
         const updated = prevRacers.map((racer, idx) => {
@@ -355,6 +435,50 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           }
         }
 
+        for (let i = 0; i < withCollisions.length; i++) {
+          const racer = withCollisions[i];
+          if (racer.finished || racer.knockedOut) continue;
+          const lanePos = racer.lateralPos ?? racer.laneIndex;
+          const x = trackLeft + lanePos * laneWidth + laneWidth / 2;
+          const y = racer.y;
+
+          const hitObstacle = updatedObstacles.find((obstacle) => {
+            const dx = Math.abs(obstacle.x - x);
+            const dy = Math.abs(obstacle.y - y);
+            return dx < obstacle.size * 0.7 && dy < obstacle.size * 0.7;
+          });
+
+          if (hitObstacle) {
+            racer.knockedOut = true;
+            racer.isFalling = true;
+            racer.fallY = racer.y;
+            racer.fallVelocity = 0;
+            racer.totalDistance = 0;
+            racer.speed = 0;
+            racer.previousSpeed = 0;
+            racer.spinAngle = 0;
+            racer.finished = false;
+          }
+
+          const hitBird = updatedBirds.find((bird) => {
+            const dx = Math.abs(bird.x - x);
+            const dy = Math.abs(bird.y - y);
+            return dx < bird.size * 0.9 && dy < bird.size * 0.6;
+          });
+
+          if (hitBird) {
+            racer.knockedOut = true;
+            racer.isFalling = true;
+            racer.fallY = racer.y;
+            racer.fallVelocity = 0;
+            racer.totalDistance = 0;
+            racer.speed = 0;
+            racer.previousSpeed = 0;
+            racer.spinAngle = 0;
+            racer.finished = false;
+          }
+        }
+
         // Check if anyone finished - use distance as tiebreaker
         if (!finished) {
           const finishers = withCollisions.filter((r) => r.finished);
@@ -436,8 +560,113 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.fillText('FINISH', canvas.width / 2, FINISH_LINE);
     ctx.restore();
 
+    // Draw falling boulders
+    obstacles.forEach((obstacle) => {
+      ctx.save();
+      ctx.fillStyle = '#5c5c5c';
+      ctx.strokeStyle = '#2f2f2f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(obstacle.x, obstacle.y, obstacle.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.beginPath();
+      ctx.arc(obstacle.x - obstacle.size * 0.3, obstacle.y - obstacle.size * 0.3, obstacle.size * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // Draw flying birds
+    birds.forEach((bird) => {
+      ctx.save();
+      const bodyWidth = bird.size * 1.6;
+      const bodyHeight = bird.size * 0.8;
+
+      // Body
+      ctx.fillStyle = '#3a3a3a';
+      ctx.beginPath();
+      ctx.ellipse(bird.x, bird.y, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Head
+      ctx.fillStyle = '#444';
+      ctx.beginPath();
+      ctx.arc(bird.x + bodyWidth / 2 - bird.size * 0.2, bird.y - bird.size * 0.2, bird.size * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Beak
+      ctx.fillStyle = '#f2c94c';
+      ctx.beginPath();
+      ctx.moveTo(bird.x + bodyWidth / 2 + bird.size * 0.15, bird.y - bird.size * 0.2);
+      ctx.lineTo(bird.x + bodyWidth / 2 + bird.size * 0.5, bird.y);
+      ctx.lineTo(bird.x + bodyWidth / 2 + bird.size * 0.1, bird.y + bird.size * 0.1);
+      ctx.closePath();
+      ctx.fill();
+
+      // Wings
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(bird.x - bodyWidth * 0.25, bird.y);
+      ctx.quadraticCurveTo(bird.x - bodyWidth * 0.05, bird.y - bird.size * 0.9, bird.x + bodyWidth * 0.1, bird.y - bird.size * 0.1);
+      ctx.moveTo(bird.x - bodyWidth * 0.15, bird.y);
+      ctx.quadraticCurveTo(bird.x + bodyWidth * 0.05, bird.y - bird.size * 0.7, bird.x + bodyWidth * 0.25, bird.y - bird.size * 0.05);
+      ctx.stroke();
+
+      // Eye
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(bird.x + bodyWidth / 2 - bird.size * 0.25, bird.y - bird.size * 0.25, bird.size * 0.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    const initialsFor = (name: string, extraLetters = 0) => {
+      const words = name.split(' ').filter(Boolean);
+      const base = words.map((part) => part[0]?.toUpperCase()).join('');
+      if (extraLetters <= 0 || words.length === 0) return base;
+      const extra = words[0].slice(1, 1 + extraLetters).toLowerCase();
+      return base + extra;
+    };
+
+    const baseInitialsMap = new Map<string, number[]>();
+    racers.forEach((racer, idx) => {
+      const base = initialsFor(racer.entry.name);
+      const existing = baseInitialsMap.get(base) ?? [];
+      existing.push(idx);
+      baseInitialsMap.set(base, existing);
+    });
+
+    const initialsByIndex = new Map<number, string>();
+    baseInitialsMap.forEach((indexes, base) => {
+      if (indexes.length === 1) {
+        initialsByIndex.set(indexes[0], base);
+      } else {
+        indexes.forEach((idx) => {
+          initialsByIndex.set(idx, initialsFor(racers[idx].entry.name, 1));
+        });
+      }
+    });
+
+    const secondaryMap = new Map<string, number[]>();
+    initialsByIndex.forEach((value, idx) => {
+      const existing = secondaryMap.get(value) ?? [];
+      existing.push(idx);
+      secondaryMap.set(value, existing);
+    });
+
+    secondaryMap.forEach((indexes, value) => {
+      if (indexes.length > 1) {
+        indexes.forEach((idx) => {
+          initialsByIndex.set(idx, initialsFor(racers[idx].entry.name, 2));
+        });
+      }
+    });
+
     // Draw racers
-    racers.forEach((racer) => {
+    racers.forEach((racer, index) => {
       const lanePosition = racer.lateralPos ?? racer.laneIndex;
       const laneX = trackLeft + lanePosition * laneWidth + laneWidth / 2;
 
@@ -506,6 +735,23 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         drawClimber(ctx, laneX, racer.y, racer.color);
       }
       ctx.restore();
+
+      // Draw initials above racer
+      const initials = initialsByIndex.get(index) ?? initialsFor(racer.entry.name);
+      if (initials) {
+        ctx.save();
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.strokeText(initials, laneX, racer.y - 14);
+        ctx.fillText(initials, laneX, racer.y - 14);
+        ctx.restore();
+      }
     });
 
     // Static lane nameplates with placement
@@ -520,7 +766,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     // Particle effects removed
 
     return () => {};
-  }, [racers, particles, allEntries, eliminatedIds, winOrder, tickerTime]);
+  }, [racers, obstacles, birds, particles, allEntries, eliminatedIds, winOrder, tickerTime]);
 
   const drawClimber = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
     // Body
@@ -553,13 +799,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.lineTo(x + 6, y + 12);
     ctx.stroke();
 
-    // Harness line
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x, y + 6);
-    ctx.lineTo(x, y + 14);
-    ctx.stroke();
+    // Harness line removed
   };
 
   const drawMonkey = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {

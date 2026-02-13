@@ -39,6 +39,7 @@ function App() {
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [racingMode, setRacingMode] = useState<RacingMode>('car');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
@@ -180,11 +181,11 @@ function App() {
   const getModeEmoji = (mode: RacingMode) => {
     switch (mode) {
       case 'car':
-        return '🏁';
+        return '🧗';
       case 'boat':
-        return '⛵';
+        return '🐒';
       case 'plane':
-        return '✈️';
+        return '🦎';
       case 'balloon':
         return '🎈';
       case 'rocket':
@@ -209,66 +210,79 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>{getModeEmoji(racingMode)} Aquaveo Race Picker {getModeEmoji(racingMode)}</h1>
+        <h1>{getModeEmoji(racingMode)} Aquaveo Climber Picker {getModeEmoji(racingMode)}</h1>
         <p>The Random Selection Tool for Winners!</p>
       </header>
 
       <div className="app-container">
-        <div className="sidebar">
-          <h2>Participants</h2>
-          <EntryManager 
-            entries={entries} 
-            onEntriesChange={handleEntriesChange}
-            eliminatedIds={eliminatedIds}
-            winOrder={winOrder}
-          />
-
-          {entries.length > 0 && (
-            <button onClick={resetAllEntries} className="reset-button">
-              Clear All
+        <div className={`sidebar ${isSidebarOpen ? 'open' : 'collapsed'}`}>
+          <div className="sidebar-header">
+            <h2>Participants</h2>
+            <button
+              type="button"
+              className="sidebar-toggle"
+              aria-label={isSidebarOpen ? 'Collapse participants panel' : 'Expand participants panel'}
+              aria-expanded={isSidebarOpen}
+              onClick={() => setIsSidebarOpen((prev) => !prev)}
+            >
+              {isSidebarOpen ? '⟨' : '⟩'}
             </button>
-          )}
-
-          <div className="group-controls">
-            <h3>💾 Groups</h3>
-            <input
-              type="text"
-              value={groupNameInput}
-              onChange={(e) => setGroupNameInput(e.target.value)}
-              placeholder="Group name..."
-              className="group-name-input"
-              onKeyPress={(e) => e.key === 'Enter' && saveGroup()}
+          </div>
+          <div className="sidebar-content">
+            <EntryManager 
+              entries={entries} 
+              onEntriesChange={handleEntriesChange}
+              eliminatedIds={eliminatedIds}
+              winOrder={winOrder}
             />
-            <button onClick={saveGroup} className="save-group-button">
-              Save Current Group
-            </button>
-            
-            {groups.length > 0 && (
-              <button onClick={() => setShowGroupManager(!showGroupManager)} className="manage-groups-button">
-                {showGroupManager ? 'Hide Groups' : 'View Groups'} ({groups.length})
+
+            {entries.length > 0 && (
+              <button onClick={resetAllEntries} className="reset-button">
+                Clear All
               </button>
             )}
 
-            {showGroupManager && (
-              <div className="groups-list">
-                {groups.map((group) => (
-                  <div key={group.id} className="group-item">
-                    <div className="group-info">
-                      <p className="group-name">{group.name}</p>
-                      <p className="group-count">{group.entries.length} participants</p>
+            <div className="group-controls">
+              <h3>💾 Groups</h3>
+              <input
+                type="text"
+                value={groupNameInput}
+                onChange={(e) => setGroupNameInput(e.target.value)}
+                placeholder="Group name..."
+                className="group-name-input"
+                onKeyPress={(e) => e.key === 'Enter' && saveGroup()}
+              />
+              <button onClick={saveGroup} className="save-group-button">
+                Save Current Group
+              </button>
+              
+              {groups.length > 0 && (
+                <button onClick={() => setShowGroupManager(!showGroupManager)} className="manage-groups-button">
+                  {showGroupManager ? 'Hide Groups' : 'View Groups'} ({groups.length})
+                </button>
+              )}
+
+              {showGroupManager && (
+                <div className="groups-list">
+                  {groups.map((group) => (
+                    <div key={group.id} className="group-item">
+                      <div className="group-info">
+                        <p className="group-name">{group.name}</p>
+                        <p className="group-count">{group.entries.length} participants</p>
+                      </div>
+                      <div className="group-buttons">
+                        <button onClick={() => loadGroup(group.id)} className="load-group-button">
+                          Load
+                        </button>
+                        <button onClick={() => deleteGroup(group.id)} className="delete-group-button">
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                    <div className="group-buttons">
-                      <button onClick={() => loadGroup(group.id)} className="load-group-button">
-                        Load
-                      </button>
-                      <button onClick={() => deleteGroup(group.id)} className="delete-group-button">
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -413,13 +427,6 @@ function App() {
               <span>🎲 Mixed</span>
             </label>
           </div>
-
-          {winner && !showRace && (
-            <div className="winner-info">
-              <p>Last winner: <strong>{winner}</strong></p>
-              <p>Racing: {activeEntries.length} / {entries.length}</p>
-            </div>
-          )}
 
           {showFinalStandings && (
             <FinalStandingsDialog
