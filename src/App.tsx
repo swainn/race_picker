@@ -6,7 +6,7 @@ import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
 const GROUPS_STORAGE_KEY = 'gamified_picker_groups';
-type VehicleMode = 'car' | 'boat' | 'plane' | 'balloon' | 'rocket' | 'duck' | 'snail' | 'turtle' | 'cat' | 'dog';
+type VehicleMode = 'car' | 'boat' | 'plane' | 'balloon' | 'rocket' | 'duck' | 'snail' | 'cat' | 'dog';
 type RacingMode = VehicleMode | 'mixed';
 
 interface Group {
@@ -39,7 +39,7 @@ function App() {
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [racingMode, setRacingMode] = useState<RacingMode>('car');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showManagementModal, setShowManagementModal] = useState(false);
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
@@ -194,8 +194,6 @@ function App() {
         return '🦆';
       case 'snail':
         return '🐌';
-      case 'turtle':
-        return '🐢';
       case 'cat':
         return '🐱';
       case 'dog':
@@ -210,82 +208,18 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>{getModeEmoji(racingMode)} Aquaveo Climber Picker {getModeEmoji(racingMode)}</h1>
-        <p>The Random Selection Tool for Winners!</p>
+        <div className="header-content">
+          <div className="header-title">
+            <h1>{getModeEmoji(racingMode)} Aquaveo Climber Picker {getModeEmoji(racingMode)}</h1>
+            <p>The Random Selection Tool for Winners!</p>
+          </div>
+          <button onClick={() => setShowManagementModal(true)} className="header-management-button" aria-label="Manage participants and groups">
+            ⚙️
+          </button>
+        </div>
       </header>
 
       <div className="app-container">
-        <div className={`sidebar ${isSidebarOpen ? 'open' : 'collapsed'}`}>
-          <div className="sidebar-header">
-            <h2>Participants</h2>
-            <button
-              type="button"
-              className="sidebar-toggle"
-              aria-label={isSidebarOpen ? 'Collapse participants panel' : 'Expand participants panel'}
-              aria-expanded={isSidebarOpen}
-              onClick={() => setIsSidebarOpen((prev) => !prev)}
-            >
-              {isSidebarOpen ? '⟨' : '⟩'}
-            </button>
-          </div>
-          <div className="sidebar-content">
-            <EntryManager 
-              entries={entries} 
-              onEntriesChange={handleEntriesChange}
-              eliminatedIds={eliminatedIds}
-              winOrder={winOrder}
-            />
-
-            {entries.length > 0 && (
-              <button onClick={resetAllEntries} className="reset-button">
-                Clear All
-              </button>
-            )}
-
-            <div className="group-controls">
-              <h3>💾 Groups</h3>
-              <input
-                type="text"
-                value={groupNameInput}
-                onChange={(e) => setGroupNameInput(e.target.value)}
-                placeholder="Group name..."
-                className="group-name-input"
-                onKeyPress={(e) => e.key === 'Enter' && saveGroup()}
-              />
-              <button onClick={saveGroup} className="save-group-button">
-                Save Current Group
-              </button>
-              
-              {groups.length > 0 && (
-                <button onClick={() => setShowGroupManager(!showGroupManager)} className="manage-groups-button">
-                  {showGroupManager ? 'Hide Groups' : 'View Groups'} ({groups.length})
-                </button>
-              )}
-
-              {showGroupManager && (
-                <div className="groups-list">
-                  {groups.map((group) => (
-                    <div key={group.id} className="group-item">
-                      <div className="group-info">
-                        <p className="group-name">{group.name}</p>
-                        <p className="group-count">{group.entries.length} participants</p>
-                      </div>
-                      <div className="group-buttons">
-                        <button onClick={() => loadGroup(group.id)} className="load-group-button">
-                          Load
-                        </button>
-                        <button onClick={() => deleteGroup(group.id)} className="delete-group-button">
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
         <div className="main-content">
           <div className="race-controls">
             {activeEntries.length >= 1 && (
@@ -390,16 +324,6 @@ function App() {
               <input
                 type="radio"
                 name="racingMode"
-                value="turtle"
-                checked={racingMode === 'turtle'}
-                onChange={() => setRacingMode('turtle')}
-              />
-              <span>🐢 Turtles</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
                 value="cat"
                 checked={racingMode === 'cat'}
                 onChange={() => setRacingMode('cat')}
@@ -437,11 +361,157 @@ function App() {
           )}
         </div>
       </div>
+      
+      {showManagementModal && (
+        <ManagementDialog
+          entries={entries}
+          onEntriesChange={handleEntriesChange}
+          eliminatedIds={eliminatedIds}
+          winOrder={winOrder}
+          onResetAll={resetAllEntries}
+          groupNameInput={groupNameInput}
+          onGroupNameInputChange={setGroupNameInput}
+          onSaveGroup={saveGroup}
+          groups={groups}
+          onLoadGroup={loadGroup}
+          onDeleteGroup={deleteGroup}
+          onClose={() => setShowManagementModal(false)}
+        />
+      )}
     </div>
   );
 }
 
 export default App;
+
+interface ManagementDialogProps {
+  entries: Entry[];
+  onEntriesChange: (entries: Entry[]) => void;
+  eliminatedIds: number[];
+  winOrder: Map<number, number>;
+  onResetAll: () => void;
+  groupNameInput: string;
+  onGroupNameInputChange: (value: string) => void;
+  onSaveGroup: () => void;
+  groups: Group[];
+  onLoadGroup: (groupId: number) => void;
+  onDeleteGroup: (groupId: number) => void;
+  onClose: () => void;
+}
+
+function ManagementDialog({ 
+  entries, 
+  onEntriesChange, 
+  eliminatedIds, 
+  winOrder, 
+  onResetAll,
+  groupNameInput,
+  onGroupNameInputChange,
+  onSaveGroup,
+  groups,
+  onLoadGroup,
+  onDeleteGroup,
+  onClose 
+}: ManagementDialogProps) {
+  const formatDate = (timestamp: number) => {
+    return new Date(timestamp).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  return (
+    <div className="dialog-overlay" onClick={onClose}>
+      <div className="management-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="management-header">
+          <h2>⚙️ Manage Participants & Groups</h2>
+          <button
+            type="button"
+            className="management-close-x"
+            aria-label="Close management dialog"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <div className="management-body">
+          {/* Participants Section */}
+          <div className="management-section">
+            <h3 className="section-title">👥 Participants</h3>
+            <EntryManager 
+              entries={entries} 
+              onEntriesChange={onEntriesChange}
+              eliminatedIds={eliminatedIds}
+              winOrder={winOrder}
+            />
+            {entries.length > 0 && (
+              <button onClick={onResetAll} className="reset-button-modal">
+                Clear All Participants
+              </button>
+            )}
+          </div>
+
+          {/* Groups Section */}
+          <div className="management-section">
+            <h3 className="section-title">💾 Groups</h3>
+            
+            <div className="save-group-box">
+              <p className="save-group-label">Save current participants as a group:</p>
+              <div className="save-group-controls">
+                <input
+                  type="text"
+                  value={groupNameInput}
+                  onChange={(e) => onGroupNameInputChange(e.target.value)}
+                  placeholder="Group name (optional)..."
+                  className="group-name-input-modal"
+                  onKeyPress={(e) => e.key === 'Enter' && onSaveGroup()}
+                />
+                <button onClick={onSaveGroup} className="save-group-button-modal" disabled={entries.length === 0}>
+                  Save Group
+                </button>
+              </div>
+            </div>
+
+            {groups.length > 0 ? (
+              <div className="saved-groups-box">
+                <p className="saved-groups-label">Saved groups ({groups.length}):</p>
+                <div className="groups-list-modal">
+                  {groups.map((group) => (
+                    <div key={group.id} className="group-item-modal">
+                      <div className="group-info-modal">
+                        <p className="group-name-modal">{group.name}</p>
+                        <p className="group-meta">
+                          {group.entries.length} participants • {formatDate(group.timestamp)}
+                        </p>
+                      </div>
+                      <div className="group-buttons-modal">
+                        <button onClick={() => { onLoadGroup(group.id); onClose(); }} className="load-group-button-modal">
+                          Load
+                        </button>
+                        <button onClick={() => onDeleteGroup(group.id)} className="delete-group-button-modal">
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="no-groups-message">No saved groups yet. Save your current participants to create a group!</p>
+            )}
+          </div>
+          
+          <button onClick={onClose} className="close-management-button">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface FinalStandingsProps {
   entries: Entry[];

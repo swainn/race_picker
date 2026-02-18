@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../types';
 import './RacingGame.css';
 
-const VEHICLE_MODES = ['car', 'boat', 'plane', 'balloon', 'rocket', 'duck', 'snail', 'turtle', 'cat', 'dog'] as const;
+const VEHICLE_MODES = ['car', 'boat', 'plane', 'balloon', 'rocket', 'duck', 'snail', 'cat', 'dog'] as const;
 type VehicleMode = (typeof VEHICLE_MODES)[number];
 type RacingMode = VehicleMode | 'mixed';
 
@@ -77,6 +77,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
   const [particles, setParticles] = useState<Particle[]>([]);
   const [tickerTime, setTickerTime] = useState(0);
   const animationRef = useRef<number | undefined>(undefined);
+  const wallPatternRef = useRef<CanvasPattern | null>(null);
 
   const CANVAS_WIDTH = 400;
   const CANVAS_HEIGHT = 600;
@@ -527,11 +528,70 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     const trackLeft = (canvas.width - trackWidth) / 2;
     const laneWidth = trackWidth / numLanes;
 
-    // Draw track (vertical lanes)
-    ctx.fillStyle = '#4a4a4a';
-    for (let idx = 0; idx < numLanes; idx++) {
-      const x = trackLeft + idx * laneWidth;
-      ctx.fillRect(x, TRACK_TOP, laneWidth, TRACK_HEIGHT);
+    // Draw track (red rock wall)
+    const wallGradient = ctx.createLinearGradient(0, TRACK_TOP, 0, TRACK_TOP + TRACK_HEIGHT);
+    wallGradient.addColorStop(0, '#6b2b1a');
+    wallGradient.addColorStop(0.5, '#8b3b25');
+    wallGradient.addColorStop(1, '#5a2416');
+    ctx.fillStyle = wallGradient;
+    ctx.fillRect(trackLeft, TRACK_TOP, trackWidth, TRACK_HEIGHT);
+
+    if (!wallPatternRef.current) {
+      const textureCanvas = document.createElement('canvas');
+      textureCanvas.width = 240;
+      textureCanvas.height = 240;
+      const tctx = textureCanvas.getContext('2d');
+      if (tctx) {
+        const w = textureCanvas.width;
+        const h = textureCanvas.height;
+
+        const drawWrapped = (draw: (x: number, y: number) => void, x: number, y: number) => {
+          for (const dx of [0, -w, w]) {
+            for (const dy of [0, -h, h]) {
+              draw(x + dx, y + dy);
+            }
+          }
+        };
+
+        tctx.fillStyle = 'rgba(255, 200, 160, 0.08)';
+        for (let i = 0; i < 220; i++) {
+          const rockX = Math.random() * w;
+          const rockY = Math.random() * h;
+          const rockSize = 2 + Math.random() * 4;
+          drawWrapped((x, y) => {
+            tctx.beginPath();
+            tctx.arc(x, y, rockSize, 0, Math.PI * 2);
+            tctx.fill();
+          }, rockX, rockY);
+        }
+
+        tctx.strokeStyle = 'rgba(45, 20, 12, 0.25)';
+        tctx.lineWidth = 1;
+        for (let i = 0; i < 120; i++) {
+          const crackX = Math.random() * w;
+          const crackY = Math.random() * h;
+          const dx = (Math.random() - 0.5) * 18;
+          const dy = (Math.random() - 0.5) * 26;
+          drawWrapped((x, y) => {
+            tctx.beginPath();
+            tctx.moveTo(x, y);
+            tctx.lineTo(x + dx, y + dy);
+            tctx.stroke();
+          }, crackX, crackY);
+        }
+      }
+      wallPatternRef.current = ctx.createPattern(textureCanvas, 'repeat');
+    }
+
+    if (wallPatternRef.current) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(trackLeft, TRACK_TOP, trackWidth, TRACK_HEIGHT);
+      ctx.clip();
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = wallPatternRef.current;
+      ctx.fillRect(trackLeft, TRACK_TOP, trackWidth, TRACK_HEIGHT);
+      ctx.restore();
     }
 
     // Draw finish line with checkered pattern
@@ -563,15 +623,15 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     // Draw falling boulders
     obstacles.forEach((obstacle) => {
       ctx.save();
-      ctx.fillStyle = '#5c5c5c';
-      ctx.strokeStyle = '#2f2f2f';
+      ctx.fillStyle = '#8b3b25';
+      ctx.strokeStyle = '#4a1f14';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(obstacle.x, obstacle.y, obstacle.size, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.fillStyle = 'rgba(255, 210, 180, 0.18)';
       ctx.beginPath();
       ctx.arc(obstacle.x - obstacle.size * 0.3, obstacle.y - obstacle.size * 0.3, obstacle.size * 0.35, 0, Math.PI * 2);
       ctx.fill();
@@ -725,8 +785,6 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         drawDuck(ctx, laneX, racer.y, racer.color);
       } else if (renderMode === 'snail') {
         drawSnail(ctx, laneX, racer.y, racer.color);
-      } else if (renderMode === 'turtle') {
-        drawTurtle(ctx, laneX, racer.y, racer.color);
       } else if (renderMode === 'cat') {
         drawCat(ctx, laneX, racer.y, racer.color);
       } else if (renderMode === 'dog') {
@@ -1278,44 +1336,6 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.fill();
   };
 
-  const drawTurtle = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const shellWidth = 20;
-    const shellHeight = 12;
-
-    // Shell
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, y, shellWidth / 2, shellHeight / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Shell outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(x, y, shellWidth / 2, shellHeight / 2, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Head
-    ctx.fillStyle = '#8BC34A';
-    ctx.beginPath();
-    ctx.arc(x + 11, y - 1, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Legs
-    ctx.fillStyle = '#7CB342';
-    ctx.beginPath();
-    ctx.arc(x - 6, y - 6, 2, 0, Math.PI * 2);
-    ctx.arc(x - 6, y + 6, 2, 0, Math.PI * 2);
-    ctx.arc(x + 2, y - 6, 2, 0, Math.PI * 2);
-    ctx.arc(x + 2, y + 6, 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Eye
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(x + 12, y - 2, 1, 0, Math.PI * 2);
-    ctx.fill();
-  };
 
   const drawCat = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
     const bodyWidth = 18;
