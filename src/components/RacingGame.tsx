@@ -78,6 +78,8 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
   const [tickerTime, setTickerTime] = useState(0);
   const animationRef = useRef<number | undefined>(undefined);
   const wallPatternRef = useRef<CanvasPattern | null>(null);
+  const [hasObstacles, setHasObstacles] = useState(false);
+  const [hasBirds, setHasBirds] = useState(false);
 
   const CANVAS_WIDTH = 400;
   const CANVAS_HEIGHT = 600;
@@ -172,6 +174,22 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
   // Start race when isRacing becomes true
   useEffect(() => {
     if (isRacing && racers.length > 0) {
+      // Randomly decide obstacles for this race: 25% chance each for obstacles only, birds only, both, or none
+      const rand = Math.random();
+      if (rand < 0.25) {
+        setHasObstacles(true);
+        setHasBirds(false);
+      } else if (rand < 0.5) {
+        setHasObstacles(false);
+        setHasBirds(true);
+      } else if (rand < 0.75) {
+        setHasObstacles(true);
+        setHasBirds(true);
+      } else {
+        setHasObstacles(false);
+        setHasBirds(false);
+      }
+      
       // Reset positions when starting a new race
       const displayEntries = entries.length > 0 ? entries : [];
       const mixedModes = mode === 'mixed' ? assignMixedModes(displayEntries.length) : [];
@@ -246,10 +264,6 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       lastFrameTime = now;
 
       const spawnChance = 0.02;
-      const obstacleGate = Math.ceil(Math.max(allEntries.length, 1) / 3);
-      const birdGate = Math.ceil((Math.max(allEntries.length, 1) * 2) / 3);
-      const allowObstacles = winOrder.size >= obstacleGate;
-      const allowBirds = winOrder.size >= birdGate;
       const updatedObstacles = obstaclesRef.current
         .map((obstacle) => ({
           ...obstacle,
@@ -258,7 +272,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         }))
         .filter((obstacle) => obstacle.y < START_LINE + 40);
 
-      if (allowObstacles && Math.random() < spawnChance) {
+      if (hasObstacles && Math.random() < spawnChance) {
         const size = 12 + Math.random() * 10;
         const driftDir = Math.random() < 0.5 ? -1 : 1;
         updatedObstacles.push({
@@ -285,7 +299,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           return bird;
         });
 
-      if (allowBirds && updatedBirds.length < 7 && Math.random() < birdSpawnChance) {
+      if (hasBirds && updatedBirds.length < 7 && Math.random() < birdSpawnChance) {
         const size = 16 + Math.random() * 10;
         updatedBirds.push({
           x: trackLeft - 30,
@@ -616,8 +630,8 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.textBaseline = 'middle';
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 3;
-    ctx.strokeText('FINISH', canvas.width / 2, FINISH_LINE);
-    ctx.fillText('FINISH', canvas.width / 2, FINISH_LINE);
+    ctx.strokeText('FINISH', trackLeft + trackWidth / 2, FINISH_LINE);
+    ctx.fillText('FINISH', trackLeft + trackWidth / 2, FINISH_LINE);
     ctx.restore();
 
     // Draw falling boulders

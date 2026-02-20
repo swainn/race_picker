@@ -210,7 +210,7 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="header-title">
-            <h1>{getModeEmoji(racingMode)} Aquaveo Climber Picker {getModeEmoji(racingMode)}</h1>
+            <h1>🧗 Aquaveo Climber Picker</h1>
             <p>The Random Selection Tool for Winners!</p>
           </div>
           <button onClick={() => setShowManagementModal(true)} className="header-management-button" aria-label="Manage participants and groups">
