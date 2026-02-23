@@ -6,8 +6,6 @@ import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
 const GROUPS_STORAGE_KEY = 'gamified_picker_groups';
-type VehicleMode = 'car' | 'boat' | 'plane' | 'balloon' | 'rocket' | 'duck' | 'snail' | 'cat' | 'dog';
-type RacingMode = VehicleMode | 'mixed';
 
 interface Group {
   id: number;
@@ -38,7 +36,6 @@ function App() {
   const [groups, setGroups] = useState<Group[]>(() => loadFromStorage(GROUPS_STORAGE_KEY, []));
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
-  const [racingMode, setRacingMode] = useState<RacingMode>('car');
   const [showManagementModal, setShowManagementModal] = useState(false);
 
   // Save entries to localStorage whenever they change
@@ -178,39 +175,12 @@ function App() {
 
   const activeEntries = entries.filter((e) => !eliminatedIds.includes(e.id));
 
-  const getModeEmoji = (mode: RacingMode) => {
-    switch (mode) {
-      case 'car':
-        return '🧗';
-      case 'boat':
-        return '🐒';
-      case 'plane':
-        return '🦎';
-      case 'balloon':
-        return '🎈';
-      case 'rocket':
-        return '🚀';
-      case 'duck':
-        return '🦆';
-      case 'snail':
-        return '🐌';
-      case 'cat':
-        return '🐱';
-      case 'dog':
-        return '🐶';
-      case 'mixed':
-        return '🎲';
-      default:
-        return '🏁';
-    }
-  };
-
   return (
     <div className="app">
       <header className="app-header">
         <div className="header-content">
           <div className="header-title">
-            <h1>🧗 Aquaveo Climber Picker</h1>
+            <h1>🎯 Aquaveo Plinko Picker</h1>
             <p>The Random Selection Tool for Winners!</p>
           </div>
           <button onClick={() => setShowManagementModal(true)} className="header-management-button" aria-label="Manage participants and groups">
@@ -224,13 +194,13 @@ function App() {
           <div className="race-controls">
             {activeEntries.length >= 1 && (
               <button onClick={startRace} className="start-race-button">
-                🏁 Start Race ({activeEntries.length})
+                🏁 Start Drop ({activeEntries.length})
               </button>
             )}
 
             {eliminatedIds.length > 0 && (
               <button onClick={resetRace} className="reset-race-button">
-                🔄 Reset Race
+                🔄 Reset Drop
               </button>
             )}
           </div>
@@ -246,111 +216,8 @@ function App() {
             onShowFinalStandings={() => setShowFinalStandings(true)}
             isRacing={showRace}
             currentWinner={winner}
-            mode={racingMode}
+            mode="plinko"
           />
-
-          <div className="mode-toggle" role="radiogroup" aria-label="Racing mode">
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="car"
-                checked={racingMode === 'car'}
-                onChange={() => setRacingMode('car')}
-              />
-              <span>🧗 Climbers</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="boat"
-                checked={racingMode === 'boat'}
-                onChange={() => setRacingMode('boat')}
-              />
-              <span>🐒 Monkeys</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="plane"
-                checked={racingMode === 'plane'}
-                onChange={() => setRacingMode('plane')}
-              />
-              <span>🦎 Lizards</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="balloon"
-                checked={racingMode === 'balloon'}
-                onChange={() => setRacingMode('balloon')}
-              />
-              <span>🎈 Balloons</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="rocket"
-                checked={racingMode === 'rocket'}
-                onChange={() => setRacingMode('rocket')}
-              />
-              <span>🚀 Rockets</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="duck"
-                checked={racingMode === 'duck'}
-                onChange={() => setRacingMode('duck')}
-              />
-              <span>🦆 Ducks</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="snail"
-                checked={racingMode === 'snail'}
-                onChange={() => setRacingMode('snail')}
-              />
-              <span>🐌 Snails</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="cat"
-                checked={racingMode === 'cat'}
-                onChange={() => setRacingMode('cat')}
-              />
-              <span>🐱 Cats</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="dog"
-                checked={racingMode === 'dog'}
-                onChange={() => setRacingMode('dog')}
-              />
-              <span>🐶 Dogs</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="mixed"
-                checked={racingMode === 'mixed'}
-                onChange={() => setRacingMode('mixed')}
-              />
-              <span>🎲 Mixed</span>
-            </label>
-          </div>
 
           {showFinalStandings && (
             <FinalStandingsDialog
