@@ -94,16 +94,25 @@ export const RacingGame: React.FC<Props> = ({
       return;
     }
 
+    // Shuffle entries to randomize starting positions
+    const shuffledEntries = [...entries];
+    for (let i = shuffledEntries.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffledEntries[i], shuffledEntries[j]] = [shuffledEntries[j], shuffledEntries[i]];
+    }
+
     const playWidth = CANVAS_WIDTH - LEFT_MARGIN - RIGHT_MARGIN;
-    const newPlayers: Player[] = entries.map((entry, index) => {
-      const spacing = playWidth / (entries.length + 1);
+    const newPlayers: Player[] = shuffledEntries.map((entry, index) => {
+      const spacing = playWidth / (shuffledEntries.length + 1);
+      // Find original index for consistent color assignment
+      const originalIndex = entries.findIndex(e => e.id === entry.id);
       return {
         entry,
         x: LEFT_MARGIN + spacing * (index + 1),
         y: 50,
         vx: 0,
         vy: 0,
-        color: generateColor(index, entries.length),
+        color: generateColor(originalIndex, entries.length),
         finished: false,
         rotation: 0
       };
@@ -115,17 +124,26 @@ export const RacingGame: React.FC<Props> = ({
   // Start race when isRacing becomes true
   useEffect(() => {
     if (isRacing && players.length > 0) {
-      // Reset player positions
+      // Shuffle entries to randomize starting positions
+      const shuffledEntries = [...entries];
+      for (let i = shuffledEntries.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledEntries[i], shuffledEntries[j]] = [shuffledEntries[j], shuffledEntries[i]];
+      }
+
+      // Reset player positions with shuffled order
       const playWidth = CANVAS_WIDTH - LEFT_MARGIN - RIGHT_MARGIN;
-      const resetPlayers: Player[] = entries.map((entry, index) => {
-        const spacing = playWidth / (entries.length + 1);
+      const resetPlayers: Player[] = shuffledEntries.map((entry, index) => {
+        const spacing = playWidth / (shuffledEntries.length + 1);
+        // Find original index for consistent color assignment
+        const originalIndex = entries.findIndex(e => e.id === entry.id);
         return {
           entry,
           x: LEFT_MARGIN + spacing * (index + 1),
           y: 50,
           vx: 0,
           vy: 0,
-          color: generateColor(index, entries.length),
+          color: generateColor(originalIndex, entries.length),
           finished: false,
           rotation: 0
         };
