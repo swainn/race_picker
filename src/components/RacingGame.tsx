@@ -34,7 +34,7 @@ interface Props {
 
 const CANVAS_WIDTH = 400;
 const CANVAS_HEIGHT = 600;
-const GRAVITY = 400; // pixels per second squared
+const GRAVITY = 700; // pixels per second squared
 const BOUNCE_DAMPING = 0.7;
 const HORIZONTAL_DAMPING = 0.98;
 const PLAYER_RADIUS = 12;
@@ -60,9 +60,9 @@ export const RacingGame: React.FC<Props> = ({
   // Generate Plinko pegs in a staggered grid pattern
   useEffect(() => {
     const generatedPegs: Peg[] = [];
-    const rows = 10;
-    const startY = 100;
-    const endY = 500;
+    const rows = 5;
+    const startY = 150;
+    const endY = 450;
     const rowSpacing = (endY - startY) / (rows - 1);
     
     // Define play area with margins
@@ -189,19 +189,28 @@ export const RacingGame: React.FC<Props> = ({
             const distance = Math.sqrt(dx * dx + dy * dy);
             const minDist = PLAYER_RADIUS + peg.radius;
 
-            if (distance < minDist) {
+            if (distance < minDist && distance > 0.1) {
               // Collision! Bounce off the peg
               const angle = Math.atan2(dy, dx);
               const overlap = minDist - distance;
               
-              // Push player out of peg
-              x += Math.cos(angle) * overlap;
-              y += Math.sin(angle) * overlap;
+              // Push player out of peg with a bit extra to prevent sticking
+              x += Math.cos(angle) * (overlap + 1);
+              y += Math.sin(angle) * (overlap + 1);
 
               // Calculate bounce velocity
               const speed = Math.sqrt(vx * vx + vy * vy);
               vx = Math.cos(angle) * speed * BOUNCE_DAMPING;
               vy = Math.sin(angle) * speed * BOUNCE_DAMPING;
+
+              // Add random horizontal impulse to break symmetry and prevent sticking
+              const randomImpulse = (Math.random() - 0.5) * 100;
+              vx += randomImpulse * deltaTime;
+              
+              // Ensure minimum downward velocity to prevent getting stuck on top
+              if (Math.abs(vy) < 50) {
+                vy += 50 * Math.sign(vy || 1);
+              }
 
               // Add some rotation for visual effect
               rotation += (Math.random() - 0.5) * 0.5;
@@ -217,6 +226,80 @@ export const RacingGame: React.FC<Props> = ({
             vx = -Math.abs(vx) * BOUNCE_DAMPING;
           }
 
+          return {
+            ...player,
+            x,
+            y,
+            vx,
+            vy,
+            rotation,
+            finished: false
+          };
+        });
+
+        // Handle ball-to-ball collisions
+        for (let i = 0; i < updated.length; i++) {
+          for (let j = i + 1; j < updated.length; j++) {
+            const ballA = updated[i];
+            const ballB = updated[j];
+            
+            // Skip if either ball has finished
+            if (ballA.finished || ballB.finished) continue;
+            
+            const dx = ballB.x - ballA.x;
+            const dy = ballB.y - ballA.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const minDist = PLAYER_RADIUS * 2;
+            
+            if (distance < minDist && distance > 0.1) {
+              // Collision detected!
+              const angle = Math.atan2(dy, dx);
+              const overlap = minDist - distance;
+              
+              // Separate the balls
+              const separationX = Math.cos(angle) * (overlap / 2 + 0.5);
+              const separationY = Math.sin(angle) * (overlap / 2 + 0.5);
+              
+              ballA.x -= separationX;
+              ballA.y -= separationY;
+              ballB.x += separationX;
+              ballB.y += separationY;
+              
+              // Calculate relative velocity
+              const dvx = ballB.vx - ballA.vx;
+              const dvy = ballB.vy - ballA.vy;
+              
+              // Calculate relative velocity in collision normal direction
+              const dvn = dvx * Math.cos(angle) + dvy * Math.sin(angle);
+              
+              // Do not resolve if velocities are separating
+              if (dvn > 0) continue;
+              
+              // Calculate impulse scalar (elastic collision)
+              const impulse = dvn * BOUNCE_DAMPING;
+              
+              // Apply impulse to both balls
+              const impulseX = impulse * Math.cos(angle);
+              const impulseY = impulse * Math.sin(angle);
+              
+              ballA.vx += impulseX;
+              ballA.vy += impulseY;
+              ballB.vx -= impulseX;
+              ballB.vy -= impulseY;
+              
+              // Add rotation for visual effect
+              ballA.rotation += (Math.random() - 0.5) * 0.3;
+              ballB.rotation += (Math.random() - 0.5) * 0.3;
+            }
+          }
+        }
+
+        // Check finish and stuck detection
+        const finalUpdated = updated.map((player) => {
+          if (player.finished) return player;
+
+          let { x, y, vx, vy, rotation } = player;
+
           // Check if reached bottom
           const finishY = CANVAS_HEIGHT - 30;
           const isFinished = y >= finishY;
@@ -224,6 +307,16 @@ export const RacingGame: React.FC<Props> = ({
             y = finishY;
             vy = 0;
             vx = 0;
+          }
+
+          // Detect stuck balls and give them a nudge
+          if (!isFinished && y > 100) { // Only check after they've dropped a bit
+            const totalSpeed = Math.sqrt(vx * vx + vy * vy);
+            if (totalSpeed < 30) { // Ball is moving very slowly, likely stuck
+              // Give a random horizontal nudge and ensure downward movement
+              vx += (Math.random() - 0.5) * 80;
+              vy = Math.max(vy, 100); // Ensure it's moving down
+            }
           }
 
           return {
@@ -239,7 +332,7 @@ export const RacingGame: React.FC<Props> = ({
 
         // Check if anyone finished
         if (!finished) {
-          const finisher = updated.find((p) => p.finished);
+          const finisher = finalUpdated.find((p) => p.finished);
           if (finisher) {
             finished = true;
             setRaceState('finished');
@@ -247,7 +340,7 @@ export const RacingGame: React.FC<Props> = ({
           }
         }
 
-        return updated;
+        return finalUpdated;
       });
 
       if (!finished) {
