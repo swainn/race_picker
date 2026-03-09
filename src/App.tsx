@@ -70,6 +70,14 @@ function App() {
     setShowRace(false);
   };
 
+  const handleAllDestroyed = () => {
+    // All balls were destroyed by fire walls - show dialog but don't eliminate anyone
+    setWinner('🔥 All Destroyed! 🔥');
+    // Stop the race to show dialog
+    setShowRace(false);
+    // Note: We don't add anyone to eliminatedIds, so everyone races again
+  };
+
   const handleRaceComplete = () => {
     // This is called when user clicks "Next Race" button
     setWinner(null);
@@ -213,6 +221,7 @@ function App() {
             winOrder={winOrder}
             onWinner={handleWinner}
             onRaceComplete={handleRaceComplete}
+            onAllDestroyed={handleAllDestroyed}
             onShowFinalStandings={() => setShowFinalStandings(true)}
             isRacing={showRace}
             currentWinner={winner}

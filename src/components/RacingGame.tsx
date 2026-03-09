@@ -11,12 +11,24 @@ interface Player {
   color: string;
   finished: boolean;
   rotation: number;
+  isOnFire: boolean;
 }
 
 interface Peg {
   x: number;
   y: number;
   radius: number;
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
 }
 
 interface Props {
@@ -27,6 +39,7 @@ interface Props {
   onWinner: (winner: Entry) => void;
   onRaceComplete: () => void;
   onShowFinalStandings?: () => void;
+  onAllDestroyed?: () => void;
   isRacing: boolean;
   currentWinner: string | null;
   mode: string; // Not used in Plinko but kept for compatibility
@@ -47,6 +60,7 @@ export const RacingGame: React.FC<Props> = ({
   onWinner, 
   onRaceComplete, 
   onShowFinalStandings, 
+  onAllDestroyed,
   isRacing, 
   currentWinner 
 }) => {
@@ -56,6 +70,12 @@ export const RacingGame: React.FC<Props> = ({
   const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
   const animationRef = useRef<number | undefined>(undefined);
   const lastFrameTimeRef = useRef<number>(0);
+  const [wallFireParticles, setWallFireParticles] = useState<Particle[]>([]);
+  const [explosionParticles, setExplosionParticles] = useState<Particle[]>([]);
+  const wallFireParticlesRef = useRef<Particle[]>([]);
+  const explosionParticlesRef = useRef<Particle[]>([]);
+  const playerFireParticlesRef = useRef<Particle[]>([]);
+  const [fireWallsEnabled, setFireWallsEnabled] = useState<boolean>(false);
 
   // Generate Plinko pegs in a staggered grid pattern
   useEffect(() => {
@@ -114,7 +134,8 @@ export const RacingGame: React.FC<Props> = ({
         vy: 0,
         color: generateColor(originalIndex, entries.length),
         finished: false,
-        rotation: 0
+        rotation: 0,
+        isOnFire: false
       };
     });
 
@@ -123,12 +144,27 @@ export const RacingGame: React.FC<Props> = ({
 
   // Start race when isRacing becomes true
   useEffect(() => {
-    if (isRacing && players.length > 0) {
+    if (isRacing && entries.length > 0) {
+      // Randomly enable fire walls (50% chance)
+      setFireWallsEnabled(Math.random() < 0.5);
+      
+      // Clear particles from previous race
+      wallFireParticlesRef.current = [];
+      explosionParticlesRef.current = [];
+      playerFireParticlesRef.current = [];
+      
       // Shuffle entries to randomize starting positions
       const shuffledEntries = [...entries];
       for (let i = shuffledEntries.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffledEntries[i], shuffledEntries[j]] = [shuffledEntries[j], shuffledEntries[i]];
+      }
+
+      // Randomly select 2 or 3 balls to be on fire
+      const numFireBalls = Math.min(shuffledEntries.length, Math.random() < 0.5 ? 2 : 3);
+      const fireBallIndices = new Set<number>();
+      while (fireBallIndices.size < numFireBalls) {
+        fireBallIndices.add(Math.floor(Math.random() * shuffledEntries.length));
       }
 
       // Reset player positions with shuffled order
@@ -145,7 +181,8 @@ export const RacingGame: React.FC<Props> = ({
           vy: 0,
           color: generateColor(originalIndex, entries.length),
           finished: false,
-          rotation: 0
+          rotation: 0,
+          isOnFire: fireBallIndices.has(index)
         };
       });
       setPlayers(resetPlayers);
@@ -218,12 +255,21 @@ export const RacingGame: React.FC<Props> = ({
           }
 
           // Check walls (with margins matching peg area)
+          let hitWall = false;
           if (x - PLAYER_RADIUS < LEFT_MARGIN) {
-            x = LEFT_MARGIN + PLAYER_RADIUS;
-            vx = Math.abs(vx) * BOUNCE_DAMPING;
+            if (fireWallsEnabled && !player.isOnFire) {
+              hitWall = true;
+            } else {
+              x = LEFT_MARGIN + PLAYER_RADIUS;
+              vx = Math.abs(vx) * BOUNCE_DAMPING;
+            }
           } else if (x + PLAYER_RADIUS > CANVAS_WIDTH - RIGHT_MARGIN) {
-            x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
-            vx = -Math.abs(vx) * BOUNCE_DAMPING;
+            if (fireWallsEnabled && !player.isOnFire) {
+              hitWall = true;
+            } else {
+              x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
+              vx = -Math.abs(vx) * BOUNCE_DAMPING;
+            }
           }
 
           return {
@@ -233,15 +279,42 @@ export const RacingGame: React.FC<Props> = ({
             vx,
             vy,
             rotation,
-            finished: false
+            finished: hitWall ? true : false, // Mark as finished to remove
+            hitWall // Add flag to track wall collision
           };
         });
 
+        // Create explosion particles for balls that hit walls and filter them out
+        const filteredUpdated = updated.filter((player: any) => {
+          if (player.hitWall) {
+            // Create explosion particles
+            const explosionCount = 20;
+            const newExplosions: Particle[] = [];
+            for (let i = 0; i < explosionCount; i++) {
+              const angle = (Math.PI * 2 * i) / explosionCount + (Math.random() - 0.5) * 0.5;
+              const speed = 50 + Math.random() * 100;
+              newExplosions.push({
+                x: player.x,
+                y: player.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 50,
+                life: 1,
+                maxLife: 1,
+                size: 3 + Math.random() * 4,
+                color: ['#ff6b00', '#ff8800', '#ffaa00', '#ff0000'][Math.floor(Math.random() * 4)]
+              });
+            }
+            explosionParticlesRef.current.push(...newExplosions);
+            return false; // Remove ball
+          }
+          return true; // Keep ball
+        });
+
         // Handle ball-to-ball collisions
-        for (let i = 0; i < updated.length; i++) {
-          for (let j = i + 1; j < updated.length; j++) {
-            const ballA = updated[i];
-            const ballB = updated[j];
+        for (let i = 0; i < filteredUpdated.length; i++) {
+          for (let j = i + 1; j < filteredUpdated.length; j++) {
+            const ballA = filteredUpdated[i];
+            const ballB = filteredUpdated[j];
             
             // Skip if either ball has finished
             if (ballA.finished || ballB.finished) continue;
@@ -252,7 +325,20 @@ export const RacingGame: React.FC<Props> = ({
             const minDist = PLAYER_RADIUS * 2;
             
             if (distance < minDist && distance > 0.1) {
-              // Collision detected!
+              // Check if one ball is on fire and the other is not
+              if (ballA.isOnFire && !ballB.isOnFire) {
+                // Ball B gets destroyed by fire ball A
+                ballB.finished = true;
+                ballB.hitWall = true; // Reuse hitWall flag to trigger explosion
+                continue;
+              } else if (ballB.isOnFire && !ballA.isOnFire) {
+                // Ball A gets destroyed by fire ball B
+                ballA.finished = true;
+                ballA.hitWall = true; // Reuse hitWall flag to trigger explosion
+                continue;
+              }
+              
+              // Normal collision (both on fire or both not on fire)
               const angle = Math.atan2(dy, dx);
               const overlap = minDist - distance;
               
@@ -294,8 +380,123 @@ export const RacingGame: React.FC<Props> = ({
           }
         }
 
+        // Filter out balls destroyed by fire balls and create explosions
+        const afterCollisionUpdated = filteredUpdated.filter((player: any) => {
+          if (player.hitWall && player.finished) {
+            // Create explosion particles for ball destroyed by fire ball
+            const explosionCount = 20;
+            const newExplosions: Particle[] = [];
+            for (let i = 0; i < explosionCount; i++) {
+              const angle = (Math.PI * 2 * i) / explosionCount + (Math.random() - 0.5) * 0.5;
+              const speed = 50 + Math.random() * 100;
+              newExplosions.push({
+                x: player.x,
+                y: player.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 50,
+                life: 1,
+                maxLife: 1,
+                size: 3 + Math.random() * 4,
+                color: ['#ff6b00', '#ff8800', '#ffaa00', '#ff0000'][Math.floor(Math.random() * 4)]
+              });
+            }
+            explosionParticlesRef.current.push(...newExplosions);
+            return false; // Remove ball
+          }
+          return true; // Keep ball
+        });
+
+        // Generate fire particles around player balls that are on fire
+        for (const player of afterCollisionUpdated) {
+          if (player.isOnFire && !player.finished) {
+            // Generate fire particles around the ball
+            if (Math.random() < 0.5) { // 50% chance each frame
+              const numParticles = 2;
+              for (let i = 0; i < numParticles; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = PLAYER_RADIUS + Math.random() * 5;
+                playerFireParticlesRef.current.push({
+                  x: player.x + Math.cos(angle) * distance,
+                  y: player.y + Math.sin(angle) * distance,
+                  vx: Math.cos(angle) * (20 + Math.random() * 20) + player.vx * 0.5,
+                  vy: Math.sin(angle) * (20 + Math.random() * 20) + player.vy * 0.5 - 30,
+                  life: 0.3 + Math.random() * 0.4,
+                  maxLife: 0.3 + Math.random() * 0.4,
+                  size: 2 + Math.random() * 3,
+                  color: ['#ff6b00', '#ff8800', '#ffaa00', '#ff0000'][Math.floor(Math.random() * 4)]
+                });
+              }
+            }
+          }
+        }
+
+        // Update player fire particles
+        playerFireParticlesRef.current = playerFireParticlesRef.current
+          .map(p => ({
+            ...p,
+            x: p.x + p.vx * deltaTime,
+            y: p.y + p.vy * deltaTime,
+            vy: p.vy + GRAVITY * deltaTime * 0.2,
+            life: p.life - deltaTime
+          }))
+          .filter(p => p.life > 0);
+
+        // Generate wall fire particles (only if fire walls are enabled)
+        if (fireWallsEnabled && Math.random() < 0.3) { // 30% chance each frame
+          const newFireParticles: Particle[] = [];
+          // Left wall fire
+          for (let i = 0; i < 2; i++) {
+            newFireParticles.push({
+              x: LEFT_MARGIN + Math.random() * 5,
+              y: Math.random() * CANVAS_HEIGHT,
+              vx: -10 - Math.random() * 20,
+              vy: -30 - Math.random() * 50,
+              life: 0.5 + Math.random(),
+              maxLife: 0.5 + Math.random(),
+              size: 3 + Math.random() * 3,
+              color: ['#ff6b00', '#ff8800', '#ffaa00'][Math.floor(Math.random() * 3)]
+            });
+          }
+          // Right wall fire
+          for (let i = 0; i < 2; i++) {
+            newFireParticles.push({
+              x: CANVAS_WIDTH - RIGHT_MARGIN - Math.random() * 5,
+              y: Math.random() * CANVAS_HEIGHT,
+              vx: 10 + Math.random() * 20,
+              vy: -30 - Math.random() * 50,
+              life: 0.5 + Math.random(),
+              maxLife: 0.5 + Math.random(),
+              size: 3 + Math.random() * 3,
+              color: ['#ff6b00', '#ff8800', '#ffaa00'][Math.floor(Math.random() * 3)]
+            });
+          }
+          wallFireParticlesRef.current.push(...newFireParticles);
+        }
+
+        // Update wall fire particles
+        wallFireParticlesRef.current = wallFireParticlesRef.current
+          .map(p => ({
+            ...p,
+            x: p.x + p.vx * deltaTime,
+            y: p.y + p.vy * deltaTime,
+            vy: p.vy + GRAVITY * deltaTime * 0.3, // Light gravity effect
+            life: p.life - deltaTime
+          }))
+          .filter(p => p.life > 0);
+
+        // Update explosion particles
+        explosionParticlesRef.current = explosionParticlesRef.current
+          .map(p => ({
+            ...p,
+            x: p.x + p.vx * deltaTime,
+            y: p.y + p.vy * deltaTime,
+            vy: p.vy + GRAVITY * deltaTime,
+            life: p.life - deltaTime
+          }))
+          .filter(p => p.life > 0);
+
         // Check finish and stuck detection
-        const finalUpdated = updated.map((player) => {
+        const finalUpdated = afterCollisionUpdated.map((player) => {
           if (player.finished) return player;
 
           let { x, y, vx, vy, rotation } = player;
@@ -330,6 +531,15 @@ export const RacingGame: React.FC<Props> = ({
           };
         });
 
+        // Check if all balls were destroyed in fire mode
+        if (!finished && fireWallsEnabled && finalUpdated.length === 0) {
+          finished = true;
+          setRaceState('finished');
+          if (onAllDestroyed) {
+            onAllDestroyed();
+          }
+        }
+
         // Check if anyone finished
         if (!finished) {
           const finisher = finalUpdated.find((p) => p.finished);
@@ -363,12 +573,15 @@ export const RacingGame: React.FC<Props> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear canvas with gradient background
-    const bgGradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-    bgGradient.addColorStop(0, '#1a1a2e');
-    bgGradient.addColorStop(1, '#16213e');
-    ctx.fillStyle = bgGradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    let animId: number;
+    
+    const draw = () => {
+      // Clear canvas with gradient background
+      const bgGradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+      bgGradient.addColorStop(0, '#1a1a2e');
+      bgGradient.addColorStop(1, '#16213e');
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Draw side walls to show play area boundaries
     const wallGradient = ctx.createLinearGradient(0, 0, CANVAS_WIDTH, 0);
@@ -405,6 +618,52 @@ export const RacingGame: React.FC<Props> = ({
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // Draw wall fire particles
+    for (const particle of wallFireParticlesRef.current) {
+      const alpha = particle.life / particle.maxLife;
+      ctx.fillStyle = particle.color.replace(')', `, ${alpha})`).replace('rgb', 'rgba').replace('#', '');
+      // For hex colors, convert properly
+      if (particle.color.startsWith('#')) {
+        const r = parseInt(particle.color.slice(1, 3), 16);
+        const g = parseInt(particle.color.slice(3, 5), 16);
+        const b = parseInt(particle.color.slice(5, 7), 16);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw explosion particles
+    for (const particle of explosionParticlesRef.current) {
+      const alpha = particle.life / particle.maxLife;
+      // Convert hex to rgba
+      if (particle.color.startsWith('#')) {
+        const r = parseInt(particle.color.slice(1, 3), 16);
+        const g = parseInt(particle.color.slice(3, 5), 16);
+        const b = parseInt(particle.color.slice(5, 7), 16);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw player fire particles
+    for (const particle of playerFireParticlesRef.current) {
+      const alpha = particle.life / particle.maxLife;
+      // Convert hex to rgba
+      if (particle.color.startsWith('#')) {
+        const r = parseInt(particle.color.slice(1, 3), 16);
+        const g = parseInt(particle.color.slice(3, 5), 16);
+        const b = parseInt(particle.color.slice(5, 7), 16);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     ctx.fillStyle = '#FFD700';
     ctx.font = 'bold 14px monospace';
     ctx.textAlign = 'center';
@@ -431,14 +690,23 @@ export const RacingGame: React.FC<Props> = ({
       ctx.translate(player.x, player.y);
       ctx.rotate(player.rotation);
       
+      // Add glow effect for fire balls
+      if (player.isOnFire) {
+        ctx.shadowColor = '#ff6b00';
+        ctx.shadowBlur = 15;
+      }
+      
       // Player circle
       ctx.fillStyle = player.color;
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = player.isOnFire ? '#ff8800' : '#fff';
+      ctx.lineWidth = player.isOnFire ? 3 : 2;
       ctx.beginPath();
       ctx.arc(0, 0, PLAYER_RADIUS, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      
+      // Reset shadow
+      ctx.shadowBlur = 0;
 
       // Player initials
       ctx.fillStyle = '#fff';
@@ -455,6 +723,15 @@ export const RacingGame: React.FC<Props> = ({
 
       ctx.restore();
     }
+    
+    animId = requestAnimationFrame(draw);
+    };
+    
+    animId = requestAnimationFrame(draw);
+    
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
   }, [players, pegs]);
 
   return (
