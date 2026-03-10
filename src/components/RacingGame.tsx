@@ -13,6 +13,7 @@ interface Player {
   rotation: number;
   isOnFire: boolean;
   isIce: boolean;
+  isGreen: boolean;
   frozenUntil: number | null;
   iceWallImmuneUntil: number | null;
   resumeVx: number;
@@ -20,7 +21,7 @@ interface Player {
   hitWall?: boolean;
 }
 
-type WallMode = 'none' | 'fire' | 'ice';
+type WallMode = 'none' | 'fire' | 'ice' | 'green';
 
 interface Peg {
   x: number;
@@ -65,6 +66,7 @@ const RIGHT_MARGIN = 40;
 const FROZEN_DURATION_MS = 1000;
 const ICE_WALL_FREEZE_MS = 500;
 const ICE_WALL_IMMUNE_MS = 1000;
+const MAX_BALL_COUNT = 40;
 
 export const RacingGame: React.FC<Props> = ({ 
   entries, 
@@ -83,6 +85,7 @@ export const RacingGame: React.FC<Props> = ({
   const lastFrameTimeRef = useRef<number>(0);
   const wallFireParticlesRef = useRef<Particle[]>([]);
   const wallIceParticlesRef = useRef<Particle[]>([]);
+  const wallGreenParticlesRef = useRef<Particle[]>([]);
   const explosionParticlesRef = useRef<Particle[]>([]);
   const playerFireParticlesRef = useRef<Particle[]>([]);
   const playerIceParticlesRef = useRef<Particle[]>([]);
@@ -148,6 +151,7 @@ export const RacingGame: React.FC<Props> = ({
         rotation: 0,
         isOnFire: false,
         isIce: false,
+        isGreen: false,
         frozenUntil: null,
         iceWallImmuneUntil: null,
         resumeVx: 0,
@@ -163,11 +167,12 @@ export const RacingGame: React.FC<Props> = ({
     if (isRacing && entries.length > 0) {
       // Randomly choose wall behavior for this run.
       const wallRoll = Math.random();
-      wallModeRef.current = wallRoll < 0.33 ? 'fire' : wallRoll < 0.66 ? 'ice' : 'none';
+      wallModeRef.current = wallRoll < 0.25 ? 'fire' : wallRoll < 0.5 ? 'ice' : wallRoll < 0.75 ? 'green' : 'none';
       
       // Clear particles from previous race
       wallFireParticlesRef.current = [];
       wallIceParticlesRef.current = [];
+      wallGreenParticlesRef.current = [];
       explosionParticlesRef.current = [];
       playerFireParticlesRef.current = [];
       playerIceParticlesRef.current = [];
@@ -198,6 +203,18 @@ export const RacingGame: React.FC<Props> = ({
         }
       }
 
+      // 50% chance to include a single green ball this run (cannot overlap with fire/ice balls)
+      const availableGreenIndices = Array.from({ length: shuffledEntries.length }, (_, i) => i)
+        .filter(i => !fireBallIndices.has(i) && !iceBallIndices.has(i));
+      const numGreenBalls = availableGreenIndices.length > 0 && Math.random() < 0.5 ? 1 : 0;
+      const greenBallIndices = new Set<number>();
+      while (greenBallIndices.size < numGreenBalls) {
+        const randomIndex = availableGreenIndices[Math.floor(Math.random() * availableGreenIndices.length)];
+        if (randomIndex !== undefined) {
+          greenBallIndices.add(randomIndex);
+        }
+      }
+
       // Reset player positions with shuffled order
       const playWidth = CANVAS_WIDTH - LEFT_MARGIN - RIGHT_MARGIN;
       const resetPlayers: Player[] = shuffledEntries.map((entry, index) => {
@@ -215,6 +232,7 @@ export const RacingGame: React.FC<Props> = ({
           rotation: 0,
           isOnFire: fireBallIndices.has(index),
           isIce: iceBallIndices.has(index),
+          isGreen: greenBallIndices.has(index),
           frozenUntil: null,
           iceWallImmuneUntil: null,
           resumeVx: 0,
@@ -244,6 +262,7 @@ export const RacingGame: React.FC<Props> = ({
         let nextWallMode: WallMode | null = null;
         const fireWallsAreActive = wallModeRef.current === 'fire';
         const iceWallsAreActive = wallModeRef.current === 'ice';
+        const greenWallsAreActive = wallModeRef.current === 'green';
 
         const updated = prevPlayers.map((player) => {
           if (player.finished) return player;
@@ -324,6 +343,8 @@ export const RacingGame: React.FC<Props> = ({
               vx = Math.abs(vx) * BOUNCE_DAMPING;
               if (player.isOnFire) {
                 nextWallMode = 'none';
+              } else if (player.isGreen) {
+                hitWall = true;
               } else if (!player.isIce && (iceWallImmuneUntil === null || now >= iceWallImmuneUntil) && frozenUntil === null) {
                 resumeVx = vx;
                 resumeVy = vy;
@@ -332,6 +353,14 @@ export const RacingGame: React.FC<Props> = ({
                 frozenUntil = now + ICE_WALL_FREEZE_MS;
                 iceWallImmuneUntil = now + ICE_WALL_FREEZE_MS + ICE_WALL_IMMUNE_MS;
               }
+            } else if (greenWallsAreActive) {
+              x = LEFT_MARGIN + PLAYER_RADIUS;
+              vx = Math.abs(vx) * BOUNCE_DAMPING;
+              if (player.isOnFire || player.isIce) {
+                nextWallMode = 'none';
+              } else if (!player.isGreen) {
+                player.isGreen = true;
+              }
             } else {
               x = LEFT_MARGIN + PLAYER_RADIUS;
               vx = Math.abs(vx) * BOUNCE_DAMPING;
@@ -339,6 +368,8 @@ export const RacingGame: React.FC<Props> = ({
                 nextWallMode = 'fire';
               } else if (player.isIce) {
                 nextWallMode = 'ice';
+              } else if (player.isGreen) {
+                nextWallMode = 'green';
               }
             }
           } else if (x + PLAYER_RADIUS > CANVAS_WIDTH - RIGHT_MARGIN) {
@@ -353,6 +384,8 @@ export const RacingGame: React.FC<Props> = ({
               vx = -Math.abs(vx) * BOUNCE_DAMPING;
               if (player.isOnFire) {
                 nextWallMode = 'none';
+              } else if (player.isGreen) {
+                hitWall = true;
               } else if (!player.isIce && (iceWallImmuneUntil === null || now >= iceWallImmuneUntil) && frozenUntil === null) {
                 resumeVx = vx;
                 resumeVy = vy;
@@ -361,6 +394,14 @@ export const RacingGame: React.FC<Props> = ({
                 frozenUntil = now + ICE_WALL_FREEZE_MS;
                 iceWallImmuneUntil = now + ICE_WALL_FREEZE_MS + ICE_WALL_IMMUNE_MS;
               }
+            } else if (greenWallsAreActive) {
+              x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
+              vx = -Math.abs(vx) * BOUNCE_DAMPING;
+              if (player.isOnFire || player.isIce) {
+                nextWallMode = 'none';
+              } else if (!player.isGreen) {
+                player.isGreen = true;
+              }
             } else {
               x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
               vx = -Math.abs(vx) * BOUNCE_DAMPING;
@@ -368,6 +409,8 @@ export const RacingGame: React.FC<Props> = ({
                 nextWallMode = 'fire';
               } else if (player.isIce) {
                 nextWallMode = 'ice';
+              } else if (player.isGreen) {
+                nextWallMode = 'green';
               }
             }
           }
@@ -395,6 +438,9 @@ export const RacingGame: React.FC<Props> = ({
           }
           if (nextWallMode !== 'ice') {
             wallIceParticlesRef.current = [];
+          }
+          if (nextWallMode !== 'green') {
+            wallGreenParticlesRef.current = [];
           }
         }
 
@@ -425,6 +471,7 @@ export const RacingGame: React.FC<Props> = ({
         });
 
         // Handle ball-to-ball collisions
+        const spawnedGreenClones: Player[] = [];
         for (let i = 0; i < filteredUpdated.length; i++) {
           for (let j = i + 1; j < filteredUpdated.length; j++) {
             const ballA = filteredUpdated[i];
@@ -439,6 +486,18 @@ export const RacingGame: React.FC<Props> = ({
             const minDist = PLAYER_RADIUS * 2;
             
             if (distance < minDist && distance > 0.1) {
+              // Fire and ice balls destroy green balls on contact.
+              if (ballA.isGreen && (ballB.isOnFire || ballB.isIce)) {
+                ballA.finished = true;
+                ballA.hitWall = true;
+                continue;
+              }
+              if (ballB.isGreen && (ballA.isOnFire || ballA.isIce)) {
+                ballB.finished = true;
+                ballB.hitWall = true;
+                continue;
+              }
+
               // Ice balls should phase through currently frozen balls.
               if ((ballA.isIce && ballB.frozenUntil !== null) || (ballB.isIce && ballA.frozenUntil !== null)) {
                 continue;
@@ -468,6 +527,38 @@ export const RacingGame: React.FC<Props> = ({
               } else if (ballB.isIce && !ballA.isIce && !ballA.isOnFire) {
                 freezeBall(ballA);
               }
+
+              // Green balls duplicate when colliding with other balls.
+              const trySpawnGreenClone = (
+                source: Player,
+                other: Player,
+                normalX: number,
+                normalY: number,
+                direction: 1 | -1
+              ) => {
+                const activeBallCount = filteredUpdated.filter(p => !p.finished).length + spawnedGreenClones.length;
+                if (source.isGreen && !other.isGreen && activeBallCount < MAX_BALL_COUNT) {
+                  spawnedGreenClones.push({
+                    ...source,
+                    x: source.x + normalX * PLAYER_RADIUS * direction,
+                    y: source.y + normalY * PLAYER_RADIUS * direction,
+                    vx: source.vx + normalX * (40 + Math.random() * 40) * direction,
+                    vy: source.vy + normalY * (40 + Math.random() * 40) * direction,
+                    finished: false,
+                    rotation: source.rotation + (Math.random() - 0.5) * 0.4,
+                    frozenUntil: null,
+                    iceWallImmuneUntil: null,
+                    resumeVx: 0,
+                    resumeVy: 0,
+                    hitWall: false
+                  });
+                }
+              };
+
+              const normalX = dx / distance;
+              const normalY = dy / distance;
+              trySpawnGreenClone(ballA, ballB, normalX, normalY, -1);
+              trySpawnGreenClone(ballB, ballA, normalX, normalY, 1);
 
               // Check if one ball is on fire and the other is not
               if (ballA.isOnFire && !ballB.isOnFire) {
@@ -522,6 +613,10 @@ export const RacingGame: React.FC<Props> = ({
               ballB.rotation += (Math.random() - 0.5) * 0.3;
             }
           }
+        }
+
+        if (spawnedGreenClones.length > 0) {
+          filteredUpdated.push(...spawnedGreenClones);
         }
 
         // Filter out balls destroyed by fire balls and create explosions
@@ -679,6 +774,35 @@ export const RacingGame: React.FC<Props> = ({
           wallIceParticlesRef.current.push(...newIceWallParticles);
         }
 
+        if (wallModeRef.current === 'green' && Math.random() < 0.3) {
+          const newGreenWallParticles: Particle[] = [];
+          for (let i = 0; i < 2; i++) {
+            newGreenWallParticles.push({
+              x: LEFT_MARGIN + Math.random() * 5,
+              y: Math.random() * CANVAS_HEIGHT,
+              vx: -6 - Math.random() * 14,
+              vy: -12 - Math.random() * 28,
+              life: 0.45 + Math.random() * 0.7,
+              maxLife: 0.45 + Math.random() * 0.7,
+              size: 2 + Math.random() * 3,
+              color: ['#95f7b5', '#6ee7a0', '#3ecf78'][Math.floor(Math.random() * 3)]
+            });
+          }
+          for (let i = 0; i < 2; i++) {
+            newGreenWallParticles.push({
+              x: CANVAS_WIDTH - RIGHT_MARGIN - Math.random() * 5,
+              y: Math.random() * CANVAS_HEIGHT,
+              vx: 6 + Math.random() * 14,
+              vy: -12 - Math.random() * 28,
+              life: 0.45 + Math.random() * 0.7,
+              maxLife: 0.45 + Math.random() * 0.7,
+              size: 2 + Math.random() * 3,
+              color: ['#95f7b5', '#6ee7a0', '#3ecf78'][Math.floor(Math.random() * 3)]
+            });
+          }
+          wallGreenParticlesRef.current.push(...newGreenWallParticles);
+        }
+
         // Update wall fire particles
         wallFireParticlesRef.current = wallFireParticlesRef.current
           .map(p => ({
@@ -696,6 +820,16 @@ export const RacingGame: React.FC<Props> = ({
             x: p.x + p.vx * deltaTime,
             y: p.y + p.vy * deltaTime,
             vy: p.vy + GRAVITY * deltaTime * 0.12,
+            life: p.life - deltaTime
+          }))
+          .filter(p => p.life > 0);
+
+        wallGreenParticlesRef.current = wallGreenParticlesRef.current
+          .map(p => ({
+            ...p,
+            x: p.x + p.vx * deltaTime,
+            y: p.y + p.vy * deltaTime,
+            vy: p.vy + GRAVITY * deltaTime * 0.1,
             life: p.life - deltaTime
           }))
           .filter(p => p.life > 0);
@@ -795,6 +929,7 @@ export const RacingGame: React.FC<Props> = ({
     const draw = () => {
       const fireWallsAreActive = wallModeRef.current === 'fire';
       const iceWallsAreActive = wallModeRef.current === 'ice';
+      const greenWallsAreActive = wallModeRef.current === 'green';
 
       // Clear canvas with gradient background
       const bgGradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
@@ -815,7 +950,9 @@ export const RacingGame: React.FC<Props> = ({
       ? 'rgba(255, 108, 0, 0.22)'
       : iceWallsAreActive
         ? 'rgba(98, 190, 255, 0.2)'
-        : 'rgba(255, 255, 255, 0.1)';
+        : greenWallsAreActive
+          ? 'rgba(62, 207, 120, 0.2)'
+          : 'rgba(255, 255, 255, 0.1)';
     ctx.fillRect(0, 0, LEFT_MARGIN, CANVAS_HEIGHT);
     
     // Right wall
@@ -826,7 +963,9 @@ export const RacingGame: React.FC<Props> = ({
       ? 'rgba(255, 158, 76, 0.7)'
       : iceWallsAreActive
         ? 'rgba(146, 216, 255, 0.75)'
-        : 'rgba(255, 255, 255, 0.3)';
+        : greenWallsAreActive
+          ? 'rgba(129, 239, 172, 0.78)'
+          : 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(LEFT_MARGIN, 0);
@@ -864,6 +1003,20 @@ export const RacingGame: React.FC<Props> = ({
 
     // Draw wall ice particles
     for (const particle of wallIceParticlesRef.current) {
+      const alpha = particle.life / particle.maxLife;
+      if (particle.color.startsWith('#')) {
+        const r = parseInt(particle.color.slice(1, 3), 16);
+        const g = parseInt(particle.color.slice(3, 5), 16);
+        const b = parseInt(particle.color.slice(5, 7), 16);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw wall green particles
+    for (const particle of wallGreenParticlesRef.current) {
       const alpha = particle.life / particle.maxLife;
       if (particle.color.startsWith('#')) {
         const r = parseInt(particle.color.slice(1, 3), 16);
@@ -953,12 +1106,15 @@ export const RacingGame: React.FC<Props> = ({
       } else if (player.isIce) {
         ctx.shadowColor = '#67b8ff';
         ctx.shadowBlur = 14;
+      } else if (player.isGreen) {
+        ctx.shadowColor = '#2ecc71';
+        ctx.shadowBlur = 14;
       }
       
       // Player circle
-      ctx.fillStyle = player.color;
-      ctx.strokeStyle = player.isOnFire ? '#ff8800' : player.isIce ? '#6fc9ff' : '#fff';
-      ctx.lineWidth = player.isOnFire || player.isIce ? 3 : 2;
+      ctx.fillStyle = player.isGreen ? '#2ecc71' : player.color;
+      ctx.strokeStyle = player.isOnFire ? '#ff8800' : player.isIce ? '#6fc9ff' : player.isGreen ? '#7ff1ae' : '#fff';
+      ctx.lineWidth = player.isOnFire || player.isIce || player.isGreen ? 3 : 2;
       ctx.beginPath();
       ctx.arc(0, 0, PLAYER_RADIUS, 0, Math.PI * 2);
       ctx.fill();
