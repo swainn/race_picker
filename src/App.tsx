@@ -14,6 +14,11 @@ interface Group {
   timestamp: number;
 }
 
+interface RaceSnapshot {
+  eliminatedIds: number[];
+  winOrderEntries: [number, number][];
+}
+
 // Load initial state from localStorage
 function loadFromStorage<T>(key: string, defaultValue: T): T {
   try {
@@ -34,9 +39,9 @@ function App() {
   const [resetKey, setResetKey] = useState(0);
   const [showFinalStandings, setShowFinalStandings] = useState(false);
   const [groups, setGroups] = useState<Group[]>(() => loadFromStorage(GROUPS_STORAGE_KEY, []));
-  const [showGroupManager, setShowGroupManager] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [showManagementModal, setShowManagementModal] = useState(false);
+  const [lastRaceSnapshot, setLastRaceSnapshot] = useState<RaceSnapshot | null>(null);
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
@@ -93,6 +98,11 @@ function App() {
     
     // Automatically start the next race
     if (activeEntries.length >= 2) {
+      setLastRaceSnapshot({
+        eliminatedIds: [...eliminatedIds],
+        winOrderEntries: Array.from(winOrder.entries())
+      });
+      setResetKey((prev) => prev + 1);
       setShowRace(true);
     }
   };
@@ -113,7 +123,26 @@ function App() {
       return;
     }
     
+    setLastRaceSnapshot({
+      eliminatedIds: [...eliminatedIds],
+      winOrderEntries: Array.from(winOrder.entries())
+    });
+    setResetKey((prev) => prev + 1);
     setWinner(null);
+    setShowRace(true);
+  };
+
+  const redoLastRace = () => {
+    if (!lastRaceSnapshot) {
+      alert('No race to redo yet. Start a race first.');
+      return;
+    }
+
+    setEliminatedIds([...lastRaceSnapshot.eliminatedIds]);
+    setWinOrder(new Map(lastRaceSnapshot.winOrderEntries));
+    setWinner(null);
+    setShowFinalStandings(false);
+    setResetKey((prev) => prev + 1);
     setShowRace(true);
   };
 
@@ -124,6 +153,7 @@ function App() {
     setWinner(null);
     setShowRace(false);
     setShowFinalStandings(false);
+    setLastRaceSnapshot(null);
     setResetKey((prev) => prev + 1); // Force track to reset
   };
 
@@ -135,6 +165,7 @@ function App() {
       setWinner(null);
       setShowRace(false);
       setShowFinalStandings(false);
+      setLastRaceSnapshot(null);
     }
   };
 
@@ -169,7 +200,7 @@ function App() {
       setWinner(null);
       setShowRace(false);
       setShowFinalStandings(false);
-      setShowGroupManager(false);
+      setLastRaceSnapshot(null);
     }
   };
 
@@ -209,6 +240,12 @@ function App() {
             {eliminatedIds.length > 0 && (
               <button onClick={resetRace} className="reset-race-button">
                 🔄 Reset Drop
+              </button>
+            )}
+
+            {lastRaceSnapshot && (
+              <button onClick={redoLastRace} className="redo-race-button">
+                ↻ Redo Last Race
               </button>
             )}
           </div>

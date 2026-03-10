@@ -175,6 +175,23 @@
   box-shadow: 0 4px 12px rgba(211, 47, 47, 0.4);
 }
 
+.redo-race-button {
+  padding: 12px 20px;
+  font-size: 16px;
+  font-weight: bold;
+  background: linear-gradient(135deg, #f39c12 0%, #d68910 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.redo-race-button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(243, 156, 18, 0.4);
+}
+
 .reset-button {
   padding: 10px 16px;
   background-color: #d32f2f;
