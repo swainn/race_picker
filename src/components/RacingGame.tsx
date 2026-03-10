@@ -14,10 +14,13 @@ interface Player {
   isOnFire: boolean;
   isIce: boolean;
   frozenUntil: number | null;
+  iceWallImmuneUntil: number | null;
   resumeVx: number;
   resumeVy: number;
   hitWall?: boolean;
 }
+
+type WallMode = 'none' | 'fire' | 'ice';
 
 interface Peg {
   x: number;
@@ -60,7 +63,8 @@ const PEG_RADIUS = 5;
 const LEFT_MARGIN = 40;
 const RIGHT_MARGIN = 40;
 const FROZEN_DURATION_MS = 1000;
-const FIRE_WALL_DISABLE_MS = 500;
+const ICE_WALL_FREEZE_MS = 500;
+const ICE_WALL_IMMUNE_MS = 1000;
 
 export const RacingGame: React.FC<Props> = ({ 
   entries, 
@@ -78,11 +82,11 @@ export const RacingGame: React.FC<Props> = ({
   const animationRef = useRef<number | undefined>(undefined);
   const lastFrameTimeRef = useRef<number>(0);
   const wallFireParticlesRef = useRef<Particle[]>([]);
+  const wallIceParticlesRef = useRef<Particle[]>([]);
   const explosionParticlesRef = useRef<Particle[]>([]);
   const playerFireParticlesRef = useRef<Particle[]>([]);
   const playerIceParticlesRef = useRef<Particle[]>([]);
-  const fireWallsEnabledRef = useRef<boolean>(false);
-  const fireWallsDisabledUntilRef = useRef<number | null>(null);
+  const wallModeRef = useRef<WallMode>('none');
 
   // Generate Plinko pegs in a staggered grid pattern
   useEffect(() => {
@@ -145,6 +149,7 @@ export const RacingGame: React.FC<Props> = ({
         isOnFire: false,
         isIce: false,
         frozenUntil: null,
+        iceWallImmuneUntil: null,
         resumeVx: 0,
         resumeVy: 0
       };
@@ -156,13 +161,13 @@ export const RacingGame: React.FC<Props> = ({
   // Start race when isRacing becomes true
   useEffect(() => {
     if (isRacing && entries.length > 0) {
-      // Randomly enable fire walls (50% chance)
-      const shouldEnableFireWalls = Math.random() < 0.5;
-      fireWallsEnabledRef.current = shouldEnableFireWalls;
-      fireWallsDisabledUntilRef.current = null;
+      // Randomly choose wall behavior for this run.
+      const wallRoll = Math.random();
+      wallModeRef.current = wallRoll < 0.33 ? 'fire' : wallRoll < 0.66 ? 'ice' : 'none';
       
       // Clear particles from previous race
       wallFireParticlesRef.current = [];
+      wallIceParticlesRef.current = [];
       explosionParticlesRef.current = [];
       playerFireParticlesRef.current = [];
       playerIceParticlesRef.current = [];
@@ -174,21 +179,17 @@ export const RacingGame: React.FC<Props> = ({
         [shuffledEntries[i], shuffledEntries[j]] = [shuffledEntries[j], shuffledEntries[i]];
       }
 
-      // Randomly select 2 or 3 balls to be on fire
-      const numFireBalls = Math.min(shuffledEntries.length, Math.random() < 0.5 ? 2 : 3);
+      // 50% chance to include a single fire ball this run
+      const numFireBalls = shuffledEntries.length > 0 && Math.random() < 0.5 ? 1 : 0;
       const fireBallIndices = new Set<number>();
       while (fireBallIndices.size < numFireBalls) {
         fireBallIndices.add(Math.floor(Math.random() * shuffledEntries.length));
       }
 
-      // Randomly select 2 or 3 balls to be ice balls (cannot overlap with fire balls)
+      // 50% chance to include a single ice ball this run (cannot overlap with fire ball)
       const availableIceIndices = Array.from({ length: shuffledEntries.length }, (_, i) => i)
         .filter(i => !fireBallIndices.has(i));
-      const maxIceBalls = Math.min(availableIceIndices.length, 3);
-      const minIceBalls = Math.min(availableIceIndices.length, 2);
-      const numIceBalls = maxIceBalls > 0
-        ? Math.min(maxIceBalls, minIceBalls + (Math.random() < 0.5 ? 0 : 1))
-        : 0;
+      const numIceBalls = availableIceIndices.length > 0 && Math.random() < 0.5 ? 1 : 0;
       const iceBallIndices = new Set<number>();
       while (iceBallIndices.size < numIceBalls) {
         const randomIndex = availableIceIndices[Math.floor(Math.random() * availableIceIndices.length)];
@@ -215,6 +216,7 @@ export const RacingGame: React.FC<Props> = ({
           isOnFire: fireBallIndices.has(index),
           isIce: iceBallIndices.has(index),
           frozenUntil: null,
+          iceWallImmuneUntil: null,
           resumeVx: 0,
           resumeVy: 0
         };
@@ -239,16 +241,15 @@ export const RacingGame: React.FC<Props> = ({
       lastFrameTimeRef.current = now;
 
       setPlayers((prevPlayers) => {
-        let triggerFireWallDisableUntil: number | null = null;
-        const fireWallsAreActive =
-          fireWallsEnabledRef.current &&
-          (fireWallsDisabledUntilRef.current === null || now >= fireWallsDisabledUntilRef.current);
+        let nextWallMode: WallMode | null = null;
+        const fireWallsAreActive = wallModeRef.current === 'fire';
+        const iceWallsAreActive = wallModeRef.current === 'ice';
 
         const updated = prevPlayers.map((player) => {
           if (player.finished) return player;
 
           // Apply gravity
-          let { x, y, vx, vy, rotation, frozenUntil, resumeVx, resumeVy } = player;
+          let { x, y, vx, vy, rotation, frozenUntil, iceWallImmuneUntil, resumeVx, resumeVy } = player;
 
           if (frozenUntil !== null) {
             if (now < frozenUntil) {
@@ -313,25 +314,61 @@ export const RacingGame: React.FC<Props> = ({
           let hitWall = false;
           if (x - PLAYER_RADIUS < LEFT_MARGIN) {
             if (fireWallsAreActive && player.isIce) {
-              triggerFireWallDisableUntil = now + FIRE_WALL_DISABLE_MS;
+              nextWallMode = 'none';
               x = LEFT_MARGIN + PLAYER_RADIUS;
               vx = Math.abs(vx) * BOUNCE_DAMPING;
             } else if (fireWallsAreActive && !player.isOnFire) {
               hitWall = true;
+            } else if (iceWallsAreActive) {
+              x = LEFT_MARGIN + PLAYER_RADIUS;
+              vx = Math.abs(vx) * BOUNCE_DAMPING;
+              if (player.isOnFire) {
+                nextWallMode = 'none';
+              } else if (!player.isIce && (iceWallImmuneUntil === null || now >= iceWallImmuneUntil) && frozenUntil === null) {
+                resumeVx = vx;
+                resumeVy = vy;
+                vx = 0;
+                vy = 0;
+                frozenUntil = now + ICE_WALL_FREEZE_MS;
+                iceWallImmuneUntil = now + ICE_WALL_FREEZE_MS + ICE_WALL_IMMUNE_MS;
+              }
             } else {
               x = LEFT_MARGIN + PLAYER_RADIUS;
               vx = Math.abs(vx) * BOUNCE_DAMPING;
+              if (player.isOnFire) {
+                nextWallMode = 'fire';
+              } else if (player.isIce) {
+                nextWallMode = 'ice';
+              }
             }
           } else if (x + PLAYER_RADIUS > CANVAS_WIDTH - RIGHT_MARGIN) {
             if (fireWallsAreActive && player.isIce) {
-              triggerFireWallDisableUntil = now + FIRE_WALL_DISABLE_MS;
+              nextWallMode = 'none';
               x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
               vx = -Math.abs(vx) * BOUNCE_DAMPING;
             } else if (fireWallsAreActive && !player.isOnFire) {
               hitWall = true;
+            } else if (iceWallsAreActive) {
+              x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
+              vx = -Math.abs(vx) * BOUNCE_DAMPING;
+              if (player.isOnFire) {
+                nextWallMode = 'none';
+              } else if (!player.isIce && (iceWallImmuneUntil === null || now >= iceWallImmuneUntil) && frozenUntil === null) {
+                resumeVx = vx;
+                resumeVy = vy;
+                vx = 0;
+                vy = 0;
+                frozenUntil = now + ICE_WALL_FREEZE_MS;
+                iceWallImmuneUntil = now + ICE_WALL_FREEZE_MS + ICE_WALL_IMMUNE_MS;
+              }
             } else {
               x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
               vx = -Math.abs(vx) * BOUNCE_DAMPING;
+              if (player.isOnFire) {
+                nextWallMode = 'fire';
+              } else if (player.isIce) {
+                nextWallMode = 'ice';
+              }
             }
           }
 
@@ -343,6 +380,7 @@ export const RacingGame: React.FC<Props> = ({
             vy,
             rotation,
             frozenUntil,
+            iceWallImmuneUntil,
             resumeVx,
             resumeVy,
             finished: hitWall ? true : false, // Mark as finished to remove
@@ -350,9 +388,14 @@ export const RacingGame: React.FC<Props> = ({
           };
         });
 
-        if (triggerFireWallDisableUntil !== null) {
-          fireWallsDisabledUntilRef.current = triggerFireWallDisableUntil;
-          wallFireParticlesRef.current = [];
+        if (nextWallMode !== null && nextWallMode !== wallModeRef.current) {
+          wallModeRef.current = nextWallMode;
+          if (nextWallMode !== 'fire') {
+            wallFireParticlesRef.current = [];
+          }
+          if (nextWallMode !== 'ice') {
+            wallIceParticlesRef.current = [];
+          }
         }
 
         // Create explosion particles for balls that hit walls and filter them out
@@ -575,9 +618,7 @@ export const RacingGame: React.FC<Props> = ({
           .filter(p => p.life > 0);
 
         // Generate wall fire particles (only if fire walls are enabled)
-        const fireWallsAreActiveForParticles =
-          fireWallsEnabledRef.current &&
-          (fireWallsDisabledUntilRef.current === null || now >= fireWallsDisabledUntilRef.current);
+        const fireWallsAreActiveForParticles = wallModeRef.current === 'fire';
         if (fireWallsAreActiveForParticles && Math.random() < 0.3) { // 30% chance each frame
           const newFireParticles: Particle[] = [];
           // Left wall fire
@@ -609,6 +650,35 @@ export const RacingGame: React.FC<Props> = ({
           wallFireParticlesRef.current.push(...newFireParticles);
         }
 
+        if (wallModeRef.current === 'ice' && Math.random() < 0.3) {
+          const newIceWallParticles: Particle[] = [];
+          for (let i = 0; i < 2; i++) {
+            newIceWallParticles.push({
+              x: LEFT_MARGIN + Math.random() * 5,
+              y: Math.random() * CANVAS_HEIGHT,
+              vx: -6 - Math.random() * 14,
+              vy: -10 - Math.random() * 30,
+              life: 0.45 + Math.random() * 0.6,
+              maxLife: 0.45 + Math.random() * 0.6,
+              size: 2 + Math.random() * 3,
+              color: ['#bde9ff', '#8fd3ff', '#64b9ff'][Math.floor(Math.random() * 3)]
+            });
+          }
+          for (let i = 0; i < 2; i++) {
+            newIceWallParticles.push({
+              x: CANVAS_WIDTH - RIGHT_MARGIN - Math.random() * 5,
+              y: Math.random() * CANVAS_HEIGHT,
+              vx: 6 + Math.random() * 14,
+              vy: -10 - Math.random() * 30,
+              life: 0.45 + Math.random() * 0.6,
+              maxLife: 0.45 + Math.random() * 0.6,
+              size: 2 + Math.random() * 3,
+              color: ['#bde9ff', '#8fd3ff', '#64b9ff'][Math.floor(Math.random() * 3)]
+            });
+          }
+          wallIceParticlesRef.current.push(...newIceWallParticles);
+        }
+
         // Update wall fire particles
         wallFireParticlesRef.current = wallFireParticlesRef.current
           .map(p => ({
@@ -616,6 +686,16 @@ export const RacingGame: React.FC<Props> = ({
             x: p.x + p.vx * deltaTime,
             y: p.y + p.vy * deltaTime,
             vy: p.vy + GRAVITY * deltaTime * 0.3, // Light gravity effect
+            life: p.life - deltaTime
+          }))
+          .filter(p => p.life > 0);
+
+        wallIceParticlesRef.current = wallIceParticlesRef.current
+          .map(p => ({
+            ...p,
+            x: p.x + p.vx * deltaTime,
+            y: p.y + p.vy * deltaTime,
+            vy: p.vy + GRAVITY * deltaTime * 0.12,
             life: p.life - deltaTime
           }))
           .filter(p => p.life > 0);
@@ -668,9 +748,7 @@ export const RacingGame: React.FC<Props> = ({
         });
 
         // Check if all balls were destroyed in fire mode
-        const fireWallsAreActiveForFinish =
-          fireWallsEnabledRef.current &&
-          (fireWallsDisabledUntilRef.current === null || now >= fireWallsDisabledUntilRef.current);
+        const fireWallsAreActiveForFinish = wallModeRef.current === 'fire';
         if (!finished && fireWallsAreActiveForFinish && finalUpdated.length === 0) {
           finished = true;
           setRaceState('finished');
@@ -715,6 +793,9 @@ export const RacingGame: React.FC<Props> = ({
     let animId: number;
     
     const draw = () => {
+      const fireWallsAreActive = wallModeRef.current === 'fire';
+      const iceWallsAreActive = wallModeRef.current === 'ice';
+
       // Clear canvas with gradient background
       const bgGradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
       bgGradient.addColorStop(0, '#1a1a2e');
@@ -730,14 +811,22 @@ export const RacingGame: React.FC<Props> = ({
     wallGradient.addColorStop(1, 'rgba(255, 255, 255, 0.1)');
     
     // Left wall
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fillStyle = fireWallsAreActive
+      ? 'rgba(255, 108, 0, 0.22)'
+      : iceWallsAreActive
+        ? 'rgba(98, 190, 255, 0.2)'
+        : 'rgba(255, 255, 255, 0.1)';
     ctx.fillRect(0, 0, LEFT_MARGIN, CANVAS_HEIGHT);
     
     // Right wall
     ctx.fillRect(CANVAS_WIDTH - RIGHT_MARGIN, 0, RIGHT_MARGIN, CANVAS_HEIGHT);
     
     // Draw wall borders
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.strokeStyle = fireWallsAreActive
+      ? 'rgba(255, 158, 76, 0.7)'
+      : iceWallsAreActive
+        ? 'rgba(146, 216, 255, 0.75)'
+        : 'rgba(255, 255, 255, 0.3)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(LEFT_MARGIN, 0);
@@ -762,6 +851,20 @@ export const RacingGame: React.FC<Props> = ({
       const alpha = particle.life / particle.maxLife;
       ctx.fillStyle = particle.color.replace(')', `, ${alpha})`).replace('rgb', 'rgba').replace('#', '');
       // For hex colors, convert properly
+      if (particle.color.startsWith('#')) {
+        const r = parseInt(particle.color.slice(1, 3), 16);
+        const g = parseInt(particle.color.slice(3, 5), 16);
+        const b = parseInt(particle.color.slice(5, 7), 16);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw wall ice particles
+    for (const particle of wallIceParticlesRef.current) {
+      const alpha = particle.life / particle.maxLife;
       if (particle.color.startsWith('#')) {
         const r = parseInt(particle.color.slice(1, 3), 16);
         const g = parseInt(particle.color.slice(3, 5), 16);
