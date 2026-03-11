@@ -16,6 +16,7 @@ interface Player {
   isGreen: boolean;
   frozenUntil: number | null;
   iceWallImmuneUntil: number | null;
+  nextDuplicateAt: number;
   resumeVx: number;
   resumeVy: number;
   hitWall?: boolean;
@@ -67,6 +68,7 @@ const FROZEN_DURATION_MS = 1000;
 const ICE_WALL_FREEZE_MS = 500;
 const ICE_WALL_IMMUNE_MS = 1000;
 const MAX_BALL_COUNT = 40;
+const GREEN_DUPLICATE_COOLDOWN_MS = 70;
 
 export const RacingGame: React.FC<Props> = ({ 
   entries, 
@@ -154,6 +156,7 @@ export const RacingGame: React.FC<Props> = ({
         isGreen: false,
         frozenUntil: null,
         iceWallImmuneUntil: null,
+        nextDuplicateAt: 0,
         resumeVx: 0,
         resumeVy: 0
       };
@@ -235,6 +238,7 @@ export const RacingGame: React.FC<Props> = ({
           isGreen: greenBallIndices.has(index),
           frozenUntil: null,
           iceWallImmuneUntil: null,
+          nextDuplicateAt: 0,
           resumeVx: 0,
           resumeVy: 0
         };
@@ -472,6 +476,7 @@ export const RacingGame: React.FC<Props> = ({
 
         // Handle ball-to-ball collisions
         const spawnedGreenClones: Player[] = [];
+        const duplicatedThisTick = new Set<Player>();
         for (let i = 0; i < filteredUpdated.length; i++) {
           for (let j = i + 1; j < filteredUpdated.length; j++) {
             const ballA = filteredUpdated[i];
@@ -537,7 +542,15 @@ export const RacingGame: React.FC<Props> = ({
                 direction: 1 | -1
               ) => {
                 const activeBallCount = filteredUpdated.filter(p => !p.finished).length + spawnedGreenClones.length;
-                if (source.isGreen && !other.isGreen && activeBallCount < MAX_BALL_COUNT) {
+                if (
+                  source.isGreen &&
+                  !other.isGreen &&
+                  activeBallCount < MAX_BALL_COUNT &&
+                  now >= source.nextDuplicateAt &&
+                  !duplicatedThisTick.has(source)
+                ) {
+                  source.nextDuplicateAt = now + GREEN_DUPLICATE_COOLDOWN_MS;
+                  duplicatedThisTick.add(source);
                   spawnedGreenClones.push({
                     ...source,
                     x: source.x + normalX * PLAYER_RADIUS * direction,
@@ -548,6 +561,7 @@ export const RacingGame: React.FC<Props> = ({
                     rotation: source.rotation + (Math.random() - 0.5) * 0.4,
                     frozenUntil: null,
                     iceWallImmuneUntil: null,
+                    nextDuplicateAt: now + GREEN_DUPLICATE_COOLDOWN_MS,
                     resumeVx: 0,
                     resumeVy: 0,
                     hitWall: false
