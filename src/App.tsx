@@ -17,6 +17,51 @@ interface Group {
 interface RaceSnapshot {
   eliminatedIds: number[];
   winOrderEntries: [number, number][];
+  standingImageEntries: [number, string][];
+}
+
+interface WinnerDisplay {
+  name: string;
+  imageDataUrl?: string;
+}
+
+function normalizeEntry(entry: Entry): Entry {
+  const imageDataUrls = Array.isArray(entry.imageDataUrls)
+    ? entry.imageDataUrls.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : [];
+
+  if (imageDataUrls.length > 0) {
+    return {
+      id: entry.id,
+      name: entry.name,
+      imageDataUrls
+    };
+  }
+
+  return {
+    id: entry.id,
+    name: entry.name,
+    imageDataUrls: entry.imageDataUrl ? [entry.imageDataUrl] : []
+  };
+}
+
+function normalizeEntries(entries: Entry[]): Entry[] {
+  return entries.map(normalizeEntry);
+}
+
+function normalizeGroups(groups: Group[]): Group[] {
+  return groups.map((group) => ({
+    ...group,
+    entries: normalizeEntries(group.entries)
+  }));
+}
+
+function getEntryImages(entry: Entry): string[] {
+  return entry.imageDataUrls ?? (entry.imageDataUrl ? [entry.imageDataUrl] : []);
+}
+
+function getPreferredEntryImage(entry: Entry): string | undefined {
+  return getEntryImages(entry)[0];
 }
 
 // Load initial state from localStorage
@@ -31,17 +76,18 @@ function loadFromStorage<T>(key: string, defaultValue: T): T {
 }
 
 function App() {
-  const [entries, setEntries] = useState<Entry[]>(() => loadFromStorage(STORAGE_KEY, []));
+  const [entries, setEntries] = useState<Entry[]>(() => normalizeEntries(loadFromStorage(STORAGE_KEY, [])));
   const [eliminatedIds, setEliminatedIds] = useState<number[]>([]);
   const [winOrder, setWinOrder] = useState<Map<number, number>>(new Map());
-  const [winner, setWinner] = useState<string | null>(null);
+  const [winner, setWinner] = useState<WinnerDisplay | null>(null);
   const [showRace, setShowRace] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const [showFinalStandings, setShowFinalStandings] = useState(false);
-  const [groups, setGroups] = useState<Group[]>(() => loadFromStorage(GROUPS_STORAGE_KEY, []));
+  const [groups, setGroups] = useState<Group[]>(() => normalizeGroups(loadFromStorage(GROUPS_STORAGE_KEY, [])));
   const [groupNameInput, setGroupNameInput] = useState('');
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [lastRaceSnapshot, setLastRaceSnapshot] = useState<RaceSnapshot | null>(null);
+  const [standingImages, setStandingImages] = useState<Map<number, string>>(new Map());
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
@@ -49,35 +95,52 @@ function App() {
   }, [entries]);
 
   const handleEntriesChange = (newEntries: Entry[]) => {
-    setEntries(newEntries);
+    const normalizedEntries = normalizeEntries(newEntries);
+    setEntries(normalizedEntries);
     // Clean up eliminated IDs if entries are removed from the list
-    setEliminatedIds((prev) => prev.filter((id) => newEntries.some((e) => e.id === id)));
+    setEliminatedIds((prev) => prev.filter((id) => normalizedEntries.some((e) => e.id === id)));
     // Clean up win order
     setWinOrder((prev) => {
       const newMap = new Map(prev);
       newMap.forEach((_, id) => {
-        if (!newEntries.some((e) => e.id === id)) {
+        if (!normalizedEntries.some((e) => e.id === id)) {
           newMap.delete(id);
         }
       });
       return newMap;
     });
+    setStandingImages((prev) => {
+      const nextMap = new Map(prev);
+      nextMap.forEach((_, id) => {
+        if (!normalizedEntries.some((entry) => entry.id === id)) {
+          nextMap.delete(id);
+        }
+      });
+      return nextMap;
+    });
     // Reset track view when entries change
     setResetKey((prev) => prev + 1);
   };
 
-  const handleWinner = (winnerEntry: Entry) => {
-    setWinner(winnerEntry.name);
+  const handleWinner = (winnerEntry: Entry, selectedImageDataUrl?: string) => {
+    const winnerImage = selectedImageDataUrl ?? getPreferredEntryImage(winnerEntry);
+    setWinner({
+      name: winnerEntry.name,
+      imageDataUrl: winnerImage
+    });
     // Add winner to eliminated list and track order
     setEliminatedIds((prev) => [...prev, winnerEntry.id]);
     setWinOrder((prev) => new Map(prev).set(winnerEntry.id, prev.size + 1));
+    if (winnerImage) {
+      setStandingImages((prev) => new Map(prev).set(winnerEntry.id, winnerImage));
+    }
     // Stop the race to show winner dialog
     setShowRace(false);
   };
 
   const handleAllDestroyed = () => {
     // All balls were destroyed by fire walls - show dialog but don't eliminate anyone
-    setWinner('🔥 All Destroyed! 🔥');
+    setWinner({ name: '🔥 All Destroyed! 🔥' });
     // Stop the race to show dialog
     setShowRace(false);
     // Note: We don't add anyone to eliminatedIds, so everyone races again
@@ -100,7 +163,8 @@ function App() {
     if (activeEntries.length >= 2) {
       setLastRaceSnapshot({
         eliminatedIds: [...eliminatedIds],
-        winOrderEntries: Array.from(winOrder.entries())
+        winOrderEntries: Array.from(winOrder.entries()),
+        standingImageEntries: Array.from(standingImages.entries())
       });
       setResetKey((prev) => prev + 1);
       setShowRace(true);
@@ -125,7 +189,8 @@ function App() {
     
     setLastRaceSnapshot({
       eliminatedIds: [...eliminatedIds],
-      winOrderEntries: Array.from(winOrder.entries())
+      winOrderEntries: Array.from(winOrder.entries()),
+      standingImageEntries: Array.from(standingImages.entries())
     });
     setResetKey((prev) => prev + 1);
     setWinner(null);
@@ -140,6 +205,7 @@ function App() {
 
     setEliminatedIds([...lastRaceSnapshot.eliminatedIds]);
     setWinOrder(new Map(lastRaceSnapshot.winOrderEntries));
+    setStandingImages(new Map(lastRaceSnapshot.standingImageEntries));
     setWinner(null);
     setShowFinalStandings(false);
     setResetKey((prev) => prev + 1);
@@ -151,6 +217,7 @@ function App() {
     setEliminatedIds([]);
     setWinOrder(new Map());
     setWinner(null);
+    setStandingImages(new Map());
     setShowRace(false);
     setShowFinalStandings(false);
     setLastRaceSnapshot(null);
@@ -163,6 +230,7 @@ function App() {
       setEliminatedIds([]);
       setWinOrder(new Map());
       setWinner(null);
+      setStandingImages(new Map());
       setShowRace(false);
       setShowFinalStandings(false);
       setLastRaceSnapshot(null);
@@ -180,7 +248,7 @@ function App() {
     const newGroup: Group = {
       id: Date.now(),
       name: groupName,
-      entries: [...entries],
+      entries: normalizeEntries(entries),
       timestamp: Date.now()
     };
     
@@ -194,10 +262,11 @@ function App() {
   const loadGroup = (groupId: number) => {
     const group = groups.find(g => g.id === groupId);
     if (group) {
-      setEntries(group.entries);
+      setEntries(normalizeEntries(group.entries));
       setEliminatedIds([]);
       setWinOrder(new Map());
       setWinner(null);
+      setStandingImages(new Map());
       setShowRace(false);
       setShowFinalStandings(false);
       setLastRaceSnapshot(null);
@@ -261,7 +330,8 @@ function App() {
             onAllDestroyed={handleAllDestroyed}
             onShowFinalStandings={() => setShowFinalStandings(true)}
             isRacing={showRace}
-            currentWinner={winner}
+            currentWinner={winner?.name ?? null}
+            currentWinnerImage={winner?.imageDataUrl}
             mode="plinko"
           />
 
@@ -269,6 +339,7 @@ function App() {
             <FinalStandingsDialog
               entries={entries}
               winOrder={winOrder}
+              standingImages={standingImages}
               onClose={() => setShowFinalStandings(false)}
             />
           )}
@@ -429,10 +500,11 @@ function ManagementDialog({
 interface FinalStandingsProps {
   entries: Entry[];
   winOrder: Map<number, number>;
+  standingImages: Map<number, string>;
   onClose: () => void;
 }
 
-function FinalStandingsDialog({ entries, winOrder, onClose }: FinalStandingsProps) {
+function FinalStandingsDialog({ entries, winOrder, standingImages, onClose }: FinalStandingsProps) {
   // Sort entries by their win order
   const standings = entries
     .filter((e) => winOrder.has(e.id))
@@ -463,6 +535,15 @@ function FinalStandingsDialog({ entries, winOrder, onClose }: FinalStandingsProp
             {standings.map((entry, idx) => (
               <div key={entry.id} className="standing-entry">
                 <span className="standing-rank">{getOrdinal(idx + 1)}</span>
+                <div className="standing-avatar" aria-hidden="true">
+                  {standingImages.get(entry.id) ? (
+                    <img src={standingImages.get(entry.id)} alt="" className="standing-avatar-image" />
+                  ) : getPreferredEntryImage(entry) ? (
+                    <img src={getPreferredEntryImage(entry)} alt="" className="standing-avatar-image" />
+                  ) : (
+                    <span>{entry.name.charAt(0).toUpperCase()}</span>
+                  )}
+                </div>
                 <span className="standing-name">{entry.name}</span>
               </div>
             ))}

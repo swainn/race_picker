@@ -4,6 +4,7 @@ import './RacingGame.css';
 
 interface Player {
   entry: Entry;
+  selectedImageDataUrl?: string;
   x: number;
   y: number;
   vx: number;
@@ -46,12 +47,13 @@ interface Props {
   allEntries: Entry[];
   eliminatedIds: number[];
   winOrder: Map<number, number>;
-  onWinner: (winner: Entry) => void;
+  onWinner: (winner: Entry, selectedImageDataUrl?: string) => void;
   onRaceComplete: () => void;
   onShowFinalStandings?: () => void;
   onAllDestroyed?: () => void;
   isRacing: boolean;
   currentWinner: string | null;
+  currentWinnerImage?: string;
   mode: string; // Not used in Plinko but kept for compatibility
 }
 
@@ -77,7 +79,8 @@ export const RacingGame: React.FC<Props> = ({
   onShowFinalStandings, 
   onAllDestroyed,
   isRacing, 
-  currentWinner 
+  currentWinner,
+  currentWinnerImage
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -92,6 +95,29 @@ export const RacingGame: React.FC<Props> = ({
   const playerFireParticlesRef = useRef<Particle[]>([]);
   const playerIceParticlesRef = useRef<Particle[]>([]);
   const wallModeRef = useRef<WallMode>('none');
+  const playerImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const pendingWinnerRef = useRef<Player | null>(null);
+  const pendingAllDestroyedRef = useRef(false);
+
+  useEffect(() => {
+    const nextImageUrls = new Set(entries.flatMap((entry) => getEntryImages(entry)));
+
+    playerImagesRef.current.forEach((_, imageUrl) => {
+      if (!nextImageUrls.has(imageUrl)) {
+        playerImagesRef.current.delete(imageUrl);
+      }
+    });
+
+    for (const imageUrl of nextImageUrls) {
+      if (playerImagesRef.current.has(imageUrl)) {
+        continue;
+      }
+
+      const image = new Image();
+      image.src = imageUrl;
+      playerImagesRef.current.set(imageUrl, image);
+    }
+  }, [entries]);
 
   // Generate Plinko pegs in a staggered grid pattern
   useEffect(() => {
@@ -144,6 +170,7 @@ export const RacingGame: React.FC<Props> = ({
       const originalIndex = entries.findIndex(e => e.id === entry.id);
       return {
         entry,
+        selectedImageDataUrl: pickRaceImage(entry),
         x: LEFT_MARGIN + spacing * (index + 1),
         y: 50,
         vx: 0,
@@ -226,6 +253,7 @@ export const RacingGame: React.FC<Props> = ({
         const originalIndex = entries.findIndex(e => e.id === entry.id);
         return {
           entry,
+          selectedImageDataUrl: pickRaceImage(entry),
           x: LEFT_MARGIN + spacing * (index + 1),
           y: 50,
           vx: 0,
@@ -899,10 +927,7 @@ export const RacingGame: React.FC<Props> = ({
         const fireWallsAreActiveForFinish = wallModeRef.current === 'fire';
         if (!finished && fireWallsAreActiveForFinish && finalUpdated.length === 0) {
           finished = true;
-          setRaceState('finished');
-          if (onAllDestroyed) {
-            onAllDestroyed();
-          }
+          pendingAllDestroyedRef.current = true;
         }
 
         // Check if anyone finished
@@ -910,13 +935,29 @@ export const RacingGame: React.FC<Props> = ({
           const finisher = finalUpdated.find((p) => p.finished);
           if (finisher) {
             finished = true;
-            setRaceState('finished');
-            onWinner(finisher.entry);
+            pendingWinnerRef.current = finisher;
           }
         }
 
         return finalUpdated;
       });
+
+      // Call setRaceState and callbacks OUTSIDE the setPlayers updater so React
+      // batches them with the parent's state changes (onWinner/onAllDestroyed).
+      // This prevents the brief window where isRacing=false but raceState is still
+      // 'racing', which would re-initialize players and flash images off the balls.
+      if (pendingAllDestroyedRef.current) {
+        pendingAllDestroyedRef.current = false;
+        setRaceState('finished');
+        if (onAllDestroyed) {
+          onAllDestroyed();
+        }
+      } else if (pendingWinnerRef.current) {
+        const winner = pendingWinnerRef.current;
+        pendingWinnerRef.current = null;
+        setRaceState('finished');
+        onWinner(winner.entry, winner.selectedImageDataUrl);
+      }
 
       if (!finished) {
         animationRef.current = requestAnimationFrame(animate);
@@ -1132,6 +1173,33 @@ export const RacingGame: React.FC<Props> = ({
       ctx.beginPath();
       ctx.arc(0, 0, PLAYER_RADIUS, 0, Math.PI * 2);
       ctx.fill();
+
+      const cachedImage = player.selectedImageDataUrl
+        ? playerImagesRef.current.get(player.selectedImageDataUrl)
+        : undefined;
+      if (cachedImage && cachedImage.complete && cachedImage.naturalWidth > 0 && cachedImage.naturalHeight > 0) {
+        const sourceSize = Math.min(cachedImage.naturalWidth, cachedImage.naturalHeight);
+        const sx = (cachedImage.naturalWidth - sourceSize) / 2;
+        const sy = (cachedImage.naturalHeight - sourceSize) / 2;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(0, 0, PLAYER_RADIUS - 1.5, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(
+          cachedImage,
+          sx,
+          sy,
+          sourceSize,
+          sourceSize,
+          -PLAYER_RADIUS,
+          -PLAYER_RADIUS,
+          PLAYER_RADIUS * 2,
+          PLAYER_RADIUS * 2
+        );
+        ctx.restore();
+      }
+
       ctx.stroke();
 
       if (player.frozenUntil !== null) {
@@ -1145,18 +1213,19 @@ export const RacingGame: React.FC<Props> = ({
       // Reset shadow
       ctx.shadowBlur = 0;
 
-      // Player initials
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 10px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const initials = player.entry.name
-        .split(' ')
-        .map(word => word[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2);
-      ctx.fillText(initials, 0, 0);
+      if (!cachedImage || !cachedImage.complete || cachedImage.naturalWidth === 0 || cachedImage.naturalHeight === 0) {
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const initials = player.entry.name
+          .split(' ')
+          .map(word => word[0])
+          .join('')
+          .toUpperCase()
+          .slice(0, 2);
+        ctx.fillText(initials, 0, 0);
+      }
 
       ctx.restore();
     }
@@ -1179,6 +1248,11 @@ export const RacingGame: React.FC<Props> = ({
         <div className="winner-display">
           <div className="winner-banner">
             <h2>🏆 WINNER 🏆</h2>
+            {currentWinnerImage && (
+              <div className="winner-avatar" aria-hidden="true">
+                <img src={currentWinnerImage} alt="" className="winner-avatar-image" />
+              </div>
+            )}
             <p className="winner-name">{currentWinner}</p>
             {entries.length === 0 ? (
               <button onClick={onShowFinalStandings} className="final-standings-btn">
@@ -1206,4 +1280,17 @@ function generateColor(index: number, _total: number): string {
     '#F50057', '#651FFF',
   ];
   return colors[index % colors.length];
+}
+
+function getEntryImages(entry: Entry): string[] {
+  return entry.imageDataUrls ?? (entry.imageDataUrl ? [entry.imageDataUrl] : []);
+}
+
+function pickRaceImage(entry: Entry): string | undefined {
+  const images = getEntryImages(entry);
+  if (images.length === 0) {
+    return undefined;
+  }
+
+  return images[Math.floor(Math.random() * images.length)];
 }
