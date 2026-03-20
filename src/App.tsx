@@ -6,6 +6,7 @@ import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
 const GROUPS_STORAGE_KEY = 'gamified_picker_groups';
+const IMAGE_CACHE_KEY = 'gamified_picker_image_cache';
 
 interface Group {
   id: number;
@@ -23,6 +24,7 @@ interface RaceSnapshot {
 interface WinnerDisplay {
   name: string;
   imageDataUrl?: string;
+  allImages?: string[];
 }
 
 function normalizeEntry(entry: Entry): Entry {
@@ -88,11 +90,21 @@ function App() {
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [lastRaceSnapshot, setLastRaceSnapshot] = useState<RaceSnapshot | null>(null);
   const [standingImages, setStandingImages] = useState<Map<number, string>>(new Map());
+  const [imageCache, setImageCache] = useState<Map<number, string[]>>(() => {
+    const cached = loadFromStorage<Record<string, string[]>>(IMAGE_CACHE_KEY, {});
+    return new Map(Object.entries(cached).map(([key, val]) => [Number(key), val]));
+  });
 
   // Save entries to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   }, [entries]);
+
+  // Save image cache to localStorage whenever it changes
+  useEffect(() => {
+    const cacheObj = Object.fromEntries(imageCache);
+    localStorage.setItem(IMAGE_CACHE_KEY, JSON.stringify(cacheObj));
+  }, [imageCache]);
 
   const handleEntriesChange = (newEntries: Entry[]) => {
     const normalizedEntries = normalizeEntries(newEntries);
@@ -118,15 +130,34 @@ function App() {
       });
       return nextMap;
     });
+    // Update image cache with images from normalized entries and clean up deleted entries
+    setImageCache((prev) => {
+      const nextCache = new Map(prev);
+      normalizedEntries.forEach((entry) => {
+        const images = getEntryImages(entry);
+        if (images.length > 0) {
+          nextCache.set(entry.id, images);
+        }
+      });
+      // Remove cache entries for deleted participants
+      prev.forEach((_, id) => {
+        if (!normalizedEntries.some((e) => e.id === id)) {
+          nextCache.delete(id);
+        }
+      });
+      return nextCache;
+    });
     // Reset track view when entries change
     setResetKey((prev) => prev + 1);
   };
 
   const handleWinner = (winnerEntry: Entry, selectedImageDataUrl?: string) => {
     const winnerImage = selectedImageDataUrl ?? getPreferredEntryImage(winnerEntry);
+    const allImages = getEntryImages(winnerEntry);
     setWinner({
       name: winnerEntry.name,
-      imageDataUrl: winnerImage
+      imageDataUrl: winnerImage,
+      allImages: allImages.length > 0 ? allImages : undefined
     });
     // Add winner to eliminated list and track order
     setEliminatedIds((prev) => [...prev, winnerEntry.id]);
@@ -245,10 +276,16 @@ function App() {
     
     const groupName = groupNameInput.trim() || `Group ${new Date().toLocaleDateString()}`;
     
+    // Strip images from entries before storing to reduce localStorage size
+    const entriesWithoutImages: Entry[] = entries.map((entry) => ({
+      id: entry.id,
+      name: entry.name
+    }));
+    
     const newGroup: Group = {
       id: Date.now(),
       name: groupName,
-      entries: normalizeEntries(entries),
+      entries: entriesWithoutImages,
       timestamp: Date.now()
     };
     
@@ -262,7 +299,15 @@ function App() {
   const loadGroup = (groupId: number) => {
     const group = groups.find(g => g.id === groupId);
     if (group) {
-      setEntries(normalizeEntries(group.entries));
+      // Enrich entries with images from imageCache
+      const enrichedEntries = group.entries.map((entry) => {
+        const cachedImages = imageCache.get(entry.id);
+        return {
+          ...entry,
+          imageDataUrls: cachedImages && cachedImages.length > 0 ? cachedImages : undefined
+        };
+      });
+      setEntries(enrichedEntries);
       setEliminatedIds([]);
       setWinOrder(new Map());
       setWinner(null);
@@ -332,6 +377,7 @@ function App() {
             isRacing={showRace}
             currentWinner={winner?.name ?? null}
             currentWinnerImage={winner?.imageDataUrl}
+            currentWinnerImages={winner?.allImages}
             mode="plinko"
           />
 

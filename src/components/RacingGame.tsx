@@ -54,6 +54,7 @@ interface Props {
   isRacing: boolean;
   currentWinner: string | null;
   currentWinnerImage?: string;
+  currentWinnerImages?: string[];
   mode: string; // Not used in Plinko but kept for compatibility
 }
 
@@ -80,7 +81,8 @@ export const RacingGame: React.FC<Props> = ({
   onAllDestroyed,
   isRacing, 
   currentWinner,
-  currentWinnerImage
+  currentWinnerImage,
+  currentWinnerImages
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -1248,11 +1250,19 @@ export const RacingGame: React.FC<Props> = ({
         <div className="winner-display">
           <div className="winner-banner">
             <h2>🏆 WINNER 🏆</h2>
-            {currentWinnerImage && (
+            {currentWinnerImages && currentWinnerImages.length > 0 ? (
+              <div className="winner-images-gallery">
+                {currentWinnerImages.map((image, idx) => (
+                  <div key={idx} className="winner-avatar-small" aria-hidden="true">
+                    <img src={image} alt="" className="winner-avatar-image-small" />
+                  </div>
+                ))}
+              </div>
+            ) : currentWinnerImage ? (
               <div className="winner-avatar" aria-hidden="true">
                 <img src={currentWinnerImage} alt="" className="winner-avatar-image" />
               </div>
-            )}
+            ) : null}
             <p className="winner-name">{currentWinner}</p>
             {entries.length === 0 ? (
               <button onClick={onShowFinalStandings} className="final-standings-btn">
