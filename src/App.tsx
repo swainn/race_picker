@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Entry } from './types';
 import { EntryManager } from './components/EntryManager';
-import { RacingGame } from './components/RacingGame';
+import { BattleArena } from './components/BattleArena';
 import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
@@ -333,7 +333,7 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="header-title">
-            <h1>🎯 Aquaveo Plinko Picker</h1>
+            <h1>⚔️ Aquaveo Battle Bots</h1>
             <p>The Random Selection Tool for Winners!</p>
           </div>
           <button onClick={() => setShowManagementModal(true)} className="header-management-button" aria-label="Manage participants and groups">
@@ -347,24 +347,24 @@ function App() {
           <div className="race-controls">
             {activeEntries.length >= 1 && (
               <button onClick={startRace} className="start-race-button">
-                🏁 Start Drop ({activeEntries.length})
+                ⚔️ Start Battle ({activeEntries.length})
               </button>
             )}
 
             {eliminatedIds.length > 0 && (
               <button onClick={resetRace} className="reset-race-button">
-                🔄 Reset Drop
+                🔄 Reset Battle
               </button>
             )}
 
             {lastRaceSnapshot && (
               <button onClick={redoLastRace} className="redo-race-button">
-                ↻ Redo Last Race
+                ↻ Redo Last Battle
               </button>
             )}
           </div>
 
-          <RacingGame
+          <BattleArena
             key={resetKey}
             entries={activeEntries}
             allEntries={entries}
@@ -378,7 +378,6 @@ function App() {
             currentWinner={winner?.name ?? null}
             currentWinnerImage={winner?.imageDataUrl}
             currentWinnerImages={winner?.allImages}
-            mode="plinko"
           />
 
           {showFinalStandings && (
