@@ -62,6 +62,15 @@ interface Effect {
   vy: number;
 }
 
+interface Obstacle {
+  x: number;      // center x
+  y: number;      // center y
+  w: number;      // half-width
+  h: number;      // half-height
+  color: string;
+  type: 'wall' | 'pillar' | 'crate';
+}
+
 interface Props {
   entries: Entry[];
   allEntries: Entry[];
@@ -211,6 +220,128 @@ function perimeterPosition(index: number, total: number): { x: number; y: number
   return { x: left, y: bottom - d };
 }
 
+// ─── Obstacle Logic ─────────────────────────────────────────────────────────
+
+const OBSTACLE_TEMPLATES: Array<{ w: number; h: number; type: Obstacle['type']; color: string }> = [
+  { w: 40, h: 8, type: 'wall', color: '#555568' },    // horizontal wall
+  { w: 8, h: 40, type: 'wall', color: '#555568' },    // vertical wall
+  { w: 14, h: 14, type: 'pillar', color: '#6a6a7a' }, // square pillar
+  { w: 20, h: 20, type: 'crate', color: '#7a6a50' },  // crate
+];
+
+function generateObstacles(): Obstacle[] {
+  const count = 3 + Math.floor(Math.random() * 4); // 3-6 obstacles
+  const obstacles: Obstacle[] = [];
+  const centerX = CANVAS_WIDTH / 2;
+  const centerY = CANVAS_HEIGHT / 2;
+
+  for (let i = 0; i < count; i++) {
+    const template = OBSTACLE_TEMPLATES[Math.floor(Math.random() * OBSTACLE_TEMPLATES.length)];
+    // Place in the interior of the arena, avoiding the very center and the perimeter spawn zone
+    let x: number, y: number;
+    let attempts = 0;
+    do {
+      x = ARENA_MARGIN + 30 + Math.random() * (CANVAS_WIDTH - 2 * ARENA_MARGIN - 60);
+      y = ARENA_MARGIN + 30 + Math.random() * (CANVAS_HEIGHT - 2 * ARENA_MARGIN - 60);
+      attempts++;
+    } while (
+      attempts < 20 &&
+      (dist(x, y, centerX, centerY) < 40 || // avoid dead center
+        obstacles.some(o => dist(x, y, o.x, o.y) < 50)) // avoid clustering
+    );
+
+    obstacles.push({
+      x, y,
+      w: template.w / 2,
+      h: template.h / 2,
+      color: template.color,
+      type: template.type,
+    });
+  }
+  return obstacles;
+}
+
+// Check if a circle (bot or projectile) collides with an obstacle's AABB
+function circleRectCollision(
+  cx: number, cy: number, cr: number,
+  ox: number, oy: number, ow: number, oh: number,
+): { hit: boolean; nx: number; ny: number; overlap: number } {
+  const closestX = clamp(cx, ox - ow, ox + ow);
+  const closestY = clamp(cy, oy - oh, oy + oh);
+  const dx = cx - closestX;
+  const dy = cy - closestY;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d < cr && d > 0) {
+    return { hit: true, nx: dx / d, ny: dy / d, overlap: cr - d };
+  }
+  // Handle case where center is inside the rect
+  if (d === 0 && cx >= ox - ow && cx <= ox + ow && cy >= oy - oh && cy <= oy + oh) {
+    return { hit: true, nx: 0, ny: -1, overlap: cr };
+  }
+  return { hit: false, nx: 0, ny: 0, overlap: 0 };
+}
+
+// Check if a line segment from (x1,y1) to (x2,y2) intersects an obstacle AABB
+function lineIntersectsRect(
+  x1: number, y1: number, x2: number, y2: number,
+  ox: number, oy: number, ow: number, oh: number,
+): boolean {
+  const left = ox - ow;
+  const right = ox + ow;
+  const top = oy - oh;
+  const bottom = oy + oh;
+
+  // Cohen-Sutherland-style: check if line segment crosses the rect
+  // Quick reject: both endpoints on the same side
+  if ((x1 < left && x2 < left) || (x1 > right && x2 > right)) return false;
+  if ((y1 < top && y2 < top) || (y1 > bottom && y2 > bottom)) return false;
+
+  // Check if either endpoint is inside
+  if (x1 >= left && x1 <= right && y1 >= top && y1 <= bottom) return true;
+  if (x2 >= left && x2 <= right && y2 >= top && y2 <= bottom) return true;
+
+  // Check intersections with each edge
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+
+  const edges = [
+    { ex: left, ey1: top, ey2: bottom, isVertical: true },
+    { ex: right, ey1: top, ey2: bottom, isVertical: true },
+    { ex: top, ey1: left, ey2: right, isVertical: false },
+    { ex: bottom, ey1: left, ey2: right, isVertical: false },
+  ];
+
+  for (const edge of edges) {
+    if (edge.isVertical) {
+      if (dx === 0) continue;
+      const t = (edge.ex - x1) / dx;
+      if (t >= 0 && t <= 1) {
+        const iy = y1 + t * dy;
+        if (iy >= edge.ey1 && iy <= edge.ey2) return true;
+      }
+    } else {
+      if (dy === 0) continue;
+      const t = (edge.ex - y1) / dy;
+      if (t >= 0 && t <= 1) {
+        const ix = x1 + t * dx;
+        if (ix >= edge.ey1 && ix <= edge.ey2) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// Check line of sight between two points (not blocked by any obstacle)
+function hasLineOfSight(x1: number, y1: number, x2: number, y2: number, obstacles: Obstacle[]): boolean {
+  for (const o of obstacles) {
+    if (lineIntersectsRect(x1, y1, x2, y2, o.x, o.y, o.w, o.h)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // ─── AI Logic ───────────────────────────────────────────────────────────────
 
 function pickTarget(bot: Bot, allBots: Bot[]): number | null {
@@ -224,6 +355,7 @@ function updateBotAI(
   allBots: Bot[],
   projectiles: Projectile[],
   effects: Effect[],
+  obstacles: Obstacle[],
   _dt: number,
   now: number,
   rageMode: boolean,
@@ -248,8 +380,11 @@ function updateBotAI(
   bot.facing = angleBetween(bot.x, bot.y, target.x, target.y);
 
   const inRange = d <= bot.attack.attackRange;
+  // Ranged attacks require line of sight
+  const canSee = bot.attack.range === 'melee' || hasLineOfSight(bot.x, bot.y, target.x, target.y, obstacles);
+  const canAttack = inRange && canSee;
 
-  if (inRange) {
+  if (canAttack) {
     bot.state = 'attacking';
 
     if (now >= bot.attackCooldownUntil) {
@@ -329,6 +464,7 @@ export const BattleArena: React.FC<Props> = ({
   const playerImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const pendingWinnerRef = useRef<Bot | null>(null);
   const nextProjectileIdRef = useRef<number>(0);
+  const obstaclesRef = useRef<Obstacle[]>([]);
   const fightTextRef = useRef<{ opacity: number; scale: number }>({ opacity: 0, scale: 0 });
 
   // Preload images
@@ -381,6 +517,7 @@ export const BattleArena: React.FC<Props> = ({
     botsRef.current = newBots;
     projectilesRef.current = [];
     effectsRef.current = [];
+    obstaclesRef.current = generateObstacles();
   }, [entries, raceState]);
 
   // Start battle when isRacing becomes true
@@ -416,6 +553,7 @@ export const BattleArena: React.FC<Props> = ({
     botsRef.current = newBots;
     projectilesRef.current = [];
     effectsRef.current = [];
+    obstaclesRef.current = generateObstacles();
     nextProjectileIdRef.current = 0;
     fightTextRef.current = { opacity: 1.0, scale: 2.0 };
 
@@ -439,6 +577,7 @@ export const BattleArena: React.FC<Props> = ({
       const bots = botsRef.current;
       const projectiles = projectilesRef.current;
       const effects = effectsRef.current;
+      const obstacles = obstaclesRef.current;
       const rageMode = (now - battleStartTimeRef.current) >= RAGE_TIMER_MS;
 
       // Update FIGHT! text
@@ -449,7 +588,7 @@ export const BattleArena: React.FC<Props> = ({
 
       // Update AI for each living bot
       for (const bot of bots) {
-        updateBotAI(bot, bots, projectiles, effects, dt, now, rageMode, nextProjectileIdRef);
+        updateBotAI(bot, bots, projectiles, effects, obstacles, dt, now, rageMode, nextProjectileIdRef);
       }
 
       // Move bots
@@ -462,6 +601,15 @@ export const BattleArena: React.FC<Props> = ({
         // Clamp to arena
         bot.x = clamp(bot.x, BOT_RADIUS + 5, CANVAS_WIDTH - BOT_RADIUS - 5);
         bot.y = clamp(bot.y, BOT_RADIUS + 5, CANVAS_HEIGHT - BOT_RADIUS - 5);
+
+        // Collide with obstacles
+        for (const o of obstacles) {
+          const col = circleRectCollision(bot.x, bot.y, BOT_RADIUS, o.x, o.y, o.w, o.h);
+          if (col.hit) {
+            bot.x += col.nx * col.overlap;
+            bot.y += col.ny * col.overlap;
+          }
+        }
 
         // Stop when attacking
         if (bot.state === 'attacking') {
@@ -521,6 +669,29 @@ export const BattleArena: React.FC<Props> = ({
               });
             }
             break;
+          }
+        }
+
+        // Check collision with obstacles
+        if (!hit) {
+          for (const o of obstacles) {
+            const col = circleRectCollision(p.x, p.y, p.radius, o.x, o.y, o.w, o.h);
+            if (col.hit) {
+              hit = true;
+              // Spawn impact sparks on obstacle
+              for (let k = 0; k < 3; k++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 20 + Math.random() * 40;
+                effects.push({
+                  x: p.x, y: p.y, type: 'spark',
+                  life: 200, maxLife: 200,
+                  radius: 2, color: p.color,
+                  vx: Math.cos(angle) * speed,
+                  vy: Math.sin(angle) * speed,
+                });
+              }
+              break;
+            }
           }
         }
 
@@ -617,6 +788,7 @@ export const BattleArena: React.FC<Props> = ({
       const bots = botsRef.current;
       const projectiles = projectilesRef.current;
       const effects = effectsRef.current;
+      const obstacles = obstaclesRef.current;
 
       // Clear and draw arena background
       const bgGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
@@ -644,6 +816,47 @@ export const BattleArena: React.FC<Props> = ({
         ctx.moveTo(0, y);
         ctx.lineTo(CANVAS_WIDTH, y);
         ctx.stroke();
+      }
+
+      // Draw obstacles
+      for (const o of obstacles) {
+        ctx.save();
+        ctx.fillStyle = o.color;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.lineWidth = 1;
+
+        if (o.type === 'pillar') {
+          // Round pillar
+          ctx.beginPath();
+          ctx.arc(o.x, o.y, o.w, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          // Highlight
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+          ctx.beginPath();
+          ctx.arc(o.x - o.w * 0.25, o.y - o.w * 0.25, o.w * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Rectangular wall or crate
+          const rx = o.x - o.w;
+          const ry = o.y - o.h;
+          const rw = o.w * 2;
+          const rh = o.h * 2;
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeRect(rx, ry, rw, rh);
+
+          if (o.type === 'crate') {
+            // Cross lines on crate
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+            ctx.beginPath();
+            ctx.moveTo(rx, ry);
+            ctx.lineTo(rx + rw, ry + rh);
+            ctx.moveTo(rx + rw, ry);
+            ctx.lineTo(rx, ry + rh);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
       }
 
       // Draw effects (behind bots)
