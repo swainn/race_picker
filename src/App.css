@@ -491,6 +491,54 @@
   flex: 1;
 }
 
+.standing-details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.standing-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.standing-effect {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #e8e8e8;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.standing-effect.fire {
+  border-color: rgba(255, 183, 124, 0.6);
+  background: rgba(255, 132, 0, 0.25);
+}
+
+.standing-effect.ice {
+  border-color: rgba(184, 230, 255, 0.65);
+  background: rgba(95, 182, 255, 0.25);
+}
+
+.standing-effect.green {
+  border-color: rgba(172, 241, 198, 0.65);
+  background: rgba(62, 207, 120, 0.25);
+}
+
+.standing-effect.lightning {
+  border-color: rgba(255, 241, 171, 0.7);
+  background: rgba(255, 214, 72, 0.27);
+}
+
 .close-standings-button {
   padding: 12px 24px;
   background: linear-gradient(135deg, #236192 0%, #1a4d7a 100%);

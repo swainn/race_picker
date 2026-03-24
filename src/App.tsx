@@ -19,12 +19,21 @@ interface RaceSnapshot {
   eliminatedIds: number[];
   winOrderEntries: [number, number][];
   standingImageEntries: [number, string][];
+  standingEffectEntries: [number, WinnerEffects][];
 }
 
 interface WinnerDisplay {
   name: string;
   imageDataUrl?: string;
   allImages?: string[];
+  effects?: WinnerEffects;
+}
+
+interface WinnerEffects {
+  fire: boolean;
+  ice: boolean;
+  green: boolean;
+  lightning: boolean;
 }
 
 function normalizeEntry(entry: Entry): Entry {
@@ -90,6 +99,7 @@ function App() {
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [lastRaceSnapshot, setLastRaceSnapshot] = useState<RaceSnapshot | null>(null);
   const [standingImages, setStandingImages] = useState<Map<number, string>>(new Map());
+  const [standingEffects, setStandingEffects] = useState<Map<number, WinnerEffects>>(new Map());
   const [imageCache, setImageCache] = useState<Map<number, string[]>>(() => {
     const cached = loadFromStorage<Record<string, string[]>>(IMAGE_CACHE_KEY, {});
     return new Map(Object.entries(cached).map(([key, val]) => [Number(key), val]));
@@ -130,6 +140,15 @@ function App() {
       });
       return nextMap;
     });
+    setStandingEffects((prev) => {
+      const nextMap = new Map(prev);
+      nextMap.forEach((_, id) => {
+        if (!normalizedEntries.some((entry) => entry.id === id)) {
+          nextMap.delete(id);
+        }
+      });
+      return nextMap;
+    });
     // Update image cache with images from normalized entries and clean up deleted entries
     setImageCache((prev) => {
       const nextCache = new Map(prev);
@@ -151,19 +170,23 @@ function App() {
     setResetKey((prev) => prev + 1);
   };
 
-  const handleWinner = (winnerEntry: Entry, selectedImageDataUrl?: string) => {
+  const handleWinner = (winnerEntry: Entry, selectedImageDataUrl?: string, effects?: WinnerEffects) => {
     const winnerImage = selectedImageDataUrl ?? getPreferredEntryImage(winnerEntry);
     const allImages = getEntryImages(winnerEntry);
     setWinner({
       name: winnerEntry.name,
       imageDataUrl: winnerImage,
-      allImages: allImages.length > 0 ? allImages : undefined
+      allImages: allImages.length > 0 ? allImages : undefined,
+      effects
     });
     // Add winner to eliminated list and track order
     setEliminatedIds((prev) => [...prev, winnerEntry.id]);
     setWinOrder((prev) => new Map(prev).set(winnerEntry.id, prev.size + 1));
     if (winnerImage) {
       setStandingImages((prev) => new Map(prev).set(winnerEntry.id, winnerImage));
+    }
+    if (effects) {
+      setStandingEffects((prev) => new Map(prev).set(winnerEntry.id, effects));
     }
     // Stop the race to show winner dialog
     setShowRace(false);
@@ -195,7 +218,8 @@ function App() {
       setLastRaceSnapshot({
         eliminatedIds: [...eliminatedIds],
         winOrderEntries: Array.from(winOrder.entries()),
-        standingImageEntries: Array.from(standingImages.entries())
+        standingImageEntries: Array.from(standingImages.entries()),
+        standingEffectEntries: Array.from(standingEffects.entries())
       });
       setResetKey((prev) => prev + 1);
       setShowRace(true);
@@ -221,7 +245,8 @@ function App() {
     setLastRaceSnapshot({
       eliminatedIds: [...eliminatedIds],
       winOrderEntries: Array.from(winOrder.entries()),
-      standingImageEntries: Array.from(standingImages.entries())
+      standingImageEntries: Array.from(standingImages.entries()),
+      standingEffectEntries: Array.from(standingEffects.entries())
     });
     setResetKey((prev) => prev + 1);
     setWinner(null);
@@ -237,6 +262,7 @@ function App() {
     setEliminatedIds([...lastRaceSnapshot.eliminatedIds]);
     setWinOrder(new Map(lastRaceSnapshot.winOrderEntries));
     setStandingImages(new Map(lastRaceSnapshot.standingImageEntries));
+    setStandingEffects(new Map(lastRaceSnapshot.standingEffectEntries));
     setWinner(null);
     setShowFinalStandings(false);
     setResetKey((prev) => prev + 1);
@@ -249,6 +275,7 @@ function App() {
     setWinOrder(new Map());
     setWinner(null);
     setStandingImages(new Map());
+    setStandingEffects(new Map());
     setShowRace(false);
     setShowFinalStandings(false);
     setLastRaceSnapshot(null);
@@ -262,6 +289,7 @@ function App() {
       setWinOrder(new Map());
       setWinner(null);
       setStandingImages(new Map());
+      setStandingEffects(new Map());
       setShowRace(false);
       setShowFinalStandings(false);
       setLastRaceSnapshot(null);
@@ -378,6 +406,7 @@ function App() {
             currentWinner={winner?.name ?? null}
             currentWinnerImage={winner?.imageDataUrl}
             currentWinnerImages={winner?.allImages}
+            currentWinnerEffects={winner?.effects}
             mode="plinko"
           />
 
@@ -386,6 +415,7 @@ function App() {
               entries={entries}
               winOrder={winOrder}
               standingImages={standingImages}
+              standingEffects={standingEffects}
               onClose={() => setShowFinalStandings(false)}
             />
           )}
@@ -547,10 +577,11 @@ interface FinalStandingsProps {
   entries: Entry[];
   winOrder: Map<number, number>;
   standingImages: Map<number, string>;
+  standingEffects: Map<number, WinnerEffects>;
   onClose: () => void;
 }
 
-function FinalStandingsDialog({ entries, winOrder, standingImages, onClose }: FinalStandingsProps) {
+function FinalStandingsDialog({ entries, winOrder, standingImages, standingEffects, onClose }: FinalStandingsProps) {
   // Sort entries by their win order
   const standings = entries
     .filter((e) => winOrder.has(e.id))
@@ -590,7 +621,17 @@ function FinalStandingsDialog({ entries, winOrder, standingImages, onClose }: Fi
                     <span>{entry.name.charAt(0).toUpperCase()}</span>
                   )}
                 </div>
-                <span className="standing-name">{entry.name}</span>
+                <div className="standing-details">
+                  <span className="standing-name">{entry.name}</span>
+                  {standingEffects.get(entry.id) && (
+                    <div className="standing-effects" aria-label="Round effects">
+                      {standingEffects.get(entry.id)?.fire && <span className="standing-effect fire">🔥 Fire</span>}
+                      {standingEffects.get(entry.id)?.ice && <span className="standing-effect ice">❄️ Ice</span>}
+                      {standingEffects.get(entry.id)?.green && <span className="standing-effect green">🌱 Grow</span>}
+                      {standingEffects.get(entry.id)?.lightning && <span className="standing-effect lightning">⚡ Lightning</span>}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

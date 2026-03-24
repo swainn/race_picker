@@ -5,6 +5,7 @@ import './RacingGame.css';
 interface Player {
   entry: Entry;
   selectedImageDataUrl?: string;
+  radius: number;
   x: number;
   y: number;
   vx: number;
@@ -15,6 +16,9 @@ interface Player {
   isOnFire: boolean;
   isIce: boolean;
   isGreen: boolean;
+  isLightningStruck: boolean;
+  lightningTriggerAt: number | null;
+  lightningAnimUntil: number | null;
   frozenUntil: number | null;
   iceWallImmuneUntil: number | null;
   nextDuplicateAt: number;
@@ -42,12 +46,19 @@ interface Particle {
   color: string;
 }
 
+interface WinnerEffects {
+  fire: boolean;
+  ice: boolean;
+  green: boolean;
+  lightning: boolean;
+}
+
 interface Props {
   entries: Entry[];
   allEntries: Entry[];
   eliminatedIds: number[];
   winOrder: Map<number, number>;
-  onWinner: (winner: Entry, selectedImageDataUrl?: string) => void;
+  onWinner: (winner: Entry, selectedImageDataUrl?: string, effects?: WinnerEffects) => void;
   onRaceComplete: () => void;
   onShowFinalStandings?: () => void;
   onAllDestroyed?: () => void;
@@ -55,6 +66,7 @@ interface Props {
   currentWinner: string | null;
   currentWinnerImage?: string;
   currentWinnerImages?: string[];
+  currentWinnerEffects?: WinnerEffects;
   mode: string; // Not used in Plinko but kept for compatibility
 }
 
@@ -72,6 +84,11 @@ const ICE_WALL_FREEZE_MS = 500;
 const ICE_WALL_IMMUNE_MS = 1000;
 const MAX_BALL_COUNT = 40;
 const GREEN_DUPLICATE_COOLDOWN_MS = 70;
+const LIGHTNING_SHRINK_FACTOR = 0.5;
+const LIGHTNING_SPREAD_START_MS = 700;
+const LIGHTNING_SPREAD_END_MS = 4800;
+const LIGHTNING_SPREAD_JITTER_MS = 280;
+const LIGHTNING_ANIMATION_MS = 420;
 
 export const RacingGame: React.FC<Props> = ({ 
   entries, 
@@ -82,7 +99,8 @@ export const RacingGame: React.FC<Props> = ({
   isRacing, 
   currentWinner,
   currentWinnerImage,
-  currentWinnerImages
+  currentWinnerImages,
+  currentWinnerEffects
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -173,6 +191,7 @@ export const RacingGame: React.FC<Props> = ({
       return {
         entry,
         selectedImageDataUrl: pickRaceImage(entry),
+        radius: PLAYER_RADIUS,
         x: LEFT_MARGIN + spacing * (index + 1),
         y: 50,
         vx: 0,
@@ -183,6 +202,9 @@ export const RacingGame: React.FC<Props> = ({
         isOnFire: false,
         isIce: false,
         isGreen: false,
+        isLightningStruck: false,
+        lightningTriggerAt: null,
+        lightningAnimUntil: null,
         frozenUntil: null,
         iceWallImmuneUntil: null,
         nextDuplicateAt: 0,
@@ -247,15 +269,56 @@ export const RacingGame: React.FC<Props> = ({
         }
       }
 
+      // Randomly strike 2-3 normal participants with lightning.
+      // Balls with fire/ice/green effects are excluded.
+      const lightningPool = Array.from({ length: shuffledEntries.length }, (_, i) => i)
+        .filter(i => !fireBallIndices.has(i) && !iceBallIndices.has(i) && !greenBallIndices.has(i));
+      const desiredLightningCount = shuffledEntries.length >= 3 ? 2 + Math.floor(Math.random() * 2) : 2;
+      const lightningCount = Math.min(lightningPool.length, desiredLightningCount);
+      const lightningIndices: number[] = [];
+      while (lightningIndices.length < lightningCount && lightningPool.length > 0) {
+        const pick = Math.floor(Math.random() * lightningPool.length);
+        const selected = lightningPool.splice(pick, 1)[0];
+        if (selected !== undefined) {
+          lightningIndices.push(selected);
+        }
+      }
+
+      // Spread lightning strikes out over the race instead of clustering at the beginning.
+      for (let i = lightningIndices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [lightningIndices[i], lightningIndices[j]] = [lightningIndices[j], lightningIndices[i]];
+      }
+
+      const lightningDelayByIndex = new Map<number, number>();
+      if (lightningIndices.length > 0) {
+        const spreadDuration = LIGHTNING_SPREAD_END_MS - LIGHTNING_SPREAD_START_MS;
+        const step = lightningIndices.length > 1 ? spreadDuration / (lightningIndices.length - 1) : 0;
+
+        lightningIndices.forEach((playerIndex, strikeOrder) => {
+          const baseDelay = LIGHTNING_SPREAD_START_MS + step * strikeOrder;
+          const jitter = (Math.random() * 2 - 1) * LIGHTNING_SPREAD_JITTER_MS;
+          const finalDelay = Math.max(
+            LIGHTNING_SPREAD_START_MS,
+            Math.min(LIGHTNING_SPREAD_END_MS, Math.round(baseDelay + jitter))
+          );
+          lightningDelayByIndex.set(playerIndex, finalDelay);
+        });
+      }
+
       // Reset player positions with shuffled order
       const playWidth = CANVAS_WIDTH - LEFT_MARGIN - RIGHT_MARGIN;
+      const raceStartAt = Date.now();
       const resetPlayers: Player[] = shuffledEntries.map((entry, index) => {
         const spacing = playWidth / (shuffledEntries.length + 1);
+        const lightningDelay = lightningDelayByIndex.get(index);
+        const willBeStruck = lightningDelay !== undefined;
         // Find original index for consistent color assignment
         const originalIndex = entries.findIndex(e => e.id === entry.id);
         return {
           entry,
           selectedImageDataUrl: pickRaceImage(entry),
+          radius: PLAYER_RADIUS,
           x: LEFT_MARGIN + spacing * (index + 1),
           y: 50,
           vx: 0,
@@ -266,6 +329,9 @@ export const RacingGame: React.FC<Props> = ({
           isOnFire: fireBallIndices.has(index),
           isIce: iceBallIndices.has(index),
           isGreen: greenBallIndices.has(index),
+          isLightningStruck: false,
+          lightningTriggerAt: willBeStruck ? raceStartAt + lightningDelay : null,
+          lightningAnimUntil: null,
           frozenUntil: null,
           iceWallImmuneUntil: null,
           nextDuplicateAt: 0,
@@ -302,12 +368,42 @@ export const RacingGame: React.FC<Props> = ({
           if (player.finished) return player;
 
           // Apply gravity
-          let { x, y, vx, vy, rotation, frozenUntil, iceWallImmuneUntil, resumeVx, resumeVy } = player;
+          let {
+            x,
+            y,
+            vx,
+            vy,
+            rotation,
+            frozenUntil,
+            iceWallImmuneUntil,
+            resumeVx,
+            resumeVy,
+            radius,
+            isLightningStruck,
+            lightningTriggerAt,
+            lightningAnimUntil
+          } = player;
+
+          // Lightning sequence: normal size -> bolt animation -> shrink.
+          if (!isLightningStruck && lightningTriggerAt !== null && now >= lightningTriggerAt) {
+            lightningTriggerAt = null;
+            lightningAnimUntil = now + LIGHTNING_ANIMATION_MS;
+          }
+
+          if (!isLightningStruck && lightningAnimUntil !== null && now >= lightningAnimUntil) {
+            isLightningStruck = true;
+            radius = PLAYER_RADIUS * LIGHTNING_SHRINK_FACTOR;
+            lightningAnimUntil = null;
+          }
 
           if (frozenUntil !== null) {
             if (now < frozenUntil) {
               return {
                 ...player,
+                radius,
+                isLightningStruck,
+                lightningTriggerAt,
+                lightningAnimUntil,
                 vx: 0,
                 vy: 0
               };
@@ -333,7 +429,7 @@ export const RacingGame: React.FC<Props> = ({
             const dx = x - peg.x;
             const dy = y - peg.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            const minDist = PLAYER_RADIUS + peg.radius;
+            const minDist = radius + peg.radius;
 
             if (distance < minDist && distance > 0.1) {
               // Collision! Bounce off the peg
@@ -365,15 +461,15 @@ export const RacingGame: React.FC<Props> = ({
 
           // Check walls (with margins matching peg area)
           let hitWall = false;
-          if (x - PLAYER_RADIUS < LEFT_MARGIN) {
+          if (x - radius < LEFT_MARGIN) {
             if (fireWallsAreActive && player.isIce) {
               nextWallMode = 'none';
-              x = LEFT_MARGIN + PLAYER_RADIUS;
+              x = LEFT_MARGIN + radius;
               vx = Math.abs(vx) * BOUNCE_DAMPING;
             } else if (fireWallsAreActive && !player.isOnFire) {
               hitWall = true;
             } else if (iceWallsAreActive) {
-              x = LEFT_MARGIN + PLAYER_RADIUS;
+              x = LEFT_MARGIN + radius;
               vx = Math.abs(vx) * BOUNCE_DAMPING;
               if (player.isOnFire) {
                 nextWallMode = 'none';
@@ -388,7 +484,7 @@ export const RacingGame: React.FC<Props> = ({
                 iceWallImmuneUntil = now + ICE_WALL_FREEZE_MS + ICE_WALL_IMMUNE_MS;
               }
             } else if (greenWallsAreActive) {
-              x = LEFT_MARGIN + PLAYER_RADIUS;
+              x = LEFT_MARGIN + radius;
               vx = Math.abs(vx) * BOUNCE_DAMPING;
               if (player.isOnFire || player.isIce) {
                 nextWallMode = 'none';
@@ -396,7 +492,7 @@ export const RacingGame: React.FC<Props> = ({
                 player.isGreen = true;
               }
             } else {
-              x = LEFT_MARGIN + PLAYER_RADIUS;
+              x = LEFT_MARGIN + radius;
               vx = Math.abs(vx) * BOUNCE_DAMPING;
               if (player.isOnFire) {
                 nextWallMode = 'fire';
@@ -406,15 +502,15 @@ export const RacingGame: React.FC<Props> = ({
                 nextWallMode = 'green';
               }
             }
-          } else if (x + PLAYER_RADIUS > CANVAS_WIDTH - RIGHT_MARGIN) {
+          } else if (x + radius > CANVAS_WIDTH - RIGHT_MARGIN) {
             if (fireWallsAreActive && player.isIce) {
               nextWallMode = 'none';
-              x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
+              x = CANVAS_WIDTH - RIGHT_MARGIN - radius;
               vx = -Math.abs(vx) * BOUNCE_DAMPING;
             } else if (fireWallsAreActive && !player.isOnFire) {
               hitWall = true;
             } else if (iceWallsAreActive) {
-              x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
+              x = CANVAS_WIDTH - RIGHT_MARGIN - radius;
               vx = -Math.abs(vx) * BOUNCE_DAMPING;
               if (player.isOnFire) {
                 nextWallMode = 'none';
@@ -429,7 +525,7 @@ export const RacingGame: React.FC<Props> = ({
                 iceWallImmuneUntil = now + ICE_WALL_FREEZE_MS + ICE_WALL_IMMUNE_MS;
               }
             } else if (greenWallsAreActive) {
-              x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
+              x = CANVAS_WIDTH - RIGHT_MARGIN - radius;
               vx = -Math.abs(vx) * BOUNCE_DAMPING;
               if (player.isOnFire || player.isIce) {
                 nextWallMode = 'none';
@@ -437,7 +533,7 @@ export const RacingGame: React.FC<Props> = ({
                 player.isGreen = true;
               }
             } else {
-              x = CANVAS_WIDTH - RIGHT_MARGIN - PLAYER_RADIUS;
+              x = CANVAS_WIDTH - RIGHT_MARGIN - radius;
               vx = -Math.abs(vx) * BOUNCE_DAMPING;
               if (player.isOnFire) {
                 nextWallMode = 'fire';
@@ -456,6 +552,10 @@ export const RacingGame: React.FC<Props> = ({
             vx,
             vy,
             rotation,
+            radius,
+            isLightningStruck,
+            lightningTriggerAt,
+            lightningAnimUntil,
             frozenUntil,
             iceWallImmuneUntil,
             resumeVx,
@@ -518,7 +618,7 @@ export const RacingGame: React.FC<Props> = ({
             const dx = ballB.x - ballA.x;
             const dy = ballB.y - ballA.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            const minDist = PLAYER_RADIUS * 2;
+            const minDist = ballA.radius + ballB.radius;
             
             if (distance < minDist && distance > 0.1) {
               // Fire and ice balls destroy green balls on contact.
@@ -583,8 +683,8 @@ export const RacingGame: React.FC<Props> = ({
                   duplicatedThisTick.add(source);
                   spawnedGreenClones.push({
                     ...source,
-                    x: source.x + normalX * PLAYER_RADIUS * direction,
-                    y: source.y + normalY * PLAYER_RADIUS * direction,
+                    x: source.x + normalX * source.radius * direction,
+                    y: source.y + normalY * source.radius * direction,
                     vx: source.vx + normalX * (40 + Math.random() * 40) * direction,
                     vy: source.vy + normalY * (40 + Math.random() * 40) * direction,
                     finished: false,
@@ -697,7 +797,7 @@ export const RacingGame: React.FC<Props> = ({
               const numParticles = 2;
               for (let i = 0; i < numParticles; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                const distance = PLAYER_RADIUS + Math.random() * 5;
+                const distance = player.radius + Math.random() * 5;
                 playerFireParticlesRef.current.push({
                   x: player.x + Math.cos(angle) * distance,
                   y: player.y + Math.sin(angle) * distance,
@@ -718,7 +818,7 @@ export const RacingGame: React.FC<Props> = ({
               const numParticles = 2;
               for (let i = 0; i < numParticles; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                const distance = PLAYER_RADIUS + Math.random() * 4;
+                const distance = player.radius + Math.random() * 4;
                 playerIceParticlesRef.current.push({
                   x: player.x + Math.cos(angle) * distance,
                   y: player.y + Math.sin(angle) * distance,
@@ -958,7 +1058,12 @@ export const RacingGame: React.FC<Props> = ({
         const winner = pendingWinnerRef.current;
         pendingWinnerRef.current = null;
         setRaceState('finished');
-        onWinner(winner.entry, winner.selectedImageDataUrl);
+        onWinner(winner.entry, winner.selectedImageDataUrl, {
+          fire: winner.isOnFire,
+          ice: winner.isIce,
+          green: winner.isGreen,
+          lightning: winner.isLightningStruck || winner.lightningAnimUntil !== null
+        });
       }
 
       if (!finished) {
@@ -987,6 +1092,7 @@ export const RacingGame: React.FC<Props> = ({
       const fireWallsAreActive = wallModeRef.current === 'fire';
       const iceWallsAreActive = wallModeRef.current === 'ice';
       const greenWallsAreActive = wallModeRef.current === 'green';
+      const currentTime = Date.now();
 
       // Clear canvas with gradient background
       const bgGradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
@@ -1155,6 +1261,10 @@ export const RacingGame: React.FC<Props> = ({
       ctx.save();
       ctx.translate(player.x, player.y);
       ctx.rotate(player.rotation);
+      const lightningIsAnimating = player.lightningAnimUntil !== null;
+      const lightningIntensity = lightningIsAnimating
+        ? Math.max(0, Math.min(1, (player.lightningAnimUntil! - currentTime) / LIGHTNING_ANIMATION_MS))
+        : 0;
       
       // Add glow effect for special balls
       if (player.isOnFire) {
@@ -1166,14 +1276,28 @@ export const RacingGame: React.FC<Props> = ({
       } else if (player.isGreen) {
         ctx.shadowColor = '#2ecc71';
         ctx.shadowBlur = 14;
+      } else if (lightningIsAnimating) {
+        ctx.shadowColor = '#fff3b0';
+        ctx.shadowBlur = 24;
+      } else if (player.isLightningStruck) {
+        ctx.shadowColor = '#ffd84d';
+        ctx.shadowBlur = 12;
       }
       
       // Player circle
       ctx.fillStyle = player.isGreen ? '#2ecc71' : player.color;
-      ctx.strokeStyle = player.isOnFire ? '#ff8800' : player.isIce ? '#6fc9ff' : player.isGreen ? '#7ff1ae' : '#fff';
+      ctx.strokeStyle = player.isOnFire
+        ? '#ff8800'
+        : player.isIce
+          ? '#6fc9ff'
+          : player.isGreen
+            ? '#7ff1ae'
+            : player.isLightningStruck
+              ? '#ffe070'
+              : '#fff';
       ctx.lineWidth = player.isOnFire || player.isIce || player.isGreen ? 3 : 2;
       ctx.beginPath();
-      ctx.arc(0, 0, PLAYER_RADIUS, 0, Math.PI * 2);
+      ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
       ctx.fill();
 
       const cachedImage = player.selectedImageDataUrl
@@ -1186,7 +1310,7 @@ export const RacingGame: React.FC<Props> = ({
 
         ctx.save();
         ctx.beginPath();
-        ctx.arc(0, 0, PLAYER_RADIUS - 1.5, 0, Math.PI * 2);
+        ctx.arc(0, 0, Math.max(player.radius - 1.5, 1), 0, Math.PI * 2);
         ctx.clip();
         ctx.drawImage(
           cachedImage,
@@ -1194,21 +1318,61 @@ export const RacingGame: React.FC<Props> = ({
           sy,
           sourceSize,
           sourceSize,
-          -PLAYER_RADIUS,
-          -PLAYER_RADIUS,
-          PLAYER_RADIUS * 2,
-          PLAYER_RADIUS * 2
+          -player.radius,
+          -player.radius,
+          player.radius * 2,
+          player.radius * 2
         );
         ctx.restore();
       }
 
       ctx.stroke();
 
+      if (lightningIsAnimating) {
+        const topY = -player.y;
+        const endY = -player.radius - 2;
+        const segments = 7;
+        let boltX = (Math.random() - 0.5) * 10;
+
+        ctx.strokeStyle = 'rgba(255, 252, 225, 0.95)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(boltX, topY);
+        for (let i = 1; i < segments; i++) {
+          const t = i / segments;
+          const y = topY + (endY - topY) * t;
+          boltX += (Math.random() - 0.5) * 14;
+          ctx.lineTo(boltX, y);
+        }
+        ctx.lineTo(0, endY);
+        ctx.stroke();
+
+        // Inner hot core for a brighter central strike.
+        ctx.strokeStyle = 'rgba(255, 232, 130, 0.95)';
+        ctx.beginPath();
+        ctx.lineWidth = 2;
+        ctx.moveTo(0, topY);
+        ctx.lineTo((Math.random() - 0.5) * 8, (topY + endY) * 0.5);
+        ctx.lineTo(0, endY);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(255, 232, 128, ${0.55 + (1 - lightningIntensity) * 0.35})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, player.radius + 9, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = `rgba(255, 250, 230, ${0.18 + (1 - lightningIntensity) * 0.18})`;
+        ctx.beginPath();
+        ctx.arc(0, 0, player.radius + 13, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       if (player.frozenUntil !== null) {
         ctx.strokeStyle = '#b8ecff';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(0, 0, PLAYER_RADIUS + 3, 0, Math.PI * 2);
+        ctx.arc(0, 0, player.radius + 3, 0, Math.PI * 2);
         ctx.stroke();
       }
       
@@ -1242,6 +1406,9 @@ export const RacingGame: React.FC<Props> = ({
     };
   }, [players, pegs]);
 
+  const primaryWinnerEffect = getPrimaryWinnerEffect(currentWinnerEffects);
+  const primaryWinnerEffectLabel = getWinnerEffectLabel(primaryWinnerEffect);
+
   return (
     <div className="racing-game">
       <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
@@ -1253,17 +1420,43 @@ export const RacingGame: React.FC<Props> = ({
             {currentWinnerImages && currentWinnerImages.length > 0 ? (
               <div className="winner-images-gallery">
                 {currentWinnerImages.map((image, idx) => (
-                  <div key={idx} className="winner-avatar-small" aria-hidden="true">
-                    <img src={image} alt="" className="winner-avatar-image-small" />
+                  <div
+                    key={idx}
+                    className={`winner-avatar-small ${primaryWinnerEffect ? `effect-${primaryWinnerEffect}` : ''}`}
+                    aria-hidden="true"
+                  >
+                    <div className="winner-avatar-image-wrap-small">
+                      <img src={image} alt="" className="winner-avatar-image-small" />
+                    </div>
+                    {primaryWinnerEffect ? (
+                      <span
+                        className={`winner-effect-ring ${primaryWinnerEffect}`}
+                      />
+                    ) : null}
                   </div>
                 ))}
               </div>
             ) : currentWinnerImage ? (
-              <div className="winner-avatar" aria-hidden="true">
-                <img src={currentWinnerImage} alt="" className="winner-avatar-image" />
+              <div
+                className={`winner-avatar ${primaryWinnerEffect ? `effect-${primaryWinnerEffect}` : ''}`}
+                aria-hidden="true"
+              >
+                <div className="winner-avatar-image-wrap">
+                  <img src={currentWinnerImage} alt="" className="winner-avatar-image" />
+                </div>
+                {primaryWinnerEffect ? (
+                  <span
+                    className={`winner-effect-ring ${primaryWinnerEffect}`}
+                  />
+                ) : null}
               </div>
             ) : null}
             <p className="winner-name">{currentWinner}</p>
+            {primaryWinnerEffect && primaryWinnerEffectLabel && (
+              <div className="winner-effect-pill-row" aria-label="Winner round effect">
+                <span className={`winner-effect-pill ${primaryWinnerEffect}`}>{primaryWinnerEffectLabel}</span>
+              </div>
+            )}
             {entries.length === 0 ? (
               <button onClick={onShowFinalStandings} className="final-standings-btn">
                 🏆 Final Standings
@@ -1303,4 +1496,39 @@ function pickRaceImage(entry: Entry): string | undefined {
   }
 
   return images[Math.floor(Math.random() * images.length)];
+}
+
+function getPrimaryWinnerEffect(effects?: WinnerEffects): 'fire' | 'ice' | 'green' | 'lightning' | null {
+  if (!effects) {
+    return null;
+  }
+
+  if (effects.lightning) {
+    return 'lightning';
+  }
+  if (effects.fire) {
+    return 'fire';
+  }
+  if (effects.ice) {
+    return 'ice';
+  }
+  if (effects.green) {
+    return 'green';
+  }
+  return null;
+}
+
+function getWinnerEffectLabel(effect: 'fire' | 'ice' | 'green' | 'lightning' | null): string {
+  switch (effect) {
+    case 'fire':
+      return '🔥 Fire';
+    case 'ice':
+      return '❄️ Ice';
+    case 'green':
+      return '🌱 Grow';
+    case 'lightning':
+      return '⚡ Lightning';
+    default:
+      return '';
+  }
 }
