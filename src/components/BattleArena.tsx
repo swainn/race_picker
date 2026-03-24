@@ -222,42 +222,133 @@ function perimeterPosition(index: number, total: number): { x: number; y: number
 
 // ─── Obstacle Logic ─────────────────────────────────────────────────────────
 
-const OBSTACLE_TEMPLATES: Array<{ w: number; h: number; type: Obstacle['type']; color: string }> = [
-  { w: 40, h: 8, type: 'wall', color: '#555568' },    // horizontal wall
-  { w: 8, h: 40, type: 'wall', color: '#555568' },    // vertical wall
-  { w: 14, h: 14, type: 'pillar', color: '#6a6a7a' }, // square pillar
-  { w: 20, h: 20, type: 'crate', color: '#7a6a50' },  // crate
-];
+const WALL_COLOR = '#555568';
+const WALL_THICKNESS = 6; // half-thickness of maze walls
 
 function generateObstacles(): Obstacle[] {
-  const count = 3 + Math.floor(Math.random() * 4); // 3-6 obstacles
   const obstacles: Obstacle[] = [];
-  const centerX = CANVAS_WIDTH / 2;
-  const centerY = CANVAS_HEIGHT / 2;
 
-  for (let i = 0; i < count; i++) {
-    const template = OBSTACLE_TEMPLATES[Math.floor(Math.random() * OBSTACLE_TEMPLATES.length)];
-    // Place in the interior of the arena, avoiding the very center and the perimeter spawn zone
-    let x: number, y: number;
-    let attempts = 0;
-    do {
-      x = ARENA_MARGIN + 30 + Math.random() * (CANVAS_WIDTH - 2 * ARENA_MARGIN - 60);
-      y = ARENA_MARGIN + 30 + Math.random() * (CANVAS_HEIGHT - 2 * ARENA_MARGIN - 60);
-      attempts++;
-    } while (
-      attempts < 20 &&
-      (dist(x, y, centerX, centerY) < 40 || // avoid dead center
-        obstacles.some(o => dist(x, y, o.x, o.y) < 50)) // avoid clustering
-    );
+  // Define a grid that divides the playable area into cells
+  // We'll place walls on grid lines with random gaps to form a maze
+  const left = ARENA_MARGIN + 20;
+  const right = CANVAS_WIDTH - ARENA_MARGIN - 20;
+  const top = ARENA_MARGIN + 20;
+  const bottom = CANVAS_HEIGHT - ARENA_MARGIN - 20;
+  const playW = right - left;
+  const playH = bottom - top;
 
-    obstacles.push({
-      x, y,
-      w: template.w / 2,
-      h: template.h / 2,
-      color: template.color,
-      type: template.type,
-    });
+  const cols = 3; // 3 columns → 2 interior vertical lines
+  const rows = 4; // 4 rows → 3 interior horizontal lines
+  const cellW = playW / cols;
+  const cellH = playH / rows;
+  const gapSize = 28; // passage width in each wall segment
+
+  // Pick one of several maze layout strategies at random
+  const strategy = Math.floor(Math.random() * 3);
+
+  if (strategy === 0) {
+    // Strategy: grid walls with random gaps
+    // Horizontal interior walls
+    for (let r = 1; r < rows; r++) {
+      const wy = top + r * cellH;
+      // Choose 1-2 random gap positions along this row
+      const gapCols = new Set<number>();
+      gapCols.add(Math.floor(Math.random() * cols));
+      if (Math.random() > 0.4) gapCols.add(Math.floor(Math.random() * cols));
+
+      for (let c = 0; c < cols; c++) {
+        if (gapCols.has(c)) continue; // leave a gap here
+        const wx = left + c * cellW + cellW / 2;
+        const halfLen = (cellW - gapSize * 0.3) / 2;
+        obstacles.push({ x: wx, y: wy, w: halfLen, h: WALL_THICKNESS, color: WALL_COLOR, type: 'wall' });
+      }
+    }
+
+    // Vertical interior walls
+    for (let c = 1; c < cols; c++) {
+      const wx = left + c * cellW;
+      const gapRows = new Set<number>();
+      gapRows.add(Math.floor(Math.random() * rows));
+      if (Math.random() > 0.4) gapRows.add(Math.floor(Math.random() * rows));
+
+      for (let r = 0; r < rows; r++) {
+        if (gapRows.has(r)) continue;
+        const wy = top + r * cellH + cellH / 2;
+        const halfLen = (cellH - gapSize * 0.3) / 2;
+        obstacles.push({ x: wx, y: wy, w: WALL_THICKNESS, h: halfLen, color: WALL_COLOR, type: 'wall' });
+      }
+    }
+  } else if (strategy === 1) {
+    // Strategy: concentric barriers with openings
+    const centerX = CANVAS_WIDTH / 2;
+    const centerY = CANVAS_HEIGHT / 2;
+
+    // Outer ring — 4 wall segments with gaps at random sides
+    const outerW = playW * 0.4;
+    const outerH = playH * 0.38;
+    const openSides = new Set<number>();
+    const firstOpen = Math.floor(Math.random() * 4);
+    openSides.add(firstOpen);
+    openSides.add((firstOpen + 2) % 4); // opposite side too
+
+    if (!openSides.has(0)) // top
+      obstacles.push({ x: centerX, y: centerY - outerH, w: outerW, h: WALL_THICKNESS, color: WALL_COLOR, type: 'wall' });
+    if (!openSides.has(1)) // right
+      obstacles.push({ x: centerX + outerW, y: centerY, w: WALL_THICKNESS, h: outerH, color: WALL_COLOR, type: 'wall' });
+    if (!openSides.has(2)) // bottom
+      obstacles.push({ x: centerX, y: centerY + outerH, w: outerW, h: WALL_THICKNESS, color: WALL_COLOR, type: 'wall' });
+    if (!openSides.has(3)) // left
+      obstacles.push({ x: centerX - outerW, y: centerY, w: WALL_THICKNESS, h: outerH, color: WALL_COLOR, type: 'wall' });
+
+    // Inner cross — short walls radiating from near center
+    const armLen = playW * 0.15;
+    const armOffset = 25;
+    // Pick 2-3 random arms
+    const arms = shuffle([0, 1, 2, 3]).slice(0, 2 + Math.floor(Math.random() * 2));
+    for (const arm of arms) {
+      if (arm === 0) obstacles.push({ x: centerX, y: centerY - armOffset - armLen / 2, w: WALL_THICKNESS, h: armLen / 2, color: WALL_COLOR, type: 'wall' });
+      if (arm === 1) obstacles.push({ x: centerX + armOffset + armLen / 2, y: centerY, w: armLen / 2, h: WALL_THICKNESS, color: WALL_COLOR, type: 'wall' });
+      if (arm === 2) obstacles.push({ x: centerX, y: centerY + armOffset + armLen / 2, w: WALL_THICKNESS, h: armLen / 2, color: WALL_COLOR, type: 'wall' });
+      if (arm === 3) obstacles.push({ x: centerX - armOffset - armLen / 2, y: centerY, w: armLen / 2, h: WALL_THICKNESS, color: WALL_COLOR, type: 'wall' });
+    }
+  } else {
+    // Strategy: staggered horizontal walls (like a baffle/chicane)
+    const wallCount = 3 + Math.floor(Math.random() * 2); // 3-4 horizontal baffles
+    const spacing = playH / (wallCount + 1);
+
+    for (let i = 1; i <= wallCount; i++) {
+      const wy = top + i * spacing;
+      const wallLen = playW * (0.45 + Math.random() * 0.2);
+      // Alternate sides: even rows from left, odd rows from right
+      if (i % 2 === 1) {
+        const wx = left + wallLen / 2;
+        obstacles.push({ x: wx, y: wy, w: wallLen / 2, h: WALL_THICKNESS, color: WALL_COLOR, type: 'wall' });
+      } else {
+        const wx = right - wallLen / 2;
+        obstacles.push({ x: wx, y: wy, w: wallLen / 2, h: WALL_THICKNESS, color: WALL_COLOR, type: 'wall' });
+      }
+    }
+
+    // Add a couple of short vertical connectors between baffles
+    for (let i = 0; i < 2; i++) {
+      const vx = left + playW * (0.3 + Math.random() * 0.4);
+      const vy = top + playH * (0.2 + Math.random() * 0.6);
+      obstacles.push({ x: vx, y: vy, w: WALL_THICKNESS, h: cellH * 0.4, color: WALL_COLOR, type: 'wall' });
+    }
   }
+
+  // Add 1-2 pillars in random spots for flavor
+  const pillarCount = 1 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < pillarCount; i++) {
+    const px = left + 20 + Math.random() * (playW - 40);
+    const py = top + 20 + Math.random() * (playH - 40);
+    // Only place if not overlapping existing walls
+    const tooClose = obstacles.some(o => dist(px, py, o.x, o.y) < 30);
+    if (!tooClose) {
+      obstacles.push({ x: px, y: py, w: 10, h: 10, color: '#6a6a7a', type: 'pillar' });
+    }
+  }
+
   return obstacles;
 }
 
