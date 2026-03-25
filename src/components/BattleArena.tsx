@@ -33,6 +33,12 @@ interface Bot {
   attackCooldownUntil: number;
   facing: number;
   deathTime: number | null;
+  // Navigation
+  path: Array<{ x: number; y: number }>; // waypoints from A*
+  pathIndex: number;                       // current waypoint index
+  pathTargetId: number | null;             // which target this path was computed for
+  pathTargetX: number;                     // target position when path was computed
+  pathTargetY: number;
 }
 
 interface Projectile {
@@ -95,6 +101,206 @@ const BASE_SPEED = 160; // pixels per second
 const MAX_HP = 100;
 const ARENA_MARGIN = 50;
 const RAGE_TIMER_MS = 10000;
+
+// ─── Pathfinding Grid ───────────────────────────────────────────────────────
+
+const GRID_CELL = 16; // pixels per grid cell
+const GRID_COLS = Math.ceil(CANVAS_WIDTH / GRID_CELL);
+const GRID_ROWS = Math.ceil(CANVAS_HEIGHT / GRID_CELL);
+
+// Build a blocked-cell grid from obstacles. Cells overlapping any obstacle
+// (with padding for bot radius) are marked blocked.
+function buildNavGrid(obstacles: Obstacle[]): boolean[][] {
+  const grid: boolean[][] = Array.from({ length: GRID_ROWS }, () =>
+    Array(GRID_COLS).fill(false),
+  );
+  const pad = BOT_RADIUS + 2; // inflate obstacles so bots don't clip
+  for (const o of obstacles) {
+    const minC = Math.max(0, Math.floor((o.x - o.w - pad) / GRID_CELL));
+    const maxC = Math.min(GRID_COLS - 1, Math.floor((o.x + o.w + pad) / GRID_CELL));
+    const minR = Math.max(0, Math.floor((o.y - o.h - pad) / GRID_CELL));
+    const maxR = Math.min(GRID_ROWS - 1, Math.floor((o.y + o.h + pad) / GRID_CELL));
+    for (let r = minR; r <= maxR; r++) {
+      for (let c = minC; c <= maxC; c++) {
+        grid[r][c] = true;
+      }
+    }
+  }
+  return grid;
+}
+
+function worldToGrid(wx: number, wy: number): { col: number; row: number } {
+  return {
+    col: clamp(Math.floor(wx / GRID_CELL), 0, GRID_COLS - 1),
+    row: clamp(Math.floor(wy / GRID_CELL), 0, GRID_ROWS - 1),
+  };
+}
+
+function gridToWorld(col: number, row: number): { x: number; y: number } {
+  return { x: col * GRID_CELL + GRID_CELL / 2, y: row * GRID_CELL + GRID_CELL / 2 };
+}
+
+// A* pathfinding on the nav grid. Returns world-coordinate waypoints.
+function findPath(
+  grid: boolean[][],
+  startX: number, startY: number,
+  goalX: number, goalY: number,
+): Array<{ x: number; y: number }> {
+  const start = worldToGrid(startX, startY);
+  const goal = worldToGrid(goalX, goalY);
+
+  // If start or goal is inside a blocked cell, snap to nearest open cell
+  const snapToOpen = (c: number, r: number): { col: number; row: number } => {
+    if (!grid[r]?.[c]) return { col: c, row: r };
+    // BFS for nearest open cell
+    const visited = new Set<string>();
+    const queue: Array<{ col: number; row: number }> = [{ col: c, row: r }];
+    visited.add(`${c},${r}`);
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const [dc, dr] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+        const nc = cur.col + dc;
+        const nr = cur.row + dr;
+        if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) continue;
+        const key = `${nc},${nr}`;
+        if (visited.has(key)) continue;
+        visited.add(key);
+        if (!grid[nr][nc]) return { col: nc, row: nr };
+        queue.push({ col: nc, row: nr });
+      }
+    }
+    return { col: c, row: r }; // fallback
+  };
+
+  const s = snapToOpen(start.col, start.row);
+  const g = snapToOpen(goal.col, goal.row);
+
+  if (s.col === g.col && s.row === g.row) {
+    return [gridToWorld(g.col, g.row)];
+  }
+
+  // A* with 8-directional movement
+  const key = (c: number, r: number) => r * GRID_COLS + c;
+  const heuristic = (c: number, r: number) =>
+    Math.abs(c - g.col) + Math.abs(r - g.row); // Manhattan
+
+  const openSet = new Map<number, { col: number; row: number; g: number; f: number }>();
+  const cameFrom = new Map<number, number>();
+  const gScore = new Map<number, number>();
+
+  const startKey = key(s.col, s.row);
+  const goalKey = key(g.col, g.row);
+  gScore.set(startKey, 0);
+  openSet.set(startKey, { col: s.col, row: s.row, g: 0, f: heuristic(s.col, s.row) });
+
+  const dirs = [
+    [0, -1, 1], [0, 1, 1], [-1, 0, 1], [1, 0, 1],
+    [-1, -1, 1.414], [-1, 1, 1.414], [1, -1, 1.414], [1, 1, 1.414],
+  ];
+
+  let iterations = 0;
+  const maxIterations = GRID_COLS * GRID_ROWS * 2;
+
+  while (openSet.size > 0 && iterations++ < maxIterations) {
+    // Find node with lowest f in open set
+    let bestKey = -1;
+    let bestF = Infinity;
+    for (const [k, node] of openSet) {
+      if (node.f < bestF) { bestF = node.f; bestKey = k; }
+    }
+    if (bestKey === -1) break;
+
+    const current = openSet.get(bestKey)!;
+    openSet.delete(bestKey);
+
+    if (bestKey === goalKey) {
+      // Reconstruct path
+      const pathKeys: number[] = [goalKey];
+      let cur = goalKey;
+      while (cameFrom.has(cur)) {
+        cur = cameFrom.get(cur)!;
+        pathKeys.push(cur);
+      }
+      pathKeys.reverse();
+
+      // Convert to world coords and simplify: skip waypoints with direct LOS
+      const worldPath = pathKeys.map(k => {
+        const r = Math.floor(k / GRID_COLS);
+        const c = k % GRID_COLS;
+        return gridToWorld(c, r);
+      });
+
+      return simplifyPath(worldPath, grid);
+    }
+
+    for (const [dc, dr, cost] of dirs) {
+      const nc = current.col + dc;
+      const nr = current.row + dr;
+      if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) continue;
+      if (grid[nr][nc]) continue;
+
+      // For diagonal moves, also check the two adjacent cardinal cells
+      // to prevent corner-cutting through obstacles
+      if (dc !== 0 && dr !== 0) {
+        if (grid[current.row + dr]?.[current.col] || grid[current.row]?.[current.col + dc]) continue;
+      }
+
+      const nKey = key(nc, nr);
+      const tentG = current.g + cost;
+      const prevG = gScore.get(nKey);
+
+      if (prevG === undefined || tentG < prevG) {
+        gScore.set(nKey, tentG);
+        cameFrom.set(nKey, bestKey);
+        openSet.set(nKey, { col: nc, row: nr, g: tentG, f: tentG + heuristic(nc, nr) });
+      }
+    }
+  }
+
+  // No path found — just return goal directly (fallback)
+  return [{ x: goalX, y: goalY }];
+}
+
+// Remove redundant waypoints: if you can go directly from waypoint i to i+2
+// without hitting a blocked cell, skip i+1.
+function simplifyPath(
+  path: Array<{ x: number; y: number }>,
+  grid: boolean[][],
+): Array<{ x: number; y: number }> {
+  if (path.length <= 2) return path;
+  const result = [path[0]];
+  let i = 0;
+  while (i < path.length - 1) {
+    let furthest = i + 1;
+    for (let j = i + 2; j < path.length; j++) {
+      if (gridLineOfSight(path[i], path[j], grid)) {
+        furthest = j;
+      }
+    }
+    result.push(path[furthest]);
+    i = furthest;
+  }
+  return result;
+}
+
+// Check line-of-sight on the grid using Bresenham-like stepping
+function gridLineOfSight(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  grid: boolean[][],
+): boolean {
+  const d = dist(a.x, a.y, b.x, b.y);
+  const steps = Math.ceil(d / (GRID_CELL * 0.5));
+  for (let s = 0; s <= steps; s++) {
+    const t = s / steps;
+    const wx = a.x + (b.x - a.x) * t;
+    const wy = a.y + (b.y - a.y) * t;
+    const { col, row } = worldToGrid(wx, wy);
+    if (grid[row]?.[col]) return false;
+  }
+  return true;
+}
+
 
 
 // ─── Attack Definitions ─────────────────────────────────────────────────────
@@ -447,6 +653,7 @@ function updateBotAI(
   projectiles: Projectile[],
   effects: Effect[],
   obstacles: Obstacle[],
+  navGrid: boolean[][],
   _dt: number,
   now: number,
   rageMode: boolean,
@@ -464,6 +671,7 @@ function updateBotAI(
   if (!target || target.state === 'dead') {
     bot.targetId = null;
     bot.state = 'idle';
+    bot.path = [];
     return;
   }
 
@@ -526,8 +734,45 @@ function updateBotAI(
   } else {
     bot.state = 'moving';
     const speed = BASE_SPEED * bot.attack.speedMultiplier;
-    bot.vx = Math.cos(bot.facing) * speed;
-    bot.vy = Math.sin(bot.facing) * speed;
+
+    // Recompute path if target changed or target moved significantly
+    const targetMoved = dist(target.x, target.y, bot.pathTargetX, bot.pathTargetY) > 40;
+    const needsPath = bot.pathTargetId !== target.entry.id || targetMoved || bot.path.length === 0;
+
+    if (needsPath) {
+      bot.path = findPath(navGrid, bot.x, bot.y, target.x, target.y);
+      bot.pathIndex = 0;
+      bot.pathTargetId = target.entry.id;
+      bot.pathTargetX = target.x;
+      bot.pathTargetY = target.y;
+    }
+
+    // Follow waypoints
+    if (bot.pathIndex < bot.path.length) {
+      const wp = bot.path[bot.pathIndex];
+      const wpDist = dist(bot.x, bot.y, wp.x, wp.y);
+
+      if (wpDist < GRID_CELL) {
+        // Reached this waypoint, advance
+        bot.pathIndex++;
+      }
+
+      if (bot.pathIndex < bot.path.length) {
+        const nextWp = bot.path[bot.pathIndex];
+        const moveAngle = angleBetween(bot.x, bot.y, nextWp.x, nextWp.y);
+        bot.facing = moveAngle;
+        bot.vx = Math.cos(moveAngle) * speed;
+        bot.vy = Math.sin(moveAngle) * speed;
+      } else {
+        // Path exhausted, move directly to target
+        bot.vx = Math.cos(bot.facing) * speed;
+        bot.vy = Math.sin(bot.facing) * speed;
+      }
+    } else {
+      // No path, move directly
+      bot.vx = Math.cos(bot.facing) * speed;
+      bot.vy = Math.sin(bot.facing) * speed;
+    }
   }
 }
 
@@ -556,6 +801,7 @@ export const BattleArena: React.FC<Props> = ({
   const pendingWinnerRef = useRef<Bot | null>(null);
   const nextProjectileIdRef = useRef<number>(0);
   const obstaclesRef = useRef<Obstacle[]>([]);
+  const navGridRef = useRef<boolean[][]>([]);
   const fightTextRef = useRef<{ opacity: number; scale: number }>({ opacity: 0, scale: 0 });
 
   // Preload images
@@ -602,6 +848,11 @@ export const BattleArena: React.FC<Props> = ({
         attackCooldownUntil: 0,
         facing: 0,
         deathTime: null,
+        path: [],
+        pathIndex: 0,
+        pathTargetId: null,
+        pathTargetX: 0,
+        pathTargetY: 0,
       };
     });
 
@@ -609,6 +860,7 @@ export const BattleArena: React.FC<Props> = ({
     projectilesRef.current = [];
     effectsRef.current = [];
     obstaclesRef.current = generateObstacles();
+    navGridRef.current = buildNavGrid(obstaclesRef.current);
   }, [entries, raceState]);
 
   // Start battle when isRacing becomes true
@@ -638,6 +890,11 @@ export const BattleArena: React.FC<Props> = ({
         attackCooldownUntil: 0,
         facing: 0,
         deathTime: null,
+        path: [],
+        pathIndex: 0,
+        pathTargetId: null,
+        pathTargetX: 0,
+        pathTargetY: 0,
       };
     });
 
@@ -645,6 +902,7 @@ export const BattleArena: React.FC<Props> = ({
     projectilesRef.current = [];
     effectsRef.current = [];
     obstaclesRef.current = generateObstacles();
+    navGridRef.current = buildNavGrid(obstaclesRef.current);
     nextProjectileIdRef.current = 0;
     fightTextRef.current = { opacity: 1.0, scale: 2.0 };
 
@@ -679,7 +937,7 @@ export const BattleArena: React.FC<Props> = ({
 
       // Update AI for each living bot
       for (const bot of bots) {
-        updateBotAI(bot, bots, projectiles, effects, obstacles, dt, now, rageMode, nextProjectileIdRef);
+        updateBotAI(bot, bots, projectiles, effects, obstacles, navGridRef.current, dt, now, rageMode, nextProjectileIdRef);
       }
 
       // Move bots
