@@ -21,10 +21,17 @@ interface RaceSnapshot {
   standingImageEntries: [number, string][];
 }
 
+interface KillerInfo {
+  name: string;
+  weapon: string;
+}
+
 interface WinnerDisplay {
   name: string;
   imageDataUrl?: string;
   allImages?: string[];
+  killerInfo?: KillerInfo;
+  isLastPlayer?: boolean;
 }
 
 function normalizeEntry(entry: Entry): Entry {
@@ -151,13 +158,18 @@ function App() {
     setResetKey((prev) => prev + 1);
   };
 
-  const handleWinner = (winnerEntry: Entry, selectedImageDataUrl?: string) => {
+  const handleWinner = (winnerEntry: Entry, selectedImageDataUrl?: string, killerInfo?: KillerInfo) => {
     const winnerImage = selectedImageDataUrl ?? getPreferredEntryImage(winnerEntry);
     const allImages = getEntryImages(winnerEntry);
+    // Check if this is the last remaining player (the overall winner)
+    const remainingAfter = entries.filter((e) => !eliminatedIds.includes(e.id) && e.id !== winnerEntry.id);
+    const isLastPlayer = remainingAfter.length === 0;
     setWinner({
       name: winnerEntry.name,
       imageDataUrl: winnerImage,
-      allImages: allImages.length > 0 ? allImages : undefined
+      allImages: allImages.length > 0 ? allImages : undefined,
+      killerInfo,
+      isLastPlayer
     });
     // Add winner to eliminated list and track order
     setEliminatedIds((prev) => [...prev, winnerEntry.id]);
@@ -378,6 +390,8 @@ function App() {
             currentWinner={winner?.name ?? null}
             currentWinnerImage={winner?.imageDataUrl}
             currentWinnerImages={winner?.allImages}
+            currentWinnerKillerInfo={winner?.killerInfo}
+            currentWinnerIsLastPlayer={winner?.isLastPlayer}
           />
 
           {showFinalStandings && (
@@ -550,10 +564,10 @@ interface FinalStandingsProps {
 }
 
 function FinalStandingsDialog({ entries, winOrder, standingImages, onClose }: FinalStandingsProps) {
-  // Sort entries by their win order
+  // Sort entries by their win order (reversed: last eliminated = 1st place winner)
   const standings = entries
     .filter((e) => winOrder.has(e.id))
-    .sort((a, b) => (winOrder.get(a.id) || 0) - (winOrder.get(b.id) || 0));
+    .sort((a, b) => (winOrder.get(b.id) || 0) - (winOrder.get(a.id) || 0));
 
   const getOrdinal = (n: number) => {
     const s = ['th', 'st', 'nd', 'rd'];

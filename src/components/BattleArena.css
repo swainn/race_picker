@@ -62,10 +62,17 @@
 }
 
 .winner-name {
-  margin: 0 0 20px;
+  margin: 0 0 8px;
   font-size: 28px;
   font-weight: bold;
   color: #fff;
+}
+
+.killer-info {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+  font-style: italic;
 }
 
 .winner-avatar {

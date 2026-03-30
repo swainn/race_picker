@@ -33,6 +33,8 @@ interface Bot {
   attackCooldownUntil: number;
   facing: number;
   deathTime: number | null;
+  lastHitByName: string | null;
+  lastHitByWeapon: AttackType | null;
   // Navigation
   path: Array<{ x: number; y: number }>; // waypoints from A*
   pathIndex: number;                       // current waypoint index
@@ -82,7 +84,7 @@ interface Props {
   allEntries: Entry[];
   eliminatedIds: number[];
   winOrder: Map<number, number>;
-  onWinner: (winner: Entry, selectedImageDataUrl?: string) => void;
+  onWinner: (winner: Entry, selectedImageDataUrl?: string, killerInfo?: { name: string; weapon: string }) => void;
   onRaceComplete: () => void;
   onShowFinalStandings?: () => void;
   onAllDestroyed?: () => void;
@@ -90,6 +92,8 @@ interface Props {
   currentWinner: string | null;
   currentWinnerImage?: string;
   currentWinnerImages?: string[];
+  currentWinnerKillerInfo?: { name: string; weapon: string };
+  currentWinnerIsLastPlayer?: boolean;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -347,6 +351,13 @@ const ATTACKS: AttackDef[] = [
     label: '💥',
   },
 ];
+
+const WEAPON_LABELS: Record<AttackType, string> = {
+  fireball: '🔥 Fireball',
+  buzzsaw: '⚙️ Buzzsaw',
+  hammer: '🔨 Hammer',
+  machinegun: '💥 Machine Gun',
+};
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
 
@@ -692,6 +703,8 @@ function updateBotAI(
       if (bot.attack.range === 'melee') {
         // Direct damage
         target.hp -= dmg;
+        target.lastHitByName = bot.entry.name;
+        target.lastHitByWeapon = bot.attack.type;
         bot.attackCooldownUntil = now + bot.attack.cooldownMs;
 
         // Spawn hit effect at target
@@ -788,6 +801,8 @@ export const BattleArena: React.FC<Props> = ({
   currentWinner,
   currentWinnerImage,
   currentWinnerImages,
+  currentWinnerKillerInfo,
+  currentWinnerIsLastPlayer,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
@@ -848,6 +863,8 @@ export const BattleArena: React.FC<Props> = ({
         attackCooldownUntil: 0,
         facing: 0,
         deathTime: null,
+        lastHitByName: null,
+        lastHitByWeapon: null,
         path: [],
         pathIndex: 0,
         pathTargetId: null,
@@ -890,6 +907,8 @@ export const BattleArena: React.FC<Props> = ({
         attackCooldownUntil: 0,
         facing: 0,
         deathTime: null,
+        lastHitByName: null,
+        lastHitByWeapon: null,
         path: [],
         pathIndex: 0,
         pathTargetId: null,
@@ -999,6 +1018,12 @@ export const BattleArena: React.FC<Props> = ({
           if (bot.state === 'dead' || bot.entry.id === p.sourceId) continue;
           if (dist(p.x, p.y, bot.x, bot.y) < BOT_RADIUS + p.radius) {
             bot.hp -= p.damage;
+            // Track who dealt this hit for kill attribution
+            const sourceBot = bots.find(b => b.entry.id === p.sourceId);
+            if (sourceBot) {
+              bot.lastHitByName = sourceBot.entry.name;
+              bot.lastHitByWeapon = p.type;
+            }
             hit = true;
 
             // Spawn hit particles
@@ -1102,7 +1127,10 @@ export const BattleArena: React.FC<Props> = ({
         const winner = pendingWinnerRef.current;
         pendingWinnerRef.current = null;
         setRaceState('finished');
-        onWinner(winner.entry, winner.selectedImageDataUrl);
+        const killerInfo = winner.lastHitByName && winner.lastHitByWeapon
+          ? { name: winner.lastHitByName, weapon: winner.lastHitByWeapon }
+          : undefined;
+        onWinner(winner.entry, winner.selectedImageDataUrl, killerInfo);
         return; // Stop the loop
       }
 
@@ -1420,7 +1448,7 @@ export const BattleArena: React.FC<Props> = ({
       {currentWinner && !isRacing && (
         <div className="winner-display">
           <div className="winner-banner">
-            <h2>💀 ELIMINATED 💀</h2>
+            <h2>{currentWinnerIsLastPlayer ? '🏆 WINNER 🏆' : '💀 ELIMINATED 💀'}</h2>
             {currentWinnerImages && currentWinnerImages.length > 0 ? (
               <div className="winner-images-gallery">
                 {currentWinnerImages.map((image, idx) => (
@@ -1435,6 +1463,11 @@ export const BattleArena: React.FC<Props> = ({
               </div>
             ) : null}
             <p className="winner-name">{currentWinner}</p>
+            {currentWinnerKillerInfo && (
+              <p className="killer-info">
+                Killed by <strong>{currentWinnerKillerInfo.name}</strong> with {WEAPON_LABELS[currentWinnerKillerInfo.weapon as AttackType] ?? currentWinnerKillerInfo.weapon}
+              </p>
+            )}
             {entries.length === 0 ? (
               <button onClick={onShowFinalStandings} className="final-standings-btn">
                 🏆 Final Standings
