@@ -1448,7 +1448,7 @@ export const BattleArena: React.FC<Props> = ({
       {currentWinner && !isRacing && (
         <div className="winner-display">
           <div className="winner-banner">
-            <h2>{currentWinnerIsLastPlayer ? '🏆 WINNER 🏆' : '💀 ELIMINATED 💀'}</h2>
+            <h2>{currentWinnerIsLastPlayer ? '🏆 WINNER 🏆' : 'ELIMINATED'}</h2>
             {currentWinnerImages && currentWinnerImages.length > 0 ? (
               <div className="winner-images-gallery">
                 {currentWinnerImages.map((image, idx) => (
@@ -1465,7 +1465,7 @@ export const BattleArena: React.FC<Props> = ({
             <p className="winner-name">{currentWinner}</p>
             {currentWinnerKillerInfo && (
               <p className="killer-info">
-                Killed by <strong>{currentWinnerKillerInfo.name}</strong> with {WEAPON_LABELS[currentWinnerKillerInfo.weapon as AttackType] ?? currentWinnerKillerInfo.weapon}
+                Eliminated by <strong>{currentWinnerKillerInfo.name}</strong> with a {WEAPON_LABELS[currentWinnerKillerInfo.weapon as AttackType] ?? currentWinnerKillerInfo.weapon}
               </p>
             )}
             {entries.length === 0 ? (
