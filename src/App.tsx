@@ -594,15 +594,30 @@ function FinalStandingsDialog({ entries, winOrder, standingImages, onClose }: Fi
             {standings.map((entry, idx) => (
               <div key={entry.id} className="standing-entry">
                 <span className="standing-rank">{getOrdinal(idx + 1)}</span>
-                <div className="standing-avatar" aria-hidden="true">
-                  {standingImages.get(entry.id) ? (
-                    <img src={standingImages.get(entry.id)} alt="" className="standing-avatar-image" />
-                  ) : getPreferredEntryImage(entry) ? (
-                    <img src={getPreferredEntryImage(entry)} alt="" className="standing-avatar-image" />
-                  ) : (
-                    <span>{entry.name.charAt(0).toUpperCase()}</span>
-                  )}
-                </div>
+                {(() => {
+                  const allImages = getEntryImages(entry);
+                  if (allImages.length > 1) {
+                    return (
+                      <div className="standing-avatars-gallery" aria-hidden="true">
+                        {allImages.map((img, imgIdx) => (
+                          <div key={imgIdx} className="standing-avatar-small">
+                            <img src={img} alt="" className="standing-avatar-image" />
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }
+                  const singleImage = allImages[0] ?? standingImages.get(entry.id);
+                  return (
+                    <div className="standing-avatar" aria-hidden="true">
+                      {singleImage ? (
+                        <img src={singleImage} alt="" className="standing-avatar-image" />
+                      ) : (
+                        <span>{entry.name.charAt(0).toUpperCase()}</span>
+                      )}
+                    </div>
+                  );
+                })()}
                 <span className="standing-name">{entry.name}</span>
               </div>
             ))}

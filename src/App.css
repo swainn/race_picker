@@ -483,6 +483,23 @@
   display: block;
 }
 
+.standing-avatars-gallery {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.standing-avatar-small {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: #3a3a3a;
+  flex-shrink: 0;
+}
+
 .standing-name {
   font-size: 18px;
   font-weight: bold;
