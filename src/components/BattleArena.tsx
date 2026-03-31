@@ -4,7 +4,7 @@ import './BattleArena.css';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type AttackType = 'fireball' | 'buzzsaw' | 'hammer' | 'machinegun';
+type AttackType = 'fireball' | 'buzzsaw' | 'hammer' | 'machinegun' | 'flamethrower';
 
 interface AttackDef {
   type: AttackType;
@@ -350,6 +350,16 @@ const ATTACKS: AttackDef[] = [
     color: '#FFD700',
     label: '💥',
   },
+  {
+    type: 'flamethrower',
+    range: 'ranged',
+    damage: [3, 6],
+    cooldownMs: 80,
+    speedMultiplier: 0.9,
+    attackRange: 65,
+    color: '#FF4500',
+    label: '🔥',
+  },
 ];
 
 const WEAPON_LABELS: Record<AttackType, string> = {
@@ -357,6 +367,7 @@ const WEAPON_LABELS: Record<AttackType, string> = {
   buzzsaw: '⚙️ Buzzsaw',
   hammer: '🔨 Hammer',
   machinegun: '💥 Machine Gun',
+  flamethrower: '🔥 Flamethrower',
 };
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
@@ -723,6 +734,30 @@ function updateBotAI(
             vy: Math.sin(angle) * speed,
           });
         }
+      } else if (bot.attack.type === 'flamethrower') {
+        // Spawn a burst of flame particles with spread
+        const baseAngle = angleBetween(bot.x, bot.y, target.x, target.y);
+        const particleCount = 3;
+        for (let i = 0; i < particleCount; i++) {
+          const spread = (Math.random() - 0.5) * 0.6; // ~±17° cone
+          const angle = baseAngle + spread;
+          const projSpeed = 180 + Math.random() * 60;
+          projectiles.push({
+            id: nextProjectileId.current++,
+            sourceId: bot.entry.id,
+            targetId: target.entry.id,
+            x: bot.x + Math.cos(angle) * (BOT_RADIUS + 4),
+            y: bot.y + Math.sin(angle) * (BOT_RADIUS + 4),
+            vx: Math.cos(angle) * projSpeed,
+            vy: Math.sin(angle) * projSpeed,
+            damage: dmg / particleCount,
+            radius: 2 + Math.random() * 3,
+            color: ['#FF4500', '#FF6600', '#FFA500', '#FFCC00'][Math.floor(Math.random() * 4)],
+            life: 400 + Math.random() * 200,
+            type: 'flamethrower',
+          });
+        }
+        bot.attackCooldownUntil = now + bot.attack.cooldownMs;
       } else {
         // Spawn projectile
         const angle = angleBetween(bot.x, bot.y, target.x, target.y);
@@ -1264,6 +1299,23 @@ export const BattleArena: React.FC<Props> = ({
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.radius * 0.4, 0, Math.PI * 2);
           ctx.fill();
+        } else if (p.type === 'flamethrower') {
+          // Flame particle with glow that fades over lifetime
+          const lifeRatio = p.life / 600; // approximate max life
+          ctx.globalAlpha = Math.min(1, lifeRatio * 1.5);
+          ctx.shadowColor = '#FF4500';
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius * (0.6 + lifeRatio * 0.4), 0, Math.PI * 2);
+          ctx.fill();
+          // Bright inner core
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#FFEE88';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius * 0.3 * lifeRatio, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
         } else if (p.type === 'machinegun') {
           ctx.fillStyle = p.color;
           ctx.beginPath();
