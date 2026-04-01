@@ -508,6 +508,14 @@
   flex: 1;
 }
 
+.standing-takedowns {
+  font-size: 14px;
+  color: #ffa726;
+  font-weight: bold;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .close-standings-button {
   padding: 12px 24px;
   background: linear-gradient(135deg, #236192 0%, #1a4d7a 100%);

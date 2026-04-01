@@ -19,6 +19,7 @@ interface RaceSnapshot {
   eliminatedIds: number[];
   winOrderEntries: [number, number][];
   standingImageEntries: [number, string][];
+  takedownEntries: [number, number][];
 }
 
 interface KillerInfo {
@@ -97,6 +98,7 @@ function App() {
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [lastRaceSnapshot, setLastRaceSnapshot] = useState<RaceSnapshot | null>(null);
   const [standingImages, setStandingImages] = useState<Map<number, string>>(new Map());
+  const [takedowns, setTakedowns] = useState<Map<number, number>>(new Map());
   const [imageCache, setImageCache] = useState<Map<number, string[]>>(() => {
     const cached = loadFromStorage<Record<string, string[]>>(IMAGE_CACHE_KEY, {});
     return new Map(Object.entries(cached).map(([key, val]) => [Number(key), val]));
@@ -177,6 +179,13 @@ function App() {
     if (winnerImage) {
       setStandingImages((prev) => new Map(prev).set(winnerEntry.id, winnerImage));
     }
+    // Credit the killer with a takedown
+    if (killerInfo && killerInfo.name !== 'Lava') {
+      const killer = entries.find((e) => e.name === killerInfo.name);
+      if (killer) {
+        setTakedowns((prev) => new Map(prev).set(killer.id, (prev.get(killer.id) || 0) + 1));
+      }
+    }
     // Stop the race to show winner dialog
     setShowRace(false);
   };
@@ -233,7 +242,8 @@ function App() {
     setLastRaceSnapshot({
       eliminatedIds: [...eliminatedIds],
       winOrderEntries: Array.from(winOrder.entries()),
-      standingImageEntries: Array.from(standingImages.entries())
+      standingImageEntries: Array.from(standingImages.entries()),
+      takedownEntries: Array.from(takedowns.entries())
     });
     setResetKey((prev) => prev + 1);
     setWinner(null);
@@ -249,6 +259,7 @@ function App() {
     setEliminatedIds([...lastRaceSnapshot.eliminatedIds]);
     setWinOrder(new Map(lastRaceSnapshot.winOrderEntries));
     setStandingImages(new Map(lastRaceSnapshot.standingImageEntries));
+    setTakedowns(new Map(lastRaceSnapshot.takedownEntries));
     setWinner(null);
     setShowFinalStandings(false);
     setResetKey((prev) => prev + 1);
@@ -261,6 +272,7 @@ function App() {
     setWinOrder(new Map());
     setWinner(null);
     setStandingImages(new Map());
+    setTakedowns(new Map());
     setShowRace(false);
     setShowFinalStandings(false);
     setLastRaceSnapshot(null);
@@ -274,6 +286,7 @@ function App() {
       setWinOrder(new Map());
       setWinner(null);
       setStandingImages(new Map());
+      setTakedowns(new Map());
       setShowRace(false);
       setShowFinalStandings(false);
       setLastRaceSnapshot(null);
@@ -324,6 +337,7 @@ function App() {
       setWinOrder(new Map());
       setWinner(null);
       setStandingImages(new Map());
+      setTakedowns(new Map());
       setShowRace(false);
       setShowFinalStandings(false);
       setLastRaceSnapshot(null);
@@ -399,6 +413,7 @@ function App() {
               entries={entries}
               winOrder={winOrder}
               standingImages={standingImages}
+              takedowns={takedowns}
               onClose={() => setShowFinalStandings(false)}
             />
           )}
@@ -560,10 +575,11 @@ interface FinalStandingsProps {
   entries: Entry[];
   winOrder: Map<number, number>;
   standingImages: Map<number, string>;
+  takedowns: Map<number, number>;
   onClose: () => void;
 }
 
-function FinalStandingsDialog({ entries, winOrder, standingImages, onClose }: FinalStandingsProps) {
+function FinalStandingsDialog({ entries, winOrder, standingImages, takedowns, onClose }: FinalStandingsProps) {
   // Sort entries by their win order (reversed: last eliminated = 1st place winner)
   const standings = entries
     .filter((e) => winOrder.has(e.id))
@@ -619,6 +635,11 @@ function FinalStandingsDialog({ entries, winOrder, standingImages, onClose }: Fi
                   );
                 })()}
                 <span className="standing-name">{entry.name}</span>
+                {(takedowns.get(entry.id) || 0) > 0 && (
+                  <span className="standing-takedowns" title="Takedowns">
+                    💥 {takedowns.get(entry.id)}
+                  </span>
+                )}
               </div>
             ))}
           </div>
