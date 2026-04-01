@@ -76,7 +76,7 @@ interface Obstacle {
   w: number;      // half-width
   h: number;      // half-height
   color: string;
-  type: 'wall' | 'pillar' | 'crate';
+  type: 'wall' | 'pillar' | 'crate' | 'hazard';
 }
 
 interface Props {
@@ -105,6 +105,15 @@ const BASE_SPEED = 160; // pixels per second
 const MAX_HP = 100;
 const ARENA_MARGIN = 50;
 const RAGE_TIMER_MS = 10000;
+const KNOCKBACK_SPEED: Partial<Record<AttackType, number>> = {
+  hammer: 220,
+  fireball: 150,
+  buzzsaw: 100,
+  flamethrower: 60,
+};
+const WALL_COLLISION_DAMAGE = 8;
+const HAZARD_DPS = 30; // damage per second while standing on hazard
+const HAZARD_COLOR = '#CC3300';
 
 // ─── Pathfinding Grid ───────────────────────────────────────────────────────
 
@@ -119,7 +128,7 @@ function buildNavGrid(obstacles: Obstacle[]): boolean[][] {
     Array(GRID_COLS).fill(false),
   );
   const pad = BOT_RADIUS + 2; // inflate obstacles so bots don't clip
-  for (const o of obstacles) {
+  for (const o of obstacles.filter(o => o.type !== 'hazard')) {
     const minC = Math.max(0, Math.floor((o.x - o.w - pad) / GRID_CELL));
     const maxC = Math.min(GRID_COLS - 1, Math.floor((o.x + o.w + pad) / GRID_CELL));
     const minR = Math.max(0, Math.floor((o.y - o.h - pad) / GRID_CELL));
@@ -577,6 +586,19 @@ function generateObstacles(): Obstacle[] {
     }
   }
 
+  // Add 1-3 lava hazard zones
+  const hazardCount = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < hazardCount; i++) {
+    const hx = left + 20 + Math.random() * (playW - 40);
+    const hy = top + 20 + Math.random() * (playH - 40);
+    const tooClose = obstacles.some(o => dist(hx, hy, o.x, o.y) < 40);
+    if (!tooClose) {
+      const hw = 14 + Math.random() * 10;
+      const hh = 14 + Math.random() * 10;
+      obstacles.push({ x: hx, y: hy, w: hw, h: hh, color: HAZARD_COLOR, type: 'hazard' });
+    }
+  }
+
   return obstacles;
 }
 
@@ -717,6 +739,14 @@ function updateBotAI(
         target.lastHitByName = bot.entry.name;
         target.lastHitByWeapon = bot.attack.type;
         bot.attackCooldownUntil = now + bot.attack.cooldownMs;
+
+        // Knockback
+        const kbSpeed = KNOCKBACK_SPEED[bot.attack.type] ?? 0;
+        if (kbSpeed > 0) {
+          const kbAngle = angleBetween(bot.x, bot.y, target.x, target.y);
+          target.vx += Math.cos(kbAngle) * kbSpeed;
+          target.vy += Math.sin(kbAngle) * kbSpeed;
+        }
 
         // Spawn hit effect at target
         for (let i = 0; i < 5; i++) {
@@ -1001,16 +1031,64 @@ export const BattleArena: React.FC<Props> = ({
         bot.x += bot.vx * dt;
         bot.y += bot.vy * dt;
 
+        // Friction to decay knockback velocity
+        const friction = Math.pow(0.02, dt); // rapid decay
+        bot.vx *= friction;
+        bot.vy *= friction;
+
         // Clamp to arena
         bot.x = clamp(bot.x, BOT_RADIUS + 5, CANVAS_WIDTH - BOT_RADIUS - 5);
         bot.y = clamp(bot.y, BOT_RADIUS + 5, CANVAS_HEIGHT - BOT_RADIUS - 5);
 
-        // Collide with obstacles
+        // Collide with solid obstacles (not hazards)
         for (const o of obstacles) {
+          if (o.type === 'hazard') continue;
           const col = circleRectCollision(bot.x, bot.y, BOT_RADIUS, o.x, o.y, o.w, o.h);
           if (col.hit) {
+            // If bot has knockback velocity, deal wall collision damage
+            const kbSpeed = Math.sqrt(bot.vx * bot.vx + bot.vy * bot.vy);
+            if (kbSpeed > 150) {
+              bot.hp -= WALL_COLLISION_DAMAGE;
+              // Wall impact sparks
+              for (let k = 0; k < 4; k++) {
+                const a = Math.random() * Math.PI * 2;
+                const s = 30 + Math.random() * 50;
+                effects.push({
+                  x: bot.x, y: bot.y, type: 'spark',
+                  life: 200, maxLife: 200, radius: 2,
+                  color: '#FFFFFF',
+                  vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+                });
+              }
+              bot.vx *= -0.3;
+              bot.vy *= -0.3;
+            }
             bot.x += col.nx * col.overlap;
             bot.y += col.ny * col.overlap;
+          }
+        }
+
+        // Hazard damage (lava zones)
+        for (const o of obstacles) {
+          if (o.type !== 'hazard') continue;
+          const col = circleRectCollision(bot.x, bot.y, BOT_RADIUS, o.x, o.y, o.w, o.h);
+          if (col.hit) {
+            bot.hp -= HAZARD_DPS * dt;
+            bot.lastHitByName = 'Lava';
+            bot.lastHitByWeapon = null;
+            // Occasional flame particles from lava
+            if (Math.random() < 0.3) {
+              effects.push({
+                x: bot.x + (Math.random() - 0.5) * 10,
+                y: bot.y + (Math.random() - 0.5) * 10,
+                type: 'explosion',
+                life: 300, maxLife: 300,
+                radius: 2 + Math.random() * 3,
+                color: ['#FF4500', '#FF6600', '#FFCC00'][Math.floor(Math.random() * 3)],
+                vx: (Math.random() - 0.5) * 20,
+                vy: -20 - Math.random() * 30,
+              });
+            }
           }
         }
 
@@ -1059,6 +1137,13 @@ export const BattleArena: React.FC<Props> = ({
               bot.lastHitByName = sourceBot.entry.name;
               bot.lastHitByWeapon = p.type;
             }
+            // Knockback from projectile
+            const kbSpeed = KNOCKBACK_SPEED[p.type] ?? 0;
+            if (kbSpeed > 0) {
+              const pAngle = Math.atan2(p.vy, p.vx);
+              bot.vx += Math.cos(pAngle) * kbSpeed;
+              bot.vy += Math.sin(pAngle) * kbSpeed;
+            }
             hit = true;
 
             // Spawn hit particles
@@ -1081,9 +1166,10 @@ export const BattleArena: React.FC<Props> = ({
           }
         }
 
-        // Check collision with obstacles
+        // Check collision with solid obstacles (not hazards)
         if (!hit) {
           for (const o of obstacles) {
+            if (o.type === 'hazard') continue;
             const col = circleRectCollision(p.x, p.y, p.radius, o.x, o.y, o.w, o.h);
             if (col.hit) {
               hit = true;
@@ -1162,8 +1248,8 @@ export const BattleArena: React.FC<Props> = ({
         const winner = pendingWinnerRef.current;
         pendingWinnerRef.current = null;
         setRaceState('finished');
-        const killerInfo = winner.lastHitByName && winner.lastHitByWeapon
-          ? { name: winner.lastHitByName, weapon: winner.lastHitByWeapon }
+        const killerInfo = winner.lastHitByName
+          ? { name: winner.lastHitByName, weapon: winner.lastHitByWeapon ?? 'lava' }
           : undefined;
         onWinner(winner.entry, winner.selectedImageDataUrl, killerInfo);
         return; // Stop the loop
@@ -1237,7 +1323,32 @@ export const BattleArena: React.FC<Props> = ({
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
         ctx.lineWidth = 1;
 
-        if (o.type === 'pillar') {
+        if (o.type === 'hazard') {
+          // Animated lava pool
+          const rx = o.x - o.w;
+          const ry = o.y - o.h;
+          const rw = o.w * 2;
+          const rh = o.h * 2;
+          const t = Date.now() / 400;
+          // Pulsing glow
+          const pulse = 0.6 + Math.sin(t) * 0.15;
+          ctx.globalAlpha = pulse;
+          ctx.fillStyle = '#CC3300';
+          ctx.fillRect(rx, ry, rw, rh);
+          // Brighter inner
+          ctx.fillStyle = '#FF6600';
+          ctx.globalAlpha = 0.3 + Math.sin(t * 1.7) * 0.15;
+          ctx.fillRect(rx + 3, ry + 3, rw - 6, rh - 6);
+          // Hot core
+          ctx.fillStyle = '#FFAA00';
+          ctx.globalAlpha = 0.2 + Math.sin(t * 2.3) * 0.1;
+          ctx.fillRect(rx + 6, ry + 6, rw - 12, rh - 12);
+          ctx.globalAlpha = 1;
+          // Border glow
+          ctx.strokeStyle = 'rgba(255, 100, 0, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(rx, ry, rw, rh);
+        } else if (o.type === 'pillar') {
           // Round pillar
           ctx.beginPath();
           ctx.arc(o.x, o.y, o.w, 0, Math.PI * 2);
@@ -1517,7 +1628,10 @@ export const BattleArena: React.FC<Props> = ({
             <p className="winner-name">{currentWinner}</p>
             {currentWinnerKillerInfo && (
               <p className="killer-info">
-                Eliminated by <strong>{currentWinnerKillerInfo.name}</strong> with a {WEAPON_LABELS[currentWinnerKillerInfo.weapon as AttackType] ?? currentWinnerKillerInfo.weapon}
+                {currentWinnerKillerInfo.weapon === 'lava'
+                  ? <>Eliminated by <strong>🌋 {currentWinnerKillerInfo.name}</strong></>
+                  : <>Eliminated by <strong>{currentWinnerKillerInfo.name}</strong> with {WEAPON_LABELS[currentWinnerKillerInfo.weapon as AttackType] ?? currentWinnerKillerInfo.weapon}</>
+                }
               </p>
             )}
             {entries.length === 0 ? (
