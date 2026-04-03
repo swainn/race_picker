@@ -41,6 +41,7 @@ interface Bot {
   pathTargetId: number | null;             // which target this path was computed for
   pathTargetX: number;                     // target position when path was computed
   pathTargetY: number;
+  gooSlowed: boolean;                       // permanently halved speed from goo
 }
 
 interface Projectile {
@@ -70,6 +71,8 @@ interface Effect {
   vy: number;
 }
 
+type HazardType = 'lava' | 'spike' | 'goo';
+
 interface Obstacle {
   x: number;      // center x
   y: number;      // center y
@@ -77,6 +80,7 @@ interface Obstacle {
   h: number;      // half-height
   color: string;
   type: 'wall' | 'pillar' | 'crate' | 'hazard';
+  hazardType?: HazardType;
 }
 
 interface Props {
@@ -106,14 +110,23 @@ const MAX_HP = 100;
 const ARENA_MARGIN = 50;
 const RAGE_TIMER_MS = 10000;
 const KNOCKBACK_SPEED: Partial<Record<AttackType, number>> = {
-  hammer: 220,
-  fireball: 150,
-  buzzsaw: 100,
-  flamethrower: 60,
+  hammer: 400,
+  fireball: 280,
+  buzzsaw: 180,
+  flamethrower: 120,
 };
 const WALL_COLLISION_DAMAGE = 8;
-const HAZARD_DPS = 30; // damage per second while standing on hazard
-const HAZARD_COLOR = '#CC3300';
+const HAZARD_DPS: Record<HazardType, number> = {
+  lava: 9999,   // instant kill
+  spike: 35,    // sustained damage
+  goo: 5,       // light damage
+};
+const GOO_SLOW_FACTOR = 0.5; // permanent half speed after goo contact
+const HAZARD_COLORS: Record<HazardType, string> = {
+  lava: '#CC3300',
+  spike: '#7A7A8A',
+  goo: '#44AA22',
+};
 
 // ─── Pathfinding Grid ───────────────────────────────────────────────────────
 
@@ -128,7 +141,7 @@ function buildNavGrid(obstacles: Obstacle[]): boolean[][] {
     Array(GRID_COLS).fill(false),
   );
   const pad = BOT_RADIUS + 2; // inflate obstacles so bots don't clip
-  for (const o of obstacles.filter(o => o.type !== 'hazard')) {
+  for (const o of obstacles.filter(o => o.hazardType !== 'goo')) {
     const minC = Math.max(0, Math.floor((o.x - o.w - pad) / GRID_CELL));
     const maxC = Math.min(GRID_COLS - 1, Math.floor((o.x + o.w + pad) / GRID_CELL));
     const minR = Math.max(0, Math.floor((o.y - o.h - pad) / GRID_CELL));
@@ -586,8 +599,9 @@ function generateObstacles(): Obstacle[] {
     }
   }
 
-  // Add 1-3 lava hazard zones
-  const hazardCount = 1 + Math.floor(Math.random() * 3);
+  // Add 2-4 hazard zones (lava, spike, goo)
+  const hazardTypes: HazardType[] = ['lava', 'spike', 'goo'];
+  const hazardCount = 2 + Math.floor(Math.random() * 3);
   for (let i = 0; i < hazardCount; i++) {
     const hx = left + 20 + Math.random() * (playW - 40);
     const hy = top + 20 + Math.random() * (playH - 40);
@@ -595,7 +609,8 @@ function generateObstacles(): Obstacle[] {
     if (!tooClose) {
       const hw = 14 + Math.random() * 10;
       const hh = 14 + Math.random() * 10;
-      obstacles.push({ x: hx, y: hy, w: hw, h: hh, color: HAZARD_COLOR, type: 'hazard' });
+      const ht = hazardTypes[Math.floor(Math.random() * hazardTypes.length)];
+      obstacles.push({ x: hx, y: hy, w: hw, h: hh, color: HAZARD_COLORS[ht], type: 'hazard', hazardType: ht });
     }
   }
 
@@ -811,7 +826,7 @@ function updateBotAI(
     }
   } else {
     bot.state = 'moving';
-    const speed = BASE_SPEED * bot.attack.speedMultiplier;
+    const speed = BASE_SPEED * bot.attack.speedMultiplier * (bot.gooSlowed ? GOO_SLOW_FACTOR : 1);
 
     // Recompute path if target changed or target moved significantly
     const targetMoved = dist(target.x, target.y, bot.pathTargetX, bot.pathTargetY) > 40;
@@ -935,6 +950,7 @@ export const BattleArena: React.FC<Props> = ({
         pathTargetId: null,
         pathTargetX: 0,
         pathTargetY: 0,
+        gooSlowed: false,
       };
     });
 
@@ -979,6 +995,7 @@ export const BattleArena: React.FC<Props> = ({
         pathTargetId: null,
         pathTargetX: 0,
         pathTargetY: 0,
+        gooSlowed: false,
       };
     });
 
@@ -1068,15 +1085,17 @@ export const BattleArena: React.FC<Props> = ({
           }
         }
 
-        // Hazard damage (lava zones)
+        // Hazard effects (lava / spike / goo)
+        // Hazard effects (lava / spike / goo)
         for (const o of obstacles) {
           if (o.type !== 'hazard') continue;
           const col = circleRectCollision(bot.x, bot.y, BOT_RADIUS, o.x, o.y, o.w, o.h);
-          if (col.hit) {
-            bot.hp -= HAZARD_DPS * dt;
+          if (!col.hit) continue;
+          const ht = o.hazardType ?? 'lava';
+          bot.hp -= HAZARD_DPS[ht] * dt;
+          if (ht === 'lava') {
             bot.lastHitByName = 'Lava';
             bot.lastHitByWeapon = null;
-            // Occasional flame particles from lava
             if (Math.random() < 0.3) {
               effects.push({
                 x: bot.x + (Math.random() - 0.5) * 10,
@@ -1087,6 +1106,37 @@ export const BattleArena: React.FC<Props> = ({
                 color: ['#FF4500', '#FF6600', '#FFCC00'][Math.floor(Math.random() * 3)],
                 vx: (Math.random() - 0.5) * 20,
                 vy: -20 - Math.random() * 30,
+              });
+            }
+          } else if (ht === 'spike') {
+            bot.lastHitByName = 'Spikes';
+            bot.lastHitByWeapon = null;
+            if (Math.random() < 0.2) {
+              effects.push({
+                x: bot.x + (Math.random() - 0.5) * 8,
+                y: bot.y + (Math.random() - 0.5) * 8,
+                type: 'spark',
+                life: 200, maxLife: 200,
+                radius: 2,
+                color: '#FFFFFF',
+                vx: (Math.random() - 0.5) * 40,
+                vy: -15 - Math.random() * 25,
+              });
+            }
+          } else if (ht === 'goo') {
+            bot.lastHitByName = 'Goo';
+            bot.lastHitByWeapon = null;
+            bot.gooSlowed = true;
+            if (Math.random() < 0.15) {
+              effects.push({
+                x: bot.x + (Math.random() - 0.5) * 10,
+                y: bot.y + (Math.random() - 0.5) * 10,
+                type: 'explosion',
+                life: 400, maxLife: 400,
+                radius: 2 + Math.random() * 2,
+                color: ['#44AA22', '#66CC44', '#88DD66'][Math.floor(Math.random() * 3)],
+                vx: (Math.random() - 0.5) * 10,
+                vy: -5 - Math.random() * 10,
               });
             }
           }
@@ -1324,30 +1374,80 @@ export const BattleArena: React.FC<Props> = ({
         ctx.lineWidth = 1;
 
         if (o.type === 'hazard') {
-          // Animated lava pool
           const rx = o.x - o.w;
           const ry = o.y - o.h;
           const rw = o.w * 2;
           const rh = o.h * 2;
           const t = Date.now() / 400;
-          // Pulsing glow
-          const pulse = 0.6 + Math.sin(t) * 0.15;
-          ctx.globalAlpha = pulse;
-          ctx.fillStyle = '#CC3300';
-          ctx.fillRect(rx, ry, rw, rh);
-          // Brighter inner
-          ctx.fillStyle = '#FF6600';
-          ctx.globalAlpha = 0.3 + Math.sin(t * 1.7) * 0.15;
-          ctx.fillRect(rx + 3, ry + 3, rw - 6, rh - 6);
-          // Hot core
-          ctx.fillStyle = '#FFAA00';
-          ctx.globalAlpha = 0.2 + Math.sin(t * 2.3) * 0.1;
-          ctx.fillRect(rx + 6, ry + 6, rw - 12, rh - 12);
-          ctx.globalAlpha = 1;
-          // Border glow
-          ctx.strokeStyle = 'rgba(255, 100, 0, 0.5)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(rx, ry, rw, rh);
+          const ht = o.hazardType ?? 'lava';
+
+          if (ht === 'lava') {
+            // Animated lava pool
+            const pulse = 0.6 + Math.sin(t) * 0.15;
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = '#CC3300';
+            ctx.fillRect(rx, ry, rw, rh);
+            ctx.fillStyle = '#FF6600';
+            ctx.globalAlpha = 0.3 + Math.sin(t * 1.7) * 0.15;
+            ctx.fillRect(rx + 3, ry + 3, rw - 6, rh - 6);
+            ctx.fillStyle = '#FFAA00';
+            ctx.globalAlpha = 0.2 + Math.sin(t * 2.3) * 0.1;
+            ctx.fillRect(rx + 6, ry + 6, rw - 12, rh - 12);
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = 'rgba(255, 100, 0, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(rx, ry, rw, rh);
+          } else if (ht === 'spike') {
+            // Metallic spike pit
+            ctx.globalAlpha = 0.8;
+            ctx.fillStyle = '#3A3A4A';
+            ctx.fillRect(rx, ry, rw, rh);
+            // Draw spike points
+            ctx.fillStyle = '#AAAACC';
+            const cols = Math.max(2, Math.floor(rw / 8));
+            const rows = Math.max(2, Math.floor(rh / 8));
+            for (let sr = 0; sr < rows; sr++) {
+              for (let sc = 0; sc < cols; sc++) {
+                const sx = rx + (sc + 0.5) * (rw / cols);
+                const sy = ry + (sr + 0.5) * (rh / rows);
+                const sSize = 2 + Math.sin(t * 2 + sr + sc) * 0.5;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy - sSize);
+                ctx.lineTo(sx - sSize * 0.6, sy + sSize * 0.5);
+                ctx.lineTo(sx + sSize * 0.6, sy + sSize * 0.5);
+                ctx.closePath();
+                ctx.fill();
+              }
+            }
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = 'rgba(170, 170, 200, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(rx, ry, rw, rh);
+          } else if (ht === 'goo') {
+            // Bubbling goo pool
+            const pulse = 0.5 + Math.sin(t * 0.8) * 0.1;
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = '#2A7A12';
+            ctx.fillRect(rx, ry, rw, rh);
+            ctx.fillStyle = '#44AA22';
+            ctx.globalAlpha = 0.4 + Math.sin(t * 1.3) * 0.15;
+            ctx.fillRect(rx + 2, ry + 2, rw - 4, rh - 4);
+            // Goo bubbles
+            ctx.fillStyle = '#88DD66';
+            for (let b = 0; b < 3; b++) {
+              const bx = rx + rw * (0.25 + b * 0.25);
+              const by = ry + rh * (0.4 + Math.sin(t * (1.5 + b * 0.7)) * 0.2);
+              const br = 1.5 + Math.sin(t * (2 + b)) * 0.8;
+              ctx.globalAlpha = 0.4 + Math.sin(t * (1.8 + b * 0.5)) * 0.2;
+              ctx.beginPath();
+              ctx.arc(bx, by, br, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = 'rgba(68, 170, 34, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(rx, ry, rw, rh);
+          }
         } else if (o.type === 'pillar') {
           // Round pillar
           ctx.beginPath();
