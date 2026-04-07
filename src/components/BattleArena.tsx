@@ -42,6 +42,7 @@ interface Bot {
   pathTargetX: number;                     // target position when path was computed
   pathTargetY: number;
   gooSlowed: boolean;                       // permanently halved speed from goo
+  targetAcquiredAt: number;                 // timestamp when current target was selected
 }
 
 interface Projectile {
@@ -62,13 +63,14 @@ interface Projectile {
 interface Effect {
   x: number;
   y: number;
-  type: 'explosion' | 'slash' | 'spark' | 'hit';
+  type: 'explosion' | 'slash' | 'spark' | 'hit' | 'dmgNumber';
   life: number;
   maxLife: number;
   radius: number;
   color: string;
   vx: number;
   vy: number;
+  text?: string;
 }
 
 type HazardType = 'lava' | 'spike' | 'goo';
@@ -720,9 +722,12 @@ function updateBotAI(
 ): void {
   if (bot.state === 'dead') return;
 
-  // Pick a target if we don't have one or our target is dead
-  if (bot.targetId === null) {
+  // Pick a target if we don't have one, target is stale (3s timeout), or target is dead
+  const TARGET_TIMEOUT_MS = 3000;
+  if (bot.targetId === null || (now - bot.targetAcquiredAt > TARGET_TIMEOUT_MS && bot.state !== 'attacking')) {
     bot.targetId = pickTarget(bot, allBots);
+    bot.targetAcquiredAt = now;
+    bot.path = [];
     bot.state = bot.targetId !== null ? 'moving' : 'idle';
   }
 
@@ -762,6 +767,17 @@ function updateBotAI(
           target.vx += Math.cos(kbAngle) * kbSpeed;
           target.vy += Math.sin(kbAngle) * kbSpeed;
         }
+
+        // Floating damage number
+        effects.push({
+          x: target.x + (Math.random() - 0.5) * 10,
+          y: target.y - BOT_RADIUS,
+          type: 'dmgNumber',
+          life: 800, maxLife: 800,
+          radius: 0, color: '#FFFFFF',
+          vx: (Math.random() - 0.5) * 20, vy: -40,
+          text: Math.round(dmg).toString(),
+        });
 
         // Spawn hit effect at target
         for (let i = 0; i < 5; i++) {
@@ -951,6 +967,7 @@ export const BattleArena: React.FC<Props> = ({
         pathTargetX: 0,
         pathTargetY: 0,
         gooSlowed: false,
+        targetAcquiredAt: 0,
       };
     });
 
@@ -996,6 +1013,7 @@ export const BattleArena: React.FC<Props> = ({
         pathTargetX: 0,
         pathTargetY: 0,
         gooSlowed: false,
+        targetAcquiredAt: 0,
       };
     });
 
@@ -1066,6 +1084,15 @@ export const BattleArena: React.FC<Props> = ({
             const kbSpeed = Math.sqrt(bot.vx * bot.vx + bot.vy * bot.vy);
             if (kbSpeed > 150) {
               bot.hp -= WALL_COLLISION_DAMAGE;
+              effects.push({
+                x: bot.x + (Math.random() - 0.5) * 10,
+                y: bot.y - BOT_RADIUS,
+                type: 'dmgNumber',
+                life: 800, maxLife: 800,
+                radius: 0, color: '#FFAA00',
+                vx: (Math.random() - 0.5) * 20, vy: -40,
+                text: WALL_COLLISION_DAMAGE.toString(),
+              });
               // Wall impact sparks
               for (let k = 0; k < 4; k++) {
                 const a = Math.random() * Math.PI * 2;
@@ -1086,13 +1113,26 @@ export const BattleArena: React.FC<Props> = ({
         }
 
         // Hazard effects (lava / spike / goo)
-        // Hazard effects (lava / spike / goo)
         for (const o of obstacles) {
           if (o.type !== 'hazard') continue;
           const col = circleRectCollision(bot.x, bot.y, BOT_RADIUS, o.x, o.y, o.w, o.h);
           if (!col.hit) continue;
           const ht = o.hazardType ?? 'lava';
-          bot.hp -= HAZARD_DPS[ht] * dt;
+          const hazDmg = HAZARD_DPS[ht] * dt;
+          bot.hp -= hazDmg;
+          // Periodic floating damage number for hazards
+          if (Math.random() < dt * 3) {
+            const hazardColors: Record<HazardType, string> = { lava: '#FF4500', spike: '#CCCCFF', goo: '#88DD66' };
+            effects.push({
+              x: bot.x + (Math.random() - 0.5) * 10,
+              y: bot.y - BOT_RADIUS,
+              type: 'dmgNumber',
+              life: 800, maxLife: 800,
+              radius: 0, color: hazardColors[ht],
+              vx: (Math.random() - 0.5) * 20, vy: -40,
+              text: Math.round(HAZARD_DPS[ht] / 3).toString(),
+            });
+          }
           if (ht === 'lava') {
             bot.lastHitByName = 'Lava';
             bot.lastHitByWeapon = null;
@@ -1181,6 +1221,16 @@ export const BattleArena: React.FC<Props> = ({
           if (bot.state === 'dead' || bot.entry.id === p.sourceId) continue;
           if (dist(p.x, p.y, bot.x, bot.y) < BOT_RADIUS + p.radius) {
             bot.hp -= p.damage;
+            // Floating damage number
+            effects.push({
+              x: bot.x + (Math.random() - 0.5) * 10,
+              y: bot.y - BOT_RADIUS,
+              type: 'dmgNumber',
+              life: 800, maxLife: 800,
+              radius: 0, color: '#FFFFFF',
+              vx: (Math.random() - 0.5) * 20, vy: -40,
+              text: Math.round(p.damage).toString(),
+            });
             // Track who dealt this hit for kill attribution
             const sourceBot = bots.find(b => b.entry.id === p.sourceId);
             if (sourceBot) {
@@ -1486,10 +1536,19 @@ export const BattleArena: React.FC<Props> = ({
       for (const e of effects) {
         const alpha = e.life / e.maxLife;
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = e.color;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-        ctx.fill();
+        if (e.type === 'dmgNumber' && e.text) {
+          ctx.font = 'bold 11px monospace';
+          ctx.fillStyle = e.color;
+          ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+          ctx.lineWidth = 2;
+          ctx.strokeText(e.text, e.x, e.y);
+          ctx.fillText(e.text, e.x, e.y);
+        } else {
+          ctx.fillStyle = e.color;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
       ctx.globalAlpha = 1;
 

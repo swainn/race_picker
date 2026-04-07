@@ -580,10 +580,22 @@ interface FinalStandingsProps {
 }
 
 function FinalStandingsDialog({ entries, winOrder, standingImages, takedowns, onClose }: FinalStandingsProps) {
-  // Sort entries by their win order (reversed: last eliminated = 1st place winner)
+  // Last standing = 1st place, then rank by kill count (desc), then elimination order (later = better)
+  const lastPlace = Math.max(...Array.from(winOrder.values()));
   const standings = entries
     .filter((e) => winOrder.has(e.id))
-    .sort((a, b) => (winOrder.get(b.id) || 0) - (winOrder.get(a.id) || 0));
+    .sort((a, b) => {
+      const aOrder = winOrder.get(a.id) || 0;
+      const bOrder = winOrder.get(b.id) || 0;
+      // Last standing (highest winOrder) is always 1st
+      if (aOrder === lastPlace) return -1;
+      if (bOrder === lastPlace) return 1;
+      // Everyone else: sort by kill count descending, then elimination order (later = better)
+      const aKills = takedowns.get(a.id) || 0;
+      const bKills = takedowns.get(b.id) || 0;
+      if (bKills !== aKills) return bKills - aKills;
+      return bOrder - aOrder;
+    });
 
   const getOrdinal = (n: number) => {
     const s = ['th', 'st', 'nd', 'rd'];
