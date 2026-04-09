@@ -591,26 +591,44 @@ function generateObstacles(): Obstacle[] {
 
   // Add 1-2 pillars in random spots for flavor
   const pillarCount = 1 + Math.floor(Math.random() * 2);
+  const PILLAR_R = 10; // pillar half-size
+  const PILLAR_PAD = 10;
   for (let i = 0; i < pillarCount; i++) {
-    const px = left + 20 + Math.random() * (playW - 40);
-    const py = top + 20 + Math.random() * (playH - 40);
-    // Only place if not overlapping existing walls
-    const tooClose = obstacles.some(o => dist(px, py, o.x, o.y) < 30);
-    if (!tooClose) {
-      obstacles.push({ x: px, y: py, w: 10, h: 10, color: '#6a6a7a', type: 'pillar' });
+    let px = 0, py = 0, placed = false;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      px = left + PILLAR_R + PILLAR_PAD + Math.random() * (playW - 2 * (PILLAR_R + PILLAR_PAD));
+      py = top + PILLAR_R + PILLAR_PAD + Math.random() * (playH - 2 * (PILLAR_R + PILLAR_PAD));
+      const overlaps = obstacles.some(o => {
+        const gapX = Math.abs(px - o.x) - (PILLAR_R + o.w + PILLAR_PAD);
+        const gapY = Math.abs(py - o.y) - (PILLAR_R + o.h + PILLAR_PAD);
+        return gapX < 0 && gapY < 0;
+      });
+      if (!overlaps) { placed = true; break; }
+    }
+    if (placed) {
+      obstacles.push({ x: px, y: py, w: PILLAR_R, h: PILLAR_R, color: '#6a6a7a', type: 'pillar' });
     }
   }
 
   // Add 2-4 hazard zones (lava, goo — spikes spawn dynamically during battle)
   const hazardTypes: HazardType[] = ['lava', 'goo'];
   const hazardCount = 2 + Math.floor(Math.random() * 3);
+  const HAZARD_PAD = 10; // minimum gap between hazard edge and any obstacle edge
   for (let i = 0; i < hazardCount; i++) {
-    const hx = left + 20 + Math.random() * (playW - 40);
-    const hy = top + 20 + Math.random() * (playH - 40);
-    const tooClose = obstacles.some(o => dist(hx, hy, o.x, o.y) < 40);
-    if (!tooClose) {
-      const hw = 14 + Math.random() * 10;
-      const hh = 14 + Math.random() * 10;
+    const hw = 14 + Math.random() * 10;
+    const hh = 14 + Math.random() * 10;
+    let hx = 0, hy = 0, placed = false;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      hx = left + hw + HAZARD_PAD + Math.random() * (playW - 2 * (hw + HAZARD_PAD));
+      hy = top + hh + HAZARD_PAD + Math.random() * (playH - 2 * (hh + HAZARD_PAD));
+      const overlaps = obstacles.some(o => {
+        const gapX = Math.abs(hx - o.x) - (hw + o.w + HAZARD_PAD);
+        const gapY = Math.abs(hy - o.y) - (hh + o.h + HAZARD_PAD);
+        return gapX < 0 && gapY < 0;
+      });
+      if (!overlaps) { placed = true; break; }
+    }
+    if (placed) {
       const ht = hazardTypes[Math.floor(Math.random() * hazardTypes.length)];
       obstacles.push({ x: hx, y: hy, w: hw, h: hh, color: HAZARD_COLORS[ht], type: 'hazard', hazardType: ht });
     }
@@ -1063,16 +1081,21 @@ export const BattleArena: React.FC<Props> = ({
         const sTop = ARENA_MARGIN + 40;
         const sPlayW = CANVAS_WIDTH - 2 * (ARENA_MARGIN + 40);
         const sPlayH = CANVAS_HEIGHT - 2 * (ARENA_MARGIN + 40);
+        const sw = 16 + Math.random() * 10;
+        const sh = 16 + Math.random() * 10;
+        const spikePad = 10;
         let sx = 0, sy = 0, placed = false;
         for (let attempt = 0; attempt < 10; attempt++) {
-          sx = sLeft + Math.random() * sPlayW;
-          sy = sTop + Math.random() * sPlayH;
-          const tooClose = obstacles.some(o => dist(sx, sy, o.x, o.y) < 50);
-          if (!tooClose) { placed = true; break; }
+          sx = sLeft + sw + spikePad + Math.random() * (sPlayW - 2 * (sw + spikePad));
+          sy = sTop + sh + spikePad + Math.random() * (sPlayH - 2 * (sh + spikePad));
+          const overlaps = obstacles.some(o => {
+            const gapX = Math.abs(sx - o.x) - (sw + o.w + spikePad);
+            const gapY = Math.abs(sy - o.y) - (sh + o.h + spikePad);
+            return gapX < 0 && gapY < 0;
+          });
+          if (!overlaps) { placed = true; break; }
         }
         if (placed) {
-          const sw = 16 + Math.random() * 10;
-          const sh = 16 + Math.random() * 10;
           const spike: Obstacle = { x: sx, y: sy, w: sw, h: sh, color: HAZARD_COLORS.spike, type: 'hazard', hazardType: 'spike' };
           obstacles.push(spike);
           spikeEventsRef.current.push({ closeAt: now + 500, obstacle: spike });
