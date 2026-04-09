@@ -601,8 +601,8 @@ function generateObstacles(): Obstacle[] {
     }
   }
 
-  // Add 2-4 hazard zones (lava, spike, goo)
-  const hazardTypes: HazardType[] = ['lava', 'spike', 'goo'];
+  // Add 2-4 hazard zones (lava, goo — spikes spawn dynamically during battle)
+  const hazardTypes: HazardType[] = ['lava', 'goo'];
   const hazardCount = 2 + Math.floor(Math.random() * 3);
   for (let i = 0; i < hazardCount; i++) {
     const hx = left + 20 + Math.random() * (playW - 40);
@@ -914,6 +914,8 @@ export const BattleArena: React.FC<Props> = ({
   const obstaclesRef = useRef<Obstacle[]>([]);
   const navGridRef = useRef<boolean[][]>([]);
   const fightTextRef = useRef<{ opacity: number; scale: number }>({ opacity: 0, scale: 0 });
+  const spikeEventsRef = useRef<Array<{ closeAt: number; obstacle: Obstacle }>>([]);
+  const nextSpikeAtRef = useRef<number>(0);
 
   // Preload images
   useEffect(() => {
@@ -1030,6 +1032,10 @@ export const BattleArena: React.FC<Props> = ({
     lastFrameTimeRef.current = now;
     pendingWinnerRef.current = null;
 
+    // Spike pits spawn continuously — one every 250ms
+    spikeEventsRef.current = [];
+    nextSpikeAtRef.current = now + 400;
+
     setRaceState('racing');
   }, [isRacing, entries]);
 
@@ -1047,6 +1053,57 @@ export const BattleArena: React.FC<Props> = ({
       const effects = effectsRef.current;
       const obstacles = obstaclesRef.current;
       const rageMode = (now - battleStartTimeRef.current) >= RAGE_TIMER_MS;
+
+      // Dynamic spike pits — spawn one every 250ms, each lasts ~200ms
+      let navGridDirty = false;
+      // Spawn new spike
+      if (now >= nextSpikeAtRef.current) {
+        nextSpikeAtRef.current = now + 400;
+        const sLeft = ARENA_MARGIN + 40;
+        const sTop = ARENA_MARGIN + 40;
+        const sPlayW = CANVAS_WIDTH - 2 * (ARENA_MARGIN + 40);
+        const sPlayH = CANVAS_HEIGHT - 2 * (ARENA_MARGIN + 40);
+        let sx = 0, sy = 0, placed = false;
+        for (let attempt = 0; attempt < 10; attempt++) {
+          sx = sLeft + Math.random() * sPlayW;
+          sy = sTop + Math.random() * sPlayH;
+          const tooClose = obstacles.some(o => dist(sx, sy, o.x, o.y) < 50);
+          if (!tooClose) { placed = true; break; }
+        }
+        if (placed) {
+          const sw = 16 + Math.random() * 10;
+          const sh = 16 + Math.random() * 10;
+          const spike: Obstacle = { x: sx, y: sy, w: sw, h: sh, color: HAZARD_COLORS.spike, type: 'hazard', hazardType: 'spike' };
+          obstacles.push(spike);
+          spikeEventsRef.current.push({ closeAt: now + 500, obstacle: spike });
+          navGridDirty = true;
+          // Warning particles
+          for (let k = 0; k < 6; k++) {
+            const a = Math.random() * Math.PI * 2;
+            const s = 30 + Math.random() * 50;
+            effects.push({
+              x: sx + (Math.random() - 0.5) * sw,
+              y: sy + (Math.random() - 0.5) * sh,
+              type: 'spark', life: 300, maxLife: 300, radius: 2,
+              color: '#CCCCFF',
+              vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+            });
+          }
+        }
+      }
+      // Close expired spikes
+      for (let i = spikeEventsRef.current.length - 1; i >= 0; i--) {
+        const ev = spikeEventsRef.current[i];
+        if (now >= ev.closeAt) {
+          const idx = obstacles.indexOf(ev.obstacle);
+          if (idx !== -1) obstacles.splice(idx, 1);
+          spikeEventsRef.current.splice(i, 1);
+          navGridDirty = true;
+        }
+      }
+      if (navGridDirty) {
+        navGridRef.current = buildNavGrid(obstacles);
+      }
 
       // Update FIGHT! text
       if (fightTextRef.current.opacity > 0) {
