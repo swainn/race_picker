@@ -919,7 +919,7 @@ export const BattleArena: React.FC<Props> = ({
   currentWinnerIsLastPlayer,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [raceState, setRaceState] = useState<'ready' | 'racing' | 'finished'>('ready');
+  const [raceState, setRaceState] = useState<'ready' | 'reveal' | 'racing' | 'finished'>('ready');
   const botsRef = useRef<Bot[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const effectsRef = useRef<Effect[]>([]);
@@ -932,6 +932,7 @@ export const BattleArena: React.FC<Props> = ({
   const obstaclesRef = useRef<Obstacle[]>([]);
   const navGridRef = useRef<boolean[][]>([]);
   const fightTextRef = useRef<{ opacity: number; scale: number }>({ opacity: 0, scale: 0 });
+  const revealStartRef = useRef<number>(0);
   const spikeEventsRef = useRef<Array<{ closeAt: number; obstacle: Obstacle }>>([]);
   const nextSpikeAtRef = useRef<number>(0);
 
@@ -955,7 +956,7 @@ export const BattleArena: React.FC<Props> = ({
 
   // Initialize bots when entries change (and not racing)
   useEffect(() => {
-    if (raceState === 'finished' || raceState === 'racing') return;
+    if (raceState === 'finished' || raceState === 'racing' || raceState === 'reveal') return;
 
     const shuffled = shuffle(entries);
     const n = shuffled.length;
@@ -1043,19 +1044,156 @@ export const BattleArena: React.FC<Props> = ({
     obstaclesRef.current = generateObstacles();
     navGridRef.current = buildNavGrid(obstaclesRef.current);
     nextProjectileIdRef.current = 0;
-    fightTextRef.current = { opacity: 1.0, scale: 2.0 };
-
-    const now = Date.now();
-    battleStartTimeRef.current = now;
-    lastFrameTimeRef.current = now;
     pendingWinnerRef.current = null;
 
-    // Spike pits spawn continuously — one every 250ms
-    spikeEventsRef.current = [];
-    nextSpikeAtRef.current = now + 400;
-
-    setRaceState('racing');
+    revealStartRef.current = Date.now();
+    setRaceState('reveal');
   }, [isRacing, entries]);
+
+  // Weapon reveal phase — show bots with weapons + countdown, then start fighting
+  const REVEAL_DURATION = 3000;
+  useEffect(() => {
+    if (raceState !== 'reveal') return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+
+    let revealAnim: number;
+    const drawReveal = () => {
+      const elapsed = Date.now() - revealStartRef.current;
+      if (elapsed >= REVEAL_DURATION) {
+        // Transition to fighting
+        const now = Date.now();
+        battleStartTimeRef.current = now;
+        lastFrameTimeRef.current = now;
+        fightTextRef.current = { opacity: 1.0, scale: 2.0 };
+        spikeEventsRef.current = [];
+        nextSpikeAtRef.current = now + 400;
+        setRaceState('racing');
+        return;
+      }
+
+      const bots = botsRef.current;
+      const obstacles = obstaclesRef.current;
+
+      // Clear
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      // Draw obstacles
+      for (const o of obstacles) {
+        ctx.save();
+        ctx.fillStyle = o.color;
+        if (o.type === 'wall' || o.type === 'crate') {
+          ctx.fillRect(o.x - o.w, o.y - o.h, o.w * 2, o.h * 2);
+        } else if (o.type === 'pillar') {
+          ctx.beginPath();
+          ctx.arc(o.x, o.y, o.w, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (o.type === 'hazard') {
+          ctx.globalAlpha = 0.5;
+          ctx.fillRect(o.x - o.w, o.y - o.h, o.w * 2, o.h * 2);
+        }
+        ctx.restore();
+      }
+
+      // Draw each bot with weapon reveal
+      for (let i = 0; i < bots.length; i++) {
+        const bot = bots[i];
+        // Staggered fade-in: each bot appears 80ms after the previous
+        const botDelay = i * 80;
+        const botElapsed = elapsed - botDelay;
+        if (botElapsed < 0) continue;
+        const fadeIn = Math.min(1, botElapsed / 200);
+
+        ctx.save();
+        ctx.globalAlpha = fadeIn;
+        ctx.translate(bot.x, bot.y);
+
+        // Weapon glow ring
+        ctx.shadowColor = bot.attack.color;
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = bot.attack.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, BOT_RADIUS + 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Bot body
+        const cachedImage = bot.selectedImageDataUrl
+          ? playerImagesRef.current.get(bot.selectedImageDataUrl)
+          : undefined;
+
+        if (cachedImage && cachedImage.complete && cachedImage.naturalWidth > 0) {
+          const sourceSize = Math.min(cachedImage.naturalWidth, cachedImage.naturalHeight);
+          const imgSx = (cachedImage.naturalWidth - sourceSize) / 2;
+          const imgSy = (cachedImage.naturalHeight - sourceSize) / 2;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(0, 0, BOT_RADIUS - 1.5, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(cachedImage, imgSx, imgSy, sourceSize, sourceSize, -BOT_RADIUS, -BOT_RADIUS, BOT_RADIUS * 2, BOT_RADIUS * 2);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = bot.color;
+          ctx.beginPath();
+          ctx.arc(0, 0, BOT_RADIUS - 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(bot.entry.name.charAt(0).toUpperCase(), 0, 0);
+        }
+
+        // Weapon label above bot
+        const weaponText = WEAPON_LABELS[bot.attack.type];
+        ctx.font = 'bold 9px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.lineWidth = 2;
+        ctx.strokeText(weaponText, 0, -BOT_RADIUS - 4);
+        ctx.fillStyle = bot.attack.color;
+        ctx.fillText(weaponText, 0, -BOT_RADIUS - 4);
+
+        // Name below bot (same position as during battle)
+        ctx.font = '9px Arial';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.fillText(bot.entry.name, 0, BOT_RADIUS + 4);
+
+        ctx.restore();
+      }
+
+      // Countdown: 3, 2, 1
+      const countNum = 3 - Math.floor(elapsed / 1000); // 3, 2, 1
+      const countFrac = (elapsed % 1000) / 1000; // 0..1 within each second
+      if (countNum >= 1) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        // Scale: starts big, shrinks slightly during the second
+        const scale = 1.3 - countFrac * 0.3;
+        const alpha = 1 - countFrac * 0.3;
+        ctx.globalAlpha = alpha;
+        ctx.font = `bold ${Math.round(120 * scale)}px Arial`;
+        ctx.fillStyle = '#FFD700';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 6;
+        ctx.strokeText(countNum.toString(), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        ctx.fillText(countNum.toString(), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        ctx.restore();
+      }
+
+      revealAnim = requestAnimationFrame(drawReveal);
+    };
+
+    revealAnim = requestAnimationFrame(drawReveal);
+    return () => cancelAnimationFrame(revealAnim);
+  }, [raceState]);
 
   // Game loop
   useEffect(() => {
@@ -1128,7 +1266,7 @@ export const BattleArena: React.FC<Props> = ({
         navGridRef.current = buildNavGrid(obstacles);
       }
 
-      // Update FIGHT! text
+      // Update GO! text
       if (fightTextRef.current.opacity > 0) {
         fightTextRef.current.opacity -= dt * 1.2;
         fightTextRef.current.scale = 2.0 - fightTextRef.current.opacity;
@@ -1453,8 +1591,10 @@ export const BattleArena: React.FC<Props> = ({
     };
   }, [raceState, onWinner, onAllDestroyed]);
 
-  // Draw loop
+  // Draw loop (skipped during weapon reveal — reveal has its own renderer)
   useEffect(() => {
+    if (raceState === 'reveal') return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -1807,7 +1947,7 @@ export const BattleArena: React.FC<Props> = ({
         ctx.globalAlpha = 1;
       }
 
-      // "FIGHT!" text overlay
+      // "GO!" text overlay
       if (fightTextRef.current.opacity > 0) {
         const ft = fightTextRef.current;
         ctx.save();
@@ -1818,8 +1958,8 @@ export const BattleArena: React.FC<Props> = ({
         ctx.font = `bold ${Math.round(48 * ft.scale)}px Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.strokeText('FIGHT!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-        ctx.fillText('FIGHT!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        ctx.strokeText('GO!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        ctx.fillText('GO!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
         ctx.restore();
       }
 
