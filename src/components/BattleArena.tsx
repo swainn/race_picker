@@ -920,6 +920,18 @@ export const BattleArena: React.FC<Props> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [raceState, setRaceState] = useState<'ready' | 'reveal' | 'racing' | 'finished'>('ready');
+  const [winnerMinimized, setWinnerMinimized] = useState(false);
+  const autoMinimizeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Reset minimized state when a new winner appears, auto-minimize after 3s
+  const prevWinnerRef = useRef(currentWinner);
+  if (currentWinner !== prevWinnerRef.current) {
+    prevWinnerRef.current = currentWinner;
+    if (currentWinner) {
+      setWinnerMinimized(false);
+      if (autoMinimizeRef.current) clearTimeout(autoMinimizeRef.current);
+      autoMinimizeRef.current = setTimeout(() => setWinnerMinimized(true), 3000);
+    }
+  }
   const botsRef = useRef<Bot[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const effectsRef = useRef<Effect[]>([]);
@@ -1987,9 +1999,17 @@ export const BattleArena: React.FC<Props> = ({
     <div className="racing-game">
       <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
 
-      {currentWinner && !isRacing && (
+      {currentWinner && !isRacing && !winnerMinimized && (
         <div className="winner-display">
           <div className="winner-banner">
+            <button
+              type="button"
+              className="winner-minimize-btn"
+              onClick={() => setWinnerMinimized(true)}
+              aria-label="Minimize"
+            >
+              −
+            </button>
             <h2>{currentWinnerIsLastPlayer ? '🏆 WINNER 🏆' : 'ELIMINATED'}</h2>
             {currentWinnerImages && currentWinnerImages.length > 0 ? (
               <div className="winner-images-gallery">
@@ -2023,6 +2043,22 @@ export const BattleArena: React.FC<Props> = ({
               </button>
             )}
           </div>
+        </div>
+      )}
+      {currentWinner && !isRacing && winnerMinimized && (
+        <div className="winner-minimized" onClick={() => setWinnerMinimized(false)}>
+          <span className="winner-minimized-text">
+            {currentWinnerIsLastPlayer ? '🏆' : '💀'} {currentWinner}
+          </span>
+          {entries.length === 0 ? (
+            <button onClick={(e) => { e.stopPropagation(); onShowFinalStandings?.(); }} className="winner-minimized-action">
+              🏆 Standings
+            </button>
+          ) : (
+            <button onClick={(e) => { e.stopPropagation(); onRaceComplete(); }} className="winner-minimized-action">
+              ⚔️ Next
+            </button>
+          )}
         </div>
       )}
     </div>
