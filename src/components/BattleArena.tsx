@@ -73,6 +73,14 @@ interface Effect {
   text?: string;
 }
 
+interface FrameSnapshot {
+  time: number;
+  bots: Array<{ x: number; y: number; hp: number; maxHp: number; color: string; state: string; facing: number; deathTime: number | null; attack: AttackDef; entry: Entry; selectedImageDataUrl?: string; vx: number; vy: number; gooSlowed: boolean }>;
+  projectiles: Array<{ x: number; y: number; vx: number; vy: number; radius: number; color: string; type: AttackType; life: number }>;
+  effects: Array<Effect>;
+  obstacles: Array<Obstacle>;
+}
+
 type HazardType = 'lava' | 'spike' | 'goo';
 
 interface Obstacle {
@@ -921,17 +929,8 @@ export const BattleArena: React.FC<Props> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [raceState, setRaceState] = useState<'ready' | 'reveal' | 'racing' | 'finished'>('ready');
   const [winnerMinimized, setWinnerMinimized] = useState(false);
+  const [replayActive, setReplayActive] = useState(false);
   const autoMinimizeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Reset minimized state when a new winner appears, auto-minimize after 3s
-  const prevWinnerRef = useRef(currentWinner);
-  if (currentWinner !== prevWinnerRef.current) {
-    prevWinnerRef.current = currentWinner;
-    if (currentWinner) {
-      setWinnerMinimized(false);
-      if (autoMinimizeRef.current) clearTimeout(autoMinimizeRef.current);
-      autoMinimizeRef.current = setTimeout(() => setWinnerMinimized(true), 3000);
-    }
-  }
   const botsRef = useRef<Bot[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const effectsRef = useRef<Effect[]>([]);
@@ -945,6 +944,24 @@ export const BattleArena: React.FC<Props> = ({
   const navGridRef = useRef<boolean[][]>([]);
   const fightTextRef = useRef<{ opacity: number; scale: number }>({ opacity: 0, scale: 0 });
   const revealStartRef = useRef<number>(0);
+  const frameHistoryRef = useRef<FrameSnapshot[]>([]);
+  const replayDataRef = useRef<{ frames: FrameSnapshot[]; targetX: number; targetY: number; winnerBot: Bot | null; killerInfo?: { name: string; weapon: string } } | null>(null);
+  // Reset minimized state when a new winner appears, auto-minimize after 3s and start replay
+  const prevWinnerRef = useRef(currentWinner);
+  if (currentWinner !== prevWinnerRef.current) {
+    prevWinnerRef.current = currentWinner;
+    if (currentWinner) {
+      setWinnerMinimized(false);
+      setReplayActive(false);
+      if (autoMinimizeRef.current) clearTimeout(autoMinimizeRef.current);
+      autoMinimizeRef.current = setTimeout(() => {
+        setWinnerMinimized(true);
+        if (replayDataRef.current && replayDataRef.current.frames.length > 0) {
+          setReplayActive(true);
+        }
+      }, 3000);
+    }
+  }
   const spikeEventsRef = useRef<Array<{ closeAt: number; obstacle: Obstacle }>>([]);
   const nextSpikeAtRef = useRef<number>(0);
 
@@ -1057,6 +1074,8 @@ export const BattleArena: React.FC<Props> = ({
     navGridRef.current = buildNavGrid(obstaclesRef.current);
     nextProjectileIdRef.current = 0;
     pendingWinnerRef.current = null;
+    frameHistoryRef.current = [];
+    replayDataRef.current = null;
 
     revealStartRef.current = Date.now();
     setRaceState('reveal');
@@ -1206,6 +1225,205 @@ export const BattleArena: React.FC<Props> = ({
     revealAnim = requestAnimationFrame(drawReveal);
     return () => cancelAnimationFrame(revealAnim);
   }, [raceState]);
+
+  // Instant replay — plays back last 3 seconds zoomed on eliminated player
+  const REPLAY_SPEED = 0.4; // slow-mo factor
+  useEffect(() => {
+    if (!replayActive) return;
+    const replay = replayDataRef.current;
+    if (!replay || replay.frames.length === 0) {
+      setReplayActive(false);
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+
+    const frames = replay.frames;
+    const replayDuration = (frames[frames.length - 1].time - frames[0].time) / REPLAY_SPEED;
+    const startTime = Date.now();
+    let replayAnim: number;
+
+    const drawReplay = () => {
+      const wallElapsed = Date.now() - startTime;
+      const replayElapsed = wallElapsed * REPLAY_SPEED; // slow-mo time
+      const replayTime = frames[0].time + replayElapsed;
+
+      // Find the closest frame
+      let frame = frames[0];
+      for (const f of frames) {
+        if (f.time <= replayTime) frame = f;
+        else break;
+      }
+
+      // Camera: track the eliminated player's position from the current frame
+      const targetBot = frame.bots.find(b => b.entry.id === replay.winnerBot?.entry.id);
+      const trackX = targetBot?.x ?? replay.targetX;
+      const trackY = targetBot?.y ?? replay.targetY;
+
+      const zoomProgress = Math.min(1, wallElapsed / (replayDuration * 0.6));
+      const ease = zoomProgress * zoomProgress * (3 - 2 * zoomProgress); // smoothstep
+      const zoom = 1 + ease * 1.5; // 1x → 2.5x
+      const camX = CANVAS_WIDTH / 2 + ease * (trackX - CANVAS_WIDTH / 2);
+      const camY = CANVAS_HEIGHT / 2 + ease * (trackY - CANVAS_HEIGHT / 2);
+
+      // Clear
+      ctx.save();
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      // Apply camera transform
+      ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-camX, -camY);
+
+      // Draw obstacles
+      for (const o of frame.obstacles) {
+        ctx.save();
+        ctx.fillStyle = o.color;
+        ctx.globalAlpha = o.type === 'hazard' ? 0.5 : 1;
+        if (o.type === 'pillar') {
+          ctx.beginPath();
+          ctx.arc(o.x, o.y, o.w, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(o.x - o.w, o.y - o.h, o.w * 2, o.h * 2);
+        }
+        ctx.restore();
+      }
+
+      // Draw effects
+      for (const e of frame.effects) {
+        const alpha = e.life / e.maxLife;
+        ctx.globalAlpha = alpha;
+        if (e.type === 'dmgNumber' && e.text) {
+          ctx.font = 'bold 11px monospace';
+          ctx.fillStyle = e.color;
+          ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+          ctx.lineWidth = 2;
+          ctx.textAlign = 'center';
+          ctx.strokeText(e.text, e.x, e.y);
+          ctx.fillText(e.text, e.x, e.y);
+        } else {
+          ctx.fillStyle = e.color;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      // Draw projectiles
+      for (const p of frame.projectiles) {
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Draw bots
+      for (const bot of frame.bots) {
+        if (bot.state === 'dead') {
+          if (bot.deathTime) {
+            const fadeAlpha = Math.max(0, 1 - (frame.time - bot.deathTime) / 500);
+            if (fadeAlpha <= 0) continue;
+            ctx.globalAlpha = fadeAlpha * 0.5;
+          }
+        }
+
+        ctx.save();
+        ctx.translate(bot.x, bot.y);
+
+        // Glow ring
+        ctx.shadowColor = bot.attack.color;
+        ctx.shadowBlur = bot.state === 'attacking' ? 15 : 6;
+        ctx.strokeStyle = bot.attack.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, BOT_RADIUS + 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Body
+        const cachedImage = bot.selectedImageDataUrl
+          ? playerImagesRef.current.get(bot.selectedImageDataUrl)
+          : undefined;
+
+        if (cachedImage && cachedImage.complete && cachedImage.naturalWidth > 0) {
+          const sourceSize = Math.min(cachedImage.naturalWidth, cachedImage.naturalHeight);
+          const imgSx = (cachedImage.naturalWidth - sourceSize) / 2;
+          const imgSy = (cachedImage.naturalHeight - sourceSize) / 2;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(0, 0, BOT_RADIUS - 1.5, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(cachedImage, imgSx, imgSy, sourceSize, sourceSize, -BOT_RADIUS, -BOT_RADIUS, BOT_RADIUS * 2, BOT_RADIUS * 2);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = bot.color;
+          ctx.beginPath();
+          ctx.arc(0, 0, BOT_RADIUS - 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 11px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(bot.entry.name.charAt(0).toUpperCase(), 0, 0);
+        }
+
+        // HP bar
+        if (bot.state !== 'dead') {
+          const barWidth = BOT_RADIUS * 2;
+          const barHeight = 3;
+          const barX = -BOT_RADIUS;
+          const barY = -BOT_RADIUS - 6;
+          const hpFrac = Math.max(0, bot.hp / bot.maxHp);
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(barX, barY, barWidth, barHeight);
+          ctx.fillStyle = hpFrac > 0.5 ? '#4CAF50' : hpFrac > 0.25 ? '#FFC107' : '#F44336';
+          ctx.fillRect(barX, barY, barWidth * hpFrac, barHeight);
+        }
+
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+
+      // Restore camera transform
+      ctx.restore();
+
+      // "INSTANT REPLAY" overlay
+      const overlayAlpha = 0.7 + Math.sin(Date.now() / 300) * 0.3;
+      ctx.save();
+      ctx.globalAlpha = overlayAlpha;
+      ctx.fillStyle = '#FFD700';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 3;
+      ctx.font = 'bold 20px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.strokeText('INSTANT REPLAY', CANVAS_WIDTH / 2, 10);
+      ctx.fillText('INSTANT REPLAY', CANVAS_WIDTH / 2, 10);
+      ctx.restore();
+
+      // Vignette border for cinematic feel
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(2, 2, CANVAS_WIDTH - 4, CANVAS_HEIGHT - 4);
+      ctx.restore();
+
+      if (wallElapsed < replayDuration + 500) { // +500ms hold on last frame
+        replayAnim = requestAnimationFrame(drawReplay);
+      } else {
+        // Replay finished — clear flag; winner dialog is still shown (minimized)
+        setReplayActive(false);
+      }
+    };
+
+    replayAnim = requestAnimationFrame(drawReplay);
+    return () => cancelAnimationFrame(replayAnim);
+  }, [replayActive]);
 
   // Game loop
   useEffect(() => {
@@ -1537,6 +1755,19 @@ export const BattleArena: React.FC<Props> = ({
         }
       }
 
+      // Record frame snapshot for instant replay (keep last 3 seconds)
+      const REPLAY_BUFFER_MS = 3000;
+      frameHistoryRef.current.push({
+        time: now,
+        bots: bots.map(b => ({ x: b.x, y: b.y, hp: b.hp, maxHp: b.maxHp, color: b.color, state: b.state, facing: b.facing, deathTime: b.deathTime, attack: b.attack, entry: b.entry, selectedImageDataUrl: b.selectedImageDataUrl, vx: b.vx, vy: b.vy, gooSlowed: b.gooSlowed })),
+        projectiles: projectiles.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, radius: p.radius, color: p.color, type: p.type, life: p.life })),
+        effects: effects.map(e => ({ ...e })),
+        obstacles: obstacles.map(o => ({ ...o })),
+      });
+      while (frameHistoryRef.current.length > 0 && frameHistoryRef.current[0].time < now - REPLAY_BUFFER_MS) {
+        frameHistoryRef.current.shift();
+      }
+
       // Check for deaths
       let firstDead: Bot | null = null;
       for (const bot of bots) {
@@ -1573,16 +1804,23 @@ export const BattleArena: React.FC<Props> = ({
         pendingWinnerRef.current = firstDead;
       }
 
-      // Check if pending winner should be reported (immediate stop)
+      // On death: capture replay data, then show winner dialog immediately
       if (pendingWinnerRef.current) {
         const winner = pendingWinnerRef.current;
         pendingWinnerRef.current = null;
-        setRaceState('finished');
         const killerInfo = winner.lastHitByName
           ? { name: winner.lastHitByName, weapon: winner.lastHitByWeapon ?? 'lava' }
           : undefined;
+        replayDataRef.current = {
+          frames: [...frameHistoryRef.current],
+          targetX: winner.x,
+          targetY: winner.y,
+          winnerBot: winner,
+          killerInfo,
+        };
+        setRaceState('finished');
         onWinner(winner.entry, winner.selectedImageDataUrl, killerInfo);
-        return; // Stop the loop
+        return; // Stop the game loop
       }
 
       // Edge case: all bots dead simultaneously
@@ -1603,9 +1841,9 @@ export const BattleArena: React.FC<Props> = ({
     };
   }, [raceState, onWinner, onAllDestroyed]);
 
-  // Draw loop (skipped during weapon reveal — reveal has its own renderer)
+  // Draw loop (skipped during weapon reveal and replay — they have their own renderers)
   useEffect(() => {
-    if (raceState === 'reveal') return;
+    if (raceState === 'reveal' || replayActive) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1993,7 +2231,7 @@ export const BattleArena: React.FC<Props> = ({
     return () => {
       if (drawId) cancelAnimationFrame(drawId);
     };
-  }, [raceState]);
+  }, [raceState, replayActive]);
 
   return (
     <div className="racing-game">
