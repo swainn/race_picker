@@ -1372,6 +1372,44 @@ export const BattleArena: React.FC<Props> = ({
           ctx.fillText(bot.entry.name.charAt(0).toUpperCase(), 0, 0);
         }
 
+        // Melee attack visual (buzzsaw spin / hammer swing)
+        if (bot.state === 'attacking' && bot.attack.range === 'melee') {
+          const t = Date.now() / 100;
+          if (bot.attack.type === 'buzzsaw') {
+            ctx.strokeStyle = 'rgba(192, 192, 192, 0.7)';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 4; i++) {
+              const sawAngle = t + (i * Math.PI / 2);
+              ctx.beginPath();
+              ctx.moveTo(0, 0);
+              ctx.lineTo(
+                Math.cos(sawAngle) * (BOT_RADIUS + 6),
+                Math.sin(sawAngle) * (BOT_RADIUS + 6),
+              );
+              ctx.stroke();
+            }
+          } else if (bot.attack.type === 'hammer') {
+            const swingAngle = bot.facing + Math.sin(t * 3) * 0.8;
+            ctx.strokeStyle = 'rgba(139, 69, 19, 0.8)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(
+              Math.cos(swingAngle) * (BOT_RADIUS + 10),
+              Math.sin(swingAngle) * (BOT_RADIUS + 10),
+            );
+            ctx.stroke();
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            ctx.arc(
+              Math.cos(swingAngle) * (BOT_RADIUS + 10),
+              Math.sin(swingAngle) * (BOT_RADIUS + 10),
+              4, 0, Math.PI * 2,
+            );
+            ctx.fill();
+          }
+        }
+
         // HP bar
         if (bot.state !== 'dead') {
           const barWidth = BOT_RADIUS * 2;
