@@ -4,7 +4,7 @@ import './BattleArena.css';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type AttackType = 'fireball' | 'buzzsaw' | 'hammer' | 'machinegun' | 'flamethrower';
+type AttackType = 'fireball' | 'buzzsaw' | 'hammer' | 'machinegun' | 'flamethrower' | 'yoyo' | 'stickyhand' | 'inflatableclub';
 
 interface AttackDef {
   type: AttackType;
@@ -124,6 +124,9 @@ const KNOCKBACK_SPEED: Partial<Record<AttackType, number>> = {
   fireball: 280,
   buzzsaw: 180,
   flamethrower: 120,
+  yoyo: 100,
+  stickyhand: -500, // negative = pulls target toward attacker
+  inflatableclub: 500,
 };
 const WALL_COLLISION_DAMAGE = 8;
 const HAZARD_DPS: Record<HazardType, number> = {
@@ -349,8 +352,8 @@ const ATTACKS: AttackDef[] = [
     cooldownMs: 800,
     speedMultiplier: 1.0,
     attackRange: 150,
-    color: '#FF6B35',
-    label: '🔥',
+    color: '#3AA3FF',
+    label: '💦',
   },
   {
     type: 'buzzsaw',
@@ -359,8 +362,8 @@ const ATTACKS: AttackDef[] = [
     cooldownMs: 500,
     speedMultiplier: 1.5,
     attackRange: 28,
-    color: '#C0C0C0',
-    label: '⚙️',
+    color: '#FF66CC',
+    label: '🌀',
   },
   {
     type: 'hammer',
@@ -369,8 +372,8 @@ const ATTACKS: AttackDef[] = [
     cooldownMs: 1000,
     speedMultiplier: 0.7,
     attackRange: 32,
-    color: '#8B4513',
-    label: '🔨',
+    color: '#FFD54F',
+    label: '🗡️',
   },
   {
     type: 'machinegun',
@@ -379,8 +382,8 @@ const ATTACKS: AttackDef[] = [
     cooldownMs: 200,
     speedMultiplier: 1.0,
     attackRange: 120,
-    color: '#FFD700',
-    label: '💥',
+    color: '#66E0FF',
+    label: '💧',
   },
   {
     type: 'flamethrower',
@@ -389,17 +392,50 @@ const ATTACKS: AttackDef[] = [
     cooldownMs: 80,
     speedMultiplier: 0.9,
     attackRange: 65,
-    color: '#FF4500',
-    label: '🔥',
+    color: '#BBEEFF',
+    label: '🫧',
+  },
+  {
+    type: 'yoyo',
+    range: 'melee',
+    damage: [10, 16],
+    cooldownMs: 400,
+    speedMultiplier: 1.3,
+    attackRange: 42,
+    color: '#FF5252',
+    label: '🪀',
+  },
+  {
+    type: 'stickyhand',
+    range: 'melee',
+    damage: [18, 28],
+    cooldownMs: 700,
+    speedMultiplier: 1.0,
+    attackRange: 90,
+    color: '#E91E63',
+    label: '🖐️',
+  },
+  {
+    type: 'inflatableclub',
+    range: 'melee',
+    damage: [30, 42],
+    cooldownMs: 1300,
+    speedMultiplier: 0.65,
+    attackRange: 36,
+    color: '#FF9800',
+    label: '🥒',
   },
 ];
 
 const WEAPON_LABELS: Record<AttackType, string> = {
-  fireball: '🔥 Fireball',
-  buzzsaw: '⚙️ Buzzsaw',
-  hammer: '🔨 Hammer',
-  machinegun: '💥 Machine Gun',
-  flamethrower: '🔥 Flamethrower',
+  fireball: '💦 Water Balloon',
+  buzzsaw: '🌀 Pinwheel',
+  hammer: '🗡️ Boffer Sword',
+  machinegun: '💧 Squirt Gun',
+  flamethrower: '🫧 Bubble Blower',
+  yoyo: '🪀 Yo-Yo',
+  stickyhand: '🖐️ Sticky Hand',
+  inflatableclub: '🥒 Inflatable Club',
 };
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
@@ -726,6 +762,163 @@ function hasLineOfSight(x1: number, y1: number, x2: number, y2: number, obstacle
   return true;
 }
 
+// Draws the melee weapon visual for a bot, centered at the origin (caller has already translated).
+// `facing` is the direction to the target; `t` is a time-based animation seed.
+function drawMeleeVisual(ctx: CanvasRenderingContext2D, attackType: AttackType, facing: number, t: number): void {
+  if (attackType === 'buzzsaw') {
+    // Pinwheel: 6 colorful triangular petals spinning around the bot
+    const petalColors = ['#FF66CC', '#66E0FF', '#FFEB3B', '#8BC34A', '#FF9800', '#AB47BC'];
+    const petalR = BOT_RADIUS + 8;
+    for (let i = 0; i < 6; i++) {
+      const baseAng = t + (i * Math.PI * 2 / 6);
+      ctx.fillStyle = petalColors[i];
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(baseAng) * petalR, Math.sin(baseAng) * petalR);
+      ctx.lineTo(Math.cos(baseAng + 0.5) * petalR * 0.6, Math.sin(baseAng + 0.5) * petalR * 0.6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(0, 0, 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (attackType === 'hammer') {
+    // Boffer sword: foam blade with colored grip and pommel
+    const swingAngle = facing + Math.sin(t * 3) * 0.8;
+    const bladeLen = BOT_RADIUS + 16;
+    const cx = Math.cos(swingAngle);
+    const sy = Math.sin(swingAngle);
+    ctx.strokeStyle = '#FFEE99';
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx * BOT_RADIUS * 0.5, sy * BOT_RADIUS * 0.5);
+    ctx.lineTo(cx * bladeLen, sy * bladeLen);
+    ctx.stroke();
+    ctx.strokeStyle = '#FF6B9E';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx * BOT_RADIUS * 0.5, sy * BOT_RADIUS * 0.5);
+    ctx.lineTo(cx * bladeLen, sy * bladeLen);
+    ctx.stroke();
+    const perpX = -sy;
+    const perpY = cx;
+    ctx.strokeStyle = '#FF4081';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'butt';
+    ctx.beginPath();
+    ctx.moveTo(cx * BOT_RADIUS * 0.6 + perpX * 4, sy * BOT_RADIUS * 0.6 + perpY * 4);
+    ctx.lineTo(cx * BOT_RADIUS * 0.6 - perpX * 4, sy * BOT_RADIUS * 0.6 - perpY * 4);
+    ctx.stroke();
+    ctx.fillStyle = '#FFC107';
+    ctx.beginPath();
+    ctx.arc(cx * bladeLen, sy * bladeLen, 3, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (attackType === 'yoyo') {
+    // Yo-yo: a red disc shoots out along the target direction and retracts on a string
+    const extend = (Math.sin(t * 4) + 1) * 0.5; // 0..1 ping-pong
+    const maxReach = BOT_RADIUS + 30;
+    const cx = Math.cos(facing);
+    const sy = Math.sin(facing);
+    const tipX = cx * (BOT_RADIUS + extend * 30);
+    const tipY = sy * (BOT_RADIUS + extend * 30);
+    // String
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+    // Yo-yo disc body (spinning)
+    ctx.save();
+    ctx.translate(tipX, tipY);
+    ctx.rotate(t * 2);
+    ctx.fillStyle = '#FF5252';
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+    ctx.fill();
+    // Disc axle stripes
+    ctx.strokeStyle = '#FFEB3B';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-4, 0);
+    ctx.lineTo(4, 0);
+    ctx.moveTo(0, -4);
+    ctx.lineTo(0, 4);
+    ctx.stroke();
+    ctx.restore();
+    void maxReach;
+  } else if (attackType === 'stickyhand') {
+    // Sticky hand: a stretchy pink hand that extends toward the target
+    const extend = (Math.sin(t * 3) + 1) * 0.5; // 0..1 ping-pong
+    const reach = BOT_RADIUS + 6 + extend * 65;
+    const cx = Math.cos(facing);
+    const sy = Math.sin(facing);
+    const tipX = cx * reach;
+    const tipY = sy * reach;
+    // Sticky stretch line (gets thinner as it extends)
+    ctx.strokeStyle = '#E91E63';
+    ctx.lineWidth = Math.max(1.5, 4 - extend * 2);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx * BOT_RADIUS * 0.5, sy * BOT_RADIUS * 0.5);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+    // Hand shape (small oval palm) at tip
+    ctx.save();
+    ctx.translate(tipX, tipY);
+    ctx.rotate(facing);
+    ctx.fillStyle = '#F06292';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 4, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Three tiny fingers
+    ctx.fillStyle = '#E91E63';
+    for (let f = -1; f <= 1; f++) {
+      ctx.beginPath();
+      ctx.ellipse(2.5, f * 2.2, 2.5, 1.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  } else if (attackType === 'inflatableclub') {
+    // Inflatable club: big bulbous orange club with a wide slow swing
+    const swingAngle = facing + Math.sin(t * 1.6) * 1.0; // slower, wider swing
+    const cx = Math.cos(swingAngle);
+    const sy = Math.sin(swingAngle);
+    const shaftStart = BOT_RADIUS * 0.5;
+    const shaftEnd = BOT_RADIUS + 10;
+    const bulbDist = BOT_RADIUS + 18;
+    // Shaft
+    ctx.strokeStyle = '#FFB74D';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx * shaftStart, sy * shaftStart);
+    ctx.lineTo(cx * shaftEnd, sy * shaftEnd);
+    ctx.stroke();
+    // Bulb (big inflatable head)
+    const bulbX = cx * bulbDist;
+    const bulbY = sy * bulbDist;
+    ctx.save();
+    ctx.translate(bulbX, bulbY);
+    ctx.rotate(swingAngle);
+    ctx.fillStyle = '#FF9800';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#E65100';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    // Highlight stripe
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(-2, -2, 3, 1.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 // ─── AI Logic ───────────────────────────────────────────────────────────────
 
 function pickTarget(bot: Bot, allBots: Bot[]): number | null {
@@ -788,7 +981,8 @@ function updateBotAI(
 
         // Knockback
         const kbSpeed = KNOCKBACK_SPEED[bot.attack.type] ?? 0;
-        if (kbSpeed > 0) {
+        if (kbSpeed !== 0) {
+          // Positive kbSpeed pushes target away; negative pulls toward attacker
           const kbAngle = angleBetween(bot.x, bot.y, target.x, target.y);
           target.vx += Math.cos(kbAngle) * kbSpeed;
           target.vy += Math.sin(kbAngle) * kbSpeed;
@@ -839,7 +1033,7 @@ function updateBotAI(
             vy: Math.sin(angle) * projSpeed,
             damage: dmg / particleCount,
             radius: 2 + Math.random() * 3,
-            color: ['#FF4500', '#FF6600', '#FFA500', '#FFCC00'][Math.floor(Math.random() * 4)],
+            color: ['#BBEEFF', '#DDF4FF', '#88DDFF', '#AADDFF'][Math.floor(Math.random() * 4)],
             life: 400 + Math.random() * 200,
             type: 'flamethrower',
           });
@@ -1372,42 +1566,9 @@ export const BattleArena: React.FC<Props> = ({
           ctx.fillText(bot.entry.name.charAt(0).toUpperCase(), 0, 0);
         }
 
-        // Melee attack visual (buzzsaw spin / hammer swing)
+        // Melee attack visual
         if (bot.state === 'attacking' && bot.attack.range === 'melee') {
-          const t = Date.now() / 100;
-          if (bot.attack.type === 'buzzsaw') {
-            ctx.strokeStyle = 'rgba(192, 192, 192, 0.7)';
-            ctx.lineWidth = 2;
-            for (let i = 0; i < 4; i++) {
-              const sawAngle = t + (i * Math.PI / 2);
-              ctx.beginPath();
-              ctx.moveTo(0, 0);
-              ctx.lineTo(
-                Math.cos(sawAngle) * (BOT_RADIUS + 6),
-                Math.sin(sawAngle) * (BOT_RADIUS + 6),
-              );
-              ctx.stroke();
-            }
-          } else if (bot.attack.type === 'hammer') {
-            const swingAngle = bot.facing + Math.sin(t * 3) * 0.8;
-            ctx.strokeStyle = 'rgba(139, 69, 19, 0.8)';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(
-              Math.cos(swingAngle) * (BOT_RADIUS + 10),
-              Math.sin(swingAngle) * (BOT_RADIUS + 10),
-            );
-            ctx.stroke();
-            ctx.fillStyle = '#8B4513';
-            ctx.beginPath();
-            ctx.arc(
-              Math.cos(swingAngle) * (BOT_RADIUS + 10),
-              Math.sin(swingAngle) * (BOT_RADIUS + 10),
-              4, 0, Math.PI * 2,
-            );
-            ctx.fill();
-          }
+          drawMeleeVisual(ctx, bot.attack.type, bot.facing, Date.now() / 100);
         }
 
         // HP bar
@@ -2064,40 +2225,69 @@ export const BattleArena: React.FC<Props> = ({
       for (const p of projectiles) {
         ctx.save();
         if (p.type === 'fireball') {
-          // Fireball glow
-          ctx.shadowColor = p.color;
-          ctx.shadowBlur = 10;
+          // Water balloon — wobbly blue sphere with white highlight
+          const wobble = Math.sin(Date.now() / 60) * 0.15;
           ctx.fillStyle = p.color;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.ellipse(p.x, p.y, p.radius * (1 + wobble), p.radius * (1 - wobble), 0, 0, Math.PI * 2);
           ctx.fill();
-          // Inner white core
-          ctx.shadowBlur = 0;
-          ctx.fillStyle = '#FFF8E0';
+          // Outline
+          ctx.strokeStyle = '#1D6FC8';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          // Highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.7)';
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius * 0.4, 0, Math.PI * 2);
+          ctx.arc(p.x - p.radius * 0.35, p.y - p.radius * 0.35, p.radius * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+          // Tie knob
+          ctx.fillStyle = '#1D6FC8';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y + p.radius * 0.9, p.radius * 0.22, 0, Math.PI * 2);
           ctx.fill();
         } else if (p.type === 'flamethrower') {
-          // Flame particle with glow that fades over lifetime
-          const lifeRatio = p.life / 600; // approximate max life
-          ctx.globalAlpha = Math.min(1, lifeRatio * 1.5);
-          ctx.shadowColor = '#FF4500';
-          ctx.shadowBlur = 8;
-          ctx.fillStyle = p.color;
+          // Bubble — translucent iridescent sphere
+          const lifeRatio = p.life / 600;
+          ctx.globalAlpha = Math.min(1, lifeRatio * 1.2);
+          // Soft translucent fill
+          ctx.fillStyle = 'rgba(180, 230, 255, 0.35)';
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius * (0.6 + lifeRatio * 0.4), 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.radius * (0.9 + lifeRatio * 0.3), 0, Math.PI * 2);
           ctx.fill();
-          // Bright inner core
-          ctx.shadowBlur = 0;
-          ctx.fillStyle = '#FFEE88';
+          // Rim
+          ctx.strokeStyle = 'rgba(150, 220, 255, 0.9)';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+          // Rainbow sheen (small arc)
+          ctx.strokeStyle = 'rgba(255, 200, 255, 0.7)';
+          ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius * 0.3 * lifeRatio, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.radius * 0.7, -Math.PI * 0.8, -Math.PI * 0.4);
+          ctx.stroke();
+          // White highlight
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.beginPath();
+          ctx.arc(p.x - p.radius * 0.35, p.y - p.radius * 0.35, p.radius * 0.25, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalAlpha = 1;
         } else if (p.type === 'machinegun') {
+          // Water droplet — tilted teardrop aligned with velocity
+          const ang = Math.atan2(p.vy, p.vx);
+          ctx.translate(p.x, p.y);
+          ctx.rotate(ang);
           ctx.fillStyle = p.color;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.moveTo(p.radius * 1.6, 0);
+          ctx.quadraticCurveTo(0, p.radius, -p.radius, 0);
+          ctx.quadraticCurveTo(0, -p.radius, p.radius * 1.6, 0);
+          ctx.fill();
+          ctx.strokeStyle = '#2277BB';
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+          // Highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.7)';
+          ctx.beginPath();
+          ctx.arc(0, -p.radius * 0.3, p.radius * 0.25, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.restore();
@@ -2163,45 +2353,9 @@ export const BattleArena: React.FC<Props> = ({
           ctx.fillText(bot.entry.name.charAt(0).toUpperCase(), 0, 0);
         }
 
-        // Melee attack visual (buzz saw rotation / hammer swing)
+        // Melee attack visual
         if (bot.state === 'attacking' && bot.attack.range === 'melee') {
-          const t = Date.now() / 100;
-          if (bot.attack.type === 'buzzsaw') {
-            // Spinning saw blades
-            ctx.strokeStyle = 'rgba(192, 192, 192, 0.7)';
-            ctx.lineWidth = 2;
-            for (let i = 0; i < 4; i++) {
-              const sawAngle = t + (i * Math.PI / 2);
-              ctx.beginPath();
-              ctx.moveTo(0, 0);
-              ctx.lineTo(
-                Math.cos(sawAngle) * (BOT_RADIUS + 6),
-                Math.sin(sawAngle) * (BOT_RADIUS + 6),
-              );
-              ctx.stroke();
-            }
-          } else if (bot.attack.type === 'hammer') {
-            // Hammer swing arc
-            const swingAngle = bot.facing + Math.sin(t * 3) * 0.8;
-            ctx.strokeStyle = 'rgba(139, 69, 19, 0.8)';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(
-              Math.cos(swingAngle) * (BOT_RADIUS + 10),
-              Math.sin(swingAngle) * (BOT_RADIUS + 10),
-            );
-            ctx.stroke();
-            // Hammer head
-            ctx.fillStyle = '#8B4513';
-            ctx.beginPath();
-            ctx.arc(
-              Math.cos(swingAngle) * (BOT_RADIUS + 10),
-              Math.sin(swingAngle) * (BOT_RADIUS + 10),
-              4, 0, Math.PI * 2,
-            );
-            ctx.fill();
-          }
+          drawMeleeVisual(ctx, bot.attack.type, bot.facing, Date.now() / 100);
         }
 
         ctx.restore();
