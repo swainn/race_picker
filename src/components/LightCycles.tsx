@@ -68,7 +68,7 @@ interface PowerUpPickup {
 }
 
 interface Effect {
-  type: 'derez' | 'hop' | 'discBurst' | 'boostFlare' | 'phaseShimmer' | 'pickupGrab' | 'derezTrail';
+  type: 'derez' | 'hop' | 'discBurst' | 'boostFlare' | 'phaseShimmer' | 'pickupGrab' | 'derezTrail' | 'floatText';
   x: number;
   y: number;
   life: number;
@@ -77,6 +77,8 @@ interface Effect {
   vx?: number;
   vy?: number;
   radius?: number;
+  text?: string;
+  emphasis?: 'acquire' | 'use';
 }
 
 interface FrameSnapshot {
@@ -138,9 +140,10 @@ const HOP_DURATION = 600;
 const HOP_DISTANCE = 30;
 const PHASE_DURATION = 1200;
 
-const POWERUP_SPAWN_MIN = 3500;
-const POWERUP_SPAWN_MAX = 6500;
-const POWERUP_LIFETIME = 12000;
+const POWERUP_SPAWN_MIN = 900;
+const POWERUP_SPAWN_MAX = 2200;
+const POWERUP_LIFETIME = 14000;
+const POWERUP_MAX_ACTIVE = 14;
 const POWERUP_RADIUS = 7;
 
 const DISC_SPEED = 240;
@@ -522,6 +525,54 @@ interface AIContext {
   now: number;
 }
 
+// Per-personality power-up preferences (0 = no interest, 1 = high interest).
+// Drives pickup-seeking turn decisions when inventory is empty.
+const PICKUP_PREFERENCES: Record<Personality, Record<PowerUpType, number>> = {
+  aggressive: { boost: 0.7, hop: 0.2, disc: 1.0, derez: 0.2, phase: 0.3 },
+  hunter:     { boost: 1.0, hop: 0.2, disc: 0.9, derez: 0.1, phase: 0.3 },
+  defensive:  { boost: 0.2, hop: 0.9, disc: 0.3, derez: 0.9, phase: 1.0 },
+  wanderer:   { boost: 0.5, hop: 0.5, disc: 0.5, derez: 0.5, phase: 0.5 },
+};
+
+// Per-personality global multiplier on pickup attraction. Wanderer is low so it
+// doesn't divert from its random meander; defensive is high so it actively seeks
+// survival tools.
+const PICKUP_STRENGTH: Record<Personality, number> = {
+  aggressive: 1.0,
+  hunter:     1.0,
+  defensive:  1.5,
+  wanderer:   0.4,
+};
+
+const PICKUP_LOOKAHEAD = 160;
+const PICKUP_LATERAL_LIMIT = 60;
+
+// Score how attractive moving in `dir` is for grabbing nearby pickups.
+// Returns 0 if cycle already has inventory, otherwise scales with closeness +
+// preference, scaled down by lateral offset from the forward axis.
+function pickupAttraction(c: Cycle, dir: Direction, pickups: PowerUpPickup[]): number {
+  if (c.inventory) return 0;
+  if (pickups.length === 0) return 0;
+  const { dx, dy } = dirDelta(dir);
+  const prefs = PICKUP_PREFERENCES[c.personality];
+  let best = 0;
+  for (const p of pickups) {
+    const ddx = p.x - c.x;
+    const ddy = p.y - c.y;
+    const forward = ddx * dx + ddy * dy;
+    if (forward <= 4) continue; // behind us or right on top
+    if (forward > PICKUP_LOOKAHEAD) continue;
+    const lateral = Math.abs(ddx * dy - ddy * dx);
+    if (lateral > PICKUP_LATERAL_LIMIT) continue;
+    const closeness = 1 - forward / PICKUP_LOOKAHEAD;
+    const lateralPenalty = (lateral / PICKUP_LATERAL_LIMIT) * 0.5;
+    const pref = prefs[p.type];
+    const score = pref * Math.max(0, closeness - lateralPenalty) * 80;
+    if (score > best) best = score;
+  }
+  return best * PICKUP_STRENGTH[c.personality];
+}
+
 // Choose the best (or a) turn given an option set; "stay" means continue current dir.
 function chooseTurn(ctx: AIContext, scoreFn: (dir: Direction) => number): Direction | null {
   const c = ctx.cycle;
@@ -531,7 +582,11 @@ function chooseTurn(ctx: AIContext, scoreFn: (dir: Direction) => number): Direct
   for (const d of options) {
     const clearance = lookAheadClearance(c, d, ctx.all, ANTI_SUICIDE_LOOK_AHEAD);
     if (clearance < 12) continue; // immediate suicide → skip
-    const score = scoreFn(d) + clearance * 0.2;
+    // Pickup attraction is dampened when the path is short — don't dive into a
+    // wall just for a power-up.
+    const safetyScale = Math.min(1, clearance / 40);
+    const pickup = pickupAttraction(c, d, ctx.pickups) * safetyScale;
+    const score = scoreFn(d) + clearance * 0.2 + pickup;
     if (score > bestScore) { bestScore = score; bestDir = d; }
   }
   if (bestScore === -Infinity) {
@@ -569,7 +624,9 @@ function aiHunter(ctx: AIContext): Direction | null {
     const { dx, dy } = dirDelta(d);
     const headX = ctx.cycle.x + dx * 24;
     const headY = ctx.cycle.y + dy * 24;
-    return -Math.hypot(headX - target.x, headY - target.y);
+    // Hunter scoring is large in magnitude (-700..0), so scale pickup attraction
+    // by giving the chase term a smaller weight too.
+    return -Math.hypot(headX - target.x, headY - target.y) * 0.35;
   });
 }
 
@@ -592,6 +649,22 @@ function aiWanderer(ctx: AIContext): Direction | null {
     }
     return best;
   }
+
+  // Pickup attraction can pull the wanderer onto a nearby power-up.
+  if (!c.inventory) {
+    const perps = perpendicularDirs(c.dir);
+    const fwdAttr = pickupAttraction(c, c.dir, ctx.pickups);
+    let bestPerp: Direction | null = null;
+    let bestPerpAttr = fwdAttr;
+    for (const p of perps) {
+      const attr = pickupAttraction(c, p, ctx.pickups);
+      const cl = lookAheadClearance(c, p, ctx.all, ANTI_SUICIDE_LOOK_AHEAD);
+      if (cl < 18) continue;
+      if (attr > bestPerpAttr + 4) { bestPerpAttr = attr; bestPerp = p; }
+    }
+    if (bestPerp) return bestPerp;
+  }
+
   // Random whim
   if (ctx.now > c.randomTurnAt) {
     c.randomTurnAt = ctx.now + 700 + Math.random() * 1800;
@@ -761,7 +834,7 @@ export const LightCycles: React.FC<Props> = ({
     pendingWinnerRef.current = null;
     frameHistoryRef.current = [];
     replayDataRef.current = null;
-    nextPickupAtRef.current = Date.now() + 2000 + Math.random() * 1500;
+    nextPickupAtRef.current = Date.now() + 600 + Math.random() * 800;
 
     phaseStartRef.current = Date.now();
     setPhase('reveal');
@@ -961,8 +1034,8 @@ export const LightCycles: React.FC<Props> = ({
         }
       }
 
-      // Power-up pickup spawn
-      if (wallNow >= nextPickupAtRef.current && pickups.length < 5) {
+      // Power-up pickup spawn — try multiple per tick when behind quota
+      if (wallNow >= nextPickupAtRef.current && pickups.length < POWERUP_MAX_ACTIVE) {
         const p = trySpawnPickup(cycles, pickups, wallNow);
         if (p) {
           pickups.push(p);
@@ -984,6 +1057,7 @@ export const LightCycles: React.FC<Props> = ({
           if (dist < CYCLE_RADIUS + POWERUP_RADIUS) {
             c.inventory = p.type;
             spawnPickupEffect(effects, p);
+            spawnFloatText(effects, c.x, c.y, c.color, `+ ${POWERUP_LABEL[p.type]}`, 'acquire');
             pickups.splice(i, 1);
             break;
           }
@@ -1224,6 +1298,8 @@ function firePowerUp(
   nextDiscIdRef: { current: number },
 ) {
   if (!c.inventory) return;
+  const usedType = c.inventory;
+  spawnFloatText(effects, c.x, c.y, c.color, POWERUP_LABEL[usedType].toUpperCase() + '!', 'use');
   switch (c.inventory) {
     case 'boost': {
       c.boostUntil = now + BOOST_DURATION;
@@ -1382,6 +1458,27 @@ function spawnPickupEffect(effects: Effect[], p: PowerUpPickup) {
   effects.push({
     type: 'pickupGrab', x: p.x, y: p.y,
     life: 450, maxLife: 450, color: '#FFFFFF', radius: 6,
+  });
+}
+
+function spawnFloatText(
+  effects: Effect[],
+  x: number,
+  y: number,
+  color: string,
+  text: string,
+  emphasis: 'acquire' | 'use',
+) {
+  effects.push({
+    type: 'floatText',
+    x, y: y - 14,
+    vx: 0,
+    vy: emphasis === 'use' ? -34 : -22,
+    life: emphasis === 'use' ? 1200 : 1000,
+    maxLife: emphasis === 'use' ? 1200 : 1000,
+    color,
+    text,
+    emphasis,
   });
 }
 
@@ -1630,6 +1727,23 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect) {
   const alpha = e.life / e.maxLife;
   ctx.save();
   ctx.globalAlpha = Math.max(0, alpha);
+  if (e.type === 'floatText' && e.text) {
+    const pop = e.emphasis === 'use' ? 1 + (1 - alpha) * 0.3 : 1;
+    const fontSize = Math.round((e.emphasis === 'use' ? 11 : 9) * pop);
+    ctx.font = `bold ${fontSize}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = e.color;
+    ctx.shadowBlur = e.emphasis === 'use' ? 10 : 6;
+    // Outline
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(e.text, e.x, e.y);
+    ctx.fillStyle = e.color;
+    ctx.fillText(e.text, e.x, e.y);
+    ctx.restore();
+    return;
+  }
   if (e.type === 'phaseShimmer') {
     ctx.strokeStyle = e.color;
     ctx.shadowColor = e.color;
