@@ -84,6 +84,8 @@ interface Effect {
 interface FrameSnapshot {
   time: number;
   cycles: Array<{
+    entryId: number;
+    entryName: string;
     x: number;
     y: number;
     dir: Direction;
@@ -777,7 +779,7 @@ export const LightCycles: React.FC<Props> = ({
   const nextPickupAtRef = useRef<number>(0);
   const fightTextRef = useRef<{ opacity: number; scale: number }>({ opacity: 0, scale: 0 });
   const frameHistoryRef = useRef<FrameSnapshot[]>([]);
-  const replayDataRef = useRef<{ frames: FrameSnapshot[]; targetX: number; targetY: number; killerInfo?: { name: string; weapon: string } } | null>(null);
+  const replayDataRef = useRef<{ frames: FrameSnapshot[]; targetEntryId: number; targetX: number; targetY: number; killerInfo?: { name: string; weapon: string } } | null>(null);
   const phaseRef = useRef(phase);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
@@ -1094,6 +1096,7 @@ export const LightCycles: React.FC<Props> = ({
         // Stash replay data
         replayDataRef.current = {
           frames: [...frameHistoryRef.current],
+          targetEntryId: dead.entry.id,
           targetX: dead.x,
           targetY: dead.y,
           killerInfo: dead.lastHitByName ? { name: dead.lastHitByName, weapon: dead.lastHitByWeapon ?? 'Trail' } : undefined,
@@ -1401,6 +1404,8 @@ function snapshotFrame(time: number, cycles: Cycle[], discs: Disc[], pickups: Po
   return {
     time,
     cycles: cycles.map(c => ({
+      entryId: c.entry.id,
+      entryName: c.entry.name,
       x: c.x, y: c.y, dir: c.dir, color: c.color, alive: c.alive,
       trail: c.trail.map(s => ({ ...s })),
       liveStart: { ...c.liveStart },
@@ -1940,7 +1945,7 @@ function drawGoFlash(ctx: CanvasRenderingContext2D, ft: { opacity: number; scale
 
 function drawReplay(
   ctx: CanvasRenderingContext2D,
-  data: { frames: FrameSnapshot[]; targetX: number; targetY: number },
+  data: { frames: FrameSnapshot[]; targetEntryId: number; targetX: number; targetY: number },
   wallNow: number,
   imageMap: Map<string, HTMLImageElement>,
 ) {
@@ -1959,10 +1964,11 @@ function drawReplay(
     else break;
   }
 
-  // Zoom on target
+  // Follow target cycle through the replay (falls back to crash position)
+  const targetCycle = snap.cycles.find(c => c.entryId === data.targetEntryId);
+  const cx = targetCycle ? targetCycle.x : data.targetX;
+  const cy = targetCycle ? targetCycle.y : data.targetY;
   const zoom = 2.4;
-  const cx = data.targetX;
-  const cy = data.targetY;
 
   ctx.save();
   ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
@@ -2044,6 +2050,26 @@ function drawReplay(
     ctx.fill();
     ctx.restore();
   }
+
+  // Name labels (drawn at zoomed scale but with descaled font for readability)
+  for (const c of snap.cycles) {
+    ctx.save();
+    ctx.translate(c.x, c.y + 9);
+    ctx.scale(1 / zoom, 1 / zoom);
+    const isTarget = c.entryId === data.targetEntryId;
+    ctx.fillStyle = isTarget ? '#FFFFFF' : 'rgba(255,255,255,0.78)';
+    ctx.shadowColor = isTarget ? c.color : 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = isTarget ? 8 : 3;
+    ctx.font = isTarget ? 'bold 11px monospace' : '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeText(c.entryName, 0, 0);
+    ctx.fillText(c.entryName, 0, 0);
+    ctx.restore();
+  }
+
   ctx.restore();
 
   // Replay overlay label
@@ -2054,6 +2080,15 @@ function drawReplay(
   ctx.font = 'bold 12px monospace';
   ctx.textAlign = 'left';
   ctx.fillText('▶ REPLAY · 0.35×', 12, 20);
+  // Eliminated participant tag
+  if (targetCycle) {
+    ctx.fillStyle = targetCycle.color;
+    ctx.shadowColor = targetCycle.color;
+    ctx.shadowBlur = 8;
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`FOLLOWING: ${targetCycle.entryName}`, CANVAS_WIDTH - 12, 20);
+  }
   ctx.restore();
 }
 
