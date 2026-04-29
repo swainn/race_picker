@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Entry } from './types';
 import { EntryManager } from './components/EntryManager';
-import { BattleArena } from './components/BattleArena';
+import { LightCycles } from './components/LightCycles';
 import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
@@ -216,7 +216,8 @@ function App() {
       setLastRaceSnapshot({
         eliminatedIds: [...eliminatedIds],
         winOrderEntries: Array.from(winOrder.entries()),
-        standingImageEntries: Array.from(standingImages.entries())
+        standingImageEntries: Array.from(standingImages.entries()),
+        takedownEntries: Array.from(takedowns.entries())
       });
       setResetKey((prev) => prev + 1);
       setShowRace(true);
@@ -359,8 +360,8 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="header-title">
-            <h1>⚔️ Aquaveo Battle Bots</h1>
-            <p>The Random Selection Tool for Winners!</p>
+            <h1>🏍️ Aquaveo Light Cycles</h1>
+            <p>End of Line — The Random Selection Tool for Winners!</p>
           </div>
           <button onClick={() => setShowManagementModal(true)} className="header-management-button" aria-label="Manage participants and groups">
             ⚙️
@@ -373,24 +374,24 @@ function App() {
           <div className="race-controls">
             {activeEntries.length >= 1 && (
               <button onClick={startRace} className="start-race-button">
-                ⚔️ Start Battle ({activeEntries.length})
+                ▶ Initialize Grid ({activeEntries.length})
               </button>
             )}
 
             {eliminatedIds.length > 0 && (
               <button onClick={resetRace} className="reset-race-button">
-                🔄 Reset Battle
+                🔄 Reset Grid
               </button>
             )}
 
             {lastRaceSnapshot && (
               <button onClick={redoLastRace} className="redo-race-button">
-                ↻ Redo Last Battle
+                ↻ Redo Last Run
               </button>
             )}
           </div>
 
-          <BattleArena
+          <LightCycles
             key={resetKey}
             entries={activeEntries}
             allEntries={entries}

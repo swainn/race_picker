@@ -1,21 +1,24 @@
-# ⚔️ Aquaveo Battle Bots Picker
+# 🏍️ Aquaveo Light Cycles
 
-A chaotic battle-royale random selection tool. Instead of drawing names, participants become bots armed with toy weapons and fight it out in an arena until one stands. The order in which bots fall produces the ranking.
+A neon-soaked random selection tool inspired by Tron. Each participant becomes a light cycle on the grid, leaves a glowing trail behind it, and the last cycle un-derezzed wins. Order of elimination + identity-disc takedowns produce the final ranking.
 
 ## Screenshots
 
-### Battle Arena
-![Battle Arena](screenshots/racing.png)
+### The Grid
 
-### Winner Announcement
-![Winner Announcement](screenshots/winner.png)
+![The Grid](screenshots/racing.png)
+
+### Grid Champion
+
+![Grid Champion](screenshots/winner.png)
 
 ### Final Standings
+
 ![Final Standings](screenshots/standings.png)
 
 ## About
 
-Each participant is spawned as a bot with a randomly assigned toy weapon. Bots pathfind around obstacles, target each other, and battle using their weapon's unique mechanics. Eliminations trigger an instant replay zoomed in on the fallen bot. The last bot standing wins, and ranking is determined by kill count and elimination order.
+All cycles spawn around the perimeter of the arena, each assigned a random "personality" that drives its AI. They race continuously at 90° turns only, leaving axis-aligned neon trails. Crash into a trail, the perimeter, or get hit by an Identity Disc, and you're derezzed. Each elimination triggers a slow-motion replay zoomed on the fallen cycle. The last cycle on the grid is the Grid Champion; the rest are ranked by elimination order and takedowns.
 
 ## Getting Started
 
@@ -50,59 +53,75 @@ npm run build
 npm run lint
 ```
 
-## The Bots
+## The Cycles
 
-Each bot is randomly assigned one of eight toy weapons at the start of every battle. A **weapon reveal** phase with a 3-2-1 countdown shows each bot's loadout before the fight begins.
+Each cycle is assigned one of four AI personalities at the start of every match, randomly selected from the pool. Personality determines turn decisions and power-up usage.
 
-### Ranged Weapons
+| Personality | Behavior | Power-up Style |
+|---|---|---|
+| 🗡️ **Aggressive** | Cuts in front of nearest opponent's projected path; uses Boost and Disc liberally to engage. | Eager — fires Disc on alignment, Boosts to close gaps. |
+| 🛡️ **Defensive** | Picks the direction with the most open space ahead (flood-fill); avoids crowded sectors. | Reactive — uses Hop, Derez, and Phase only when boxed in. |
+| 🎯 **Hunter** | Chases the nearest opponent's tail; closes distance with Boost; throws Disc when aligned. | Hunter — Boost to close, Disc to finish. |
+| 🌪️ **Wanderer** | Random whims at random intervals (with anti-suicide guard); rarely pre-empts power-ups. | Sparing — uses Hop on a coin flip when threatened. |
 
-| Weapon | Damage | Rate | Range | Notes |
-|---|---|---|---|---|
-| 💦 **Water Balloon** | 15–22 | Medium | Long | Wobbling blue projectile, moderate knockback |
-| 💧 **Squirt Gun** | 5–9 | Very fast | Medium | Rapid-fire water droplets |
-| 🫧 **Bubble Blower** | 3–6 per bubble | Very fast burst | Short | Cone of translucent bubbles |
+All personalities share a "don't immediately crash" guard: if forward motion would hit a trail or wall within ~6 cells, the AI prefers a safer 90° turn.
 
-### Melee Weapons
+## Power-ups
 
-| Weapon | Damage | Speed | Range | Special |
-|---|---|---|---|---|
-| 🌀 **Pinwheel** | 25–32 | Very fast | Short | Colorful spinning petals, light knockback |
-| 🗡️ **Boffer Sword** | 35–42 | Slow | Medium | Wide foam swing, heavy knockback |
-| 🪀 **Yo-Yo** | 10–16 | Fast | Medium | Extends and retracts on a string |
-| 🖐️ **Sticky Hand** | 18–28 | Fast | Long | **Pulls target toward attacker** instead of pushing away |
-| 🥒 **Inflatable Club** | 30–42 | Very slow | Short | Biggest knockback in the game — punts bots into hazards |
+Five power-up types spawn periodically as glowing hex pickups on the grid (one cycle holds at most one charge at a time). The AI decides when to use whatever it's holding based on personality and situation.
 
-## Arena Hazards
+| Glyph | Power-up | Effect |
+|---|---|---|
+| `»` | **Light Boost** | 1.6× speed for 2.5 seconds; trail glows brighter, leaves a flare. |
+| `⌃` | **Hop** | Instantly jumps 30 px forward, briefly intangible to trails — the iconic TRON: Legacy move. |
+| `◎` | **Identity Disc** | Throws a glowing disc forward; first trail it hits gets derezzed, first cycle it hits is killed (takedown credited to thrower). |
+| `✕` | **Derez** | Instantly erases the cycle's entire frozen trail — useful when boxed in. |
+| `⌬` | **Wall Phase** | Pass through any trail (your own or others') for 1.2 seconds. |
 
-Three hazard types spawn randomly in each arena. Bots pathfind around lava and spikes, but knockback can still launch them into danger.
+## The Grid
 
-- **🌋 Lava Pit** — Instant kill on contact
-- **🪤 Spike Pit** — Appears dynamically during battle, pops open every 400ms at random locations for 500ms each, dealing heavy damage on contact
-- **🟢 Goo Pool** — Bots walk through it, but are permanently slowed to half speed for the rest of the battle
+A clean perimeter-walled arena with no obstacles. Cycles only have to avoid each other's trails, the perimeter, and Identity Discs in flight.
+
+- Continuous pixel motion at 60 FPS
+- 90° turns only — all trails are axis-aligned
+- Stable per-participant trail color hashed from participant id (drawn from a 12-color Tron palette)
+
+## Match Flow
+
+1. **Initialize Grid** — Each participant's avatar materializes one-by-one on the grid, then dissolves into a glowing cycle outline at their starting position.
+2. **3-2-1 Countdown** — Pulsing neon countdown.
+3. **Run** — All cycles race simultaneously. Power-ups spawn periodically (every 3.5–6.5 seconds) and live for 12 seconds before despawning.
+4. **First Crash** — The instant any cycle is derezzed, the run ends and a slow-motion replay (0.35×) zooms in on the crash for 3 seconds.
+5. **Banner** — Eliminated participant is shown along with who derezzed them and how (Trail · Identity Disc · Wall).
+6. **Next Run** — Click ▶ Next Run to start a fresh run with the surviving cycles. Repeat until one Grid Champion remains.
+
+## Takedown Attribution
+
+- Crash into another cycle's trail → that cycle's owner gets the takedown
+- Hit by an Identity Disc → disc thrower gets the takedown
+- Crash into the perimeter or your own trail → self-derez, no one credited
 
 ## Features
 
-- **Pre-Battle Weapon Reveal** — Bots appear one by one with their assigned weapon, followed by a 3-2-1 countdown before "GO!"
-- **Dynamic Pathfinding** — A* navigation around walls, pillars, lava, and spike pits; re-routes every 3 seconds if target isn't reached
-- **Knockback Physics** — Weapons push (or pull) targets; collisions with walls deal extra damage
-- **Damage Numbers** — Floating damage numbers drift upward on every hit
-- **Dynamic Spike Traps** — Spike pits continuously open and close at random locations throughout the battle
-- **Instant Replay** — After each elimination, a 3-second slow-motion replay zooms in and tracks the fallen bot
-- **Minimizable Winner Dialog** — Elimination/winner banner auto-minimizes after 3 seconds (triggering the replay) and can be re-expanded from the bottom bar
-- **Smart Ranking** — Last bot standing gets 1st place; all others ranked by kill count (takedowns) and then elimination order
-- **Group Management** — Save, load, and delete named rosters of participants; all persisted via `localStorage`
-- **Participant Images** — Optional avatar images per participant, shown on bots, eliminations, and the final standings
+- **Personality-Based AI** — Four distinct AI archetypes mixed across cycles for narrative variety.
+- **Five Power-Ups** — Light Boost, Hop, Identity Disc, Derez, Wall Phase.
+- **Pre-Run Materialization** — Avatar-to-cycle morph with a Tron-style scan-line rezzing animation.
+- **Identity Disc Combat** — Ranged kill option that derezzes trails and cycles alike.
+- **Instant Replay** — 3-second slow-motion replay zoomed on the crash, with deresolution effect.
+- **Smart Ranking** — Last cycle standing gets 1st place; all others ranked by takedowns and then elimination order.
+- **Group Management** — Save, load, and delete named rosters of participants; all persisted via `localStorage`.
+- **Participant Avatars** — Optional avatar images per participant, shown during materialization, on elimination, and in the final standings.
 
 ## Technology Stack
 
 - **React 19** with TypeScript
 - **Vite 7** for dev server and builds
-- **HTML5 Canvas** for real-time battle rendering at 60fps
+- **HTML5 Canvas** for real-time grid rendering at 60 FPS
 - **localStorage** for participant and group persistence
 
 ## Architecture
 
 - `App.tsx` — Top-level state, winner dialog, group management, final standings
-- `components/BattleArena.tsx` — The entire battle game: physics, AI, pathfinding, hazards, weapon visuals, instant replay
+- `components/LightCycles.tsx` — The entire grid game: AI personalities, trails, collisions, power-ups, Identity Disc, materialization, replay
 - `components/EntryManager.tsx` — Sidebar participant and group UI
-- `components/BattleArena.css`, `App.css` — Styling and animations
+- `components/LightCycles.css`, `App.css` — Styling, neon glow effects, animations
