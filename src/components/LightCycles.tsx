@@ -1152,11 +1152,16 @@ export const LightCycles: React.FC<Props> = ({
       // Grid backdrop
       drawGridBackdrop(ctx, wallNow);
 
-      // Arena perimeter glow
-      drawPerimeter(ctx, phaseRef.current);
+      const inReplay = replayActive && replayDataRef.current && replayDataRef.current.frames.length > 0;
 
-      if (replayActive && replayDataRef.current && replayDataRef.current.frames.length > 0) {
-        drawReplay(ctx, replayDataRef.current, wallNow, playerImagesRef.current);
+      // Arena perimeter glow — only during normal play; replay draws its own
+      // wall in world coordinates so the camera pans relative to it.
+      if (!inReplay) {
+        drawPerimeter(ctx, phaseRef.current);
+      }
+
+      if (inReplay) {
+        drawReplay(ctx, replayDataRef.current!, wallNow, playerImagesRef.current);
       } else if (phase === 'reveal') {
         drawReveal(ctx, cyclesRef.current, wallNow - phaseStartRef.current, playerImagesRef.current);
       } else if (phase === 'countdown') {
@@ -1676,9 +1681,13 @@ function drawCycleSprite(ctx: CanvasRenderingContext2D, c: Cycle, wallNow: numbe
   ctx.restore();
 }
 
-function drawPickup(ctx: CanvasRenderingContext2D, p: PowerUpPickup, wallNow: number) {
+function drawPickupAt(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, type: PowerUpType,
+  wallNow: number, pulseSeed: number,
+) {
   const t = wallNow / 200;
-  const pulse = 0.7 + Math.sin(t + p.id * 0.7) * 0.3;
+  const pulse = 0.7 + Math.sin(t + pulseSeed * 0.7) * 0.3;
   ctx.save();
   ctx.shadowColor = '#FFFFFF';
   ctx.shadowBlur = 12 * pulse;
@@ -1689,10 +1698,10 @@ function drawPickup(ctx: CanvasRenderingContext2D, p: PowerUpPickup, wallNow: nu
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
-    const x = p.x + Math.cos(a) * POWERUP_RADIUS;
-    const y = p.y + Math.sin(a) * POWERUP_RADIUS;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+    const px = x + Math.cos(a) * POWERUP_RADIUS;
+    const py = y + Math.sin(a) * POWERUP_RADIUS;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
   }
   ctx.closePath();
   ctx.fill();
@@ -1703,8 +1712,12 @@ function drawPickup(ctx: CanvasRenderingContext2D, p: PowerUpPickup, wallNow: nu
   ctx.font = 'bold 9px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(POWERUP_GLYPH[p.type], p.x, p.y);
+  ctx.fillText(POWERUP_GLYPH[type], x, y);
   ctx.restore();
+}
+
+function drawPickup(ctx: CanvasRenderingContext2D, p: PowerUpPickup, wallNow: number) {
+  drawPickupAt(ctx, p.x, p.y, p.type, wallNow, p.id);
 }
 
 function drawDisc(ctx: CanvasRenderingContext2D, d: Disc, wallNow: number) {
@@ -1975,6 +1988,16 @@ function drawReplay(
   ctx.scale(zoom, zoom);
   ctx.translate(-cx, -cy);
 
+  // World-space arena wall — replaces the canvas-frame perimeter so the
+  // camera pans relative to the wall (you can see when a cycle hits it).
+  ctx.save();
+  ctx.shadowColor = '#00E5FF';
+  ctx.shadowBlur = 6;
+  ctx.strokeStyle = '#00E5FF';
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(ARENA_LEFT, ARENA_TOP, PLAY_WIDTH, PLAY_HEIGHT);
+  ctx.restore();
+
   // Re-render simplified scene
   // Trails + live segs
   for (const c of snap.cycles) {
@@ -2024,6 +2047,11 @@ function drawReplay(
     ctx.fill();
     ctx.restore();
   }
+  // Pickups (powerups on the grid)
+  for (let i = 0; i < snap.pickups.length; i++) {
+    const p = snap.pickups[i];
+    drawPickupAt(ctx, p.x, p.y, p.type, wallNow, i + 1);
+  }
   // Discs
   for (const d of snap.discs) {
     ctx.save();
@@ -2037,17 +2065,33 @@ function drawReplay(
     ctx.stroke();
     ctx.restore();
   }
-  // Effects (final flash)
+  // Effects — defer floatText to a counter-scaled pass so labels stay readable
   for (const e of snap.effects) {
+    if (e.type === 'floatText') continue;
+    drawEffect(ctx, e);
+  }
+  // FloatText annotations: positioned in world space but rendered at canvas
+  // scale so font size matches the live game.
+  for (const e of snap.effects) {
+    if (e.type !== 'floatText' || !e.text) continue;
     const alpha = e.life / e.maxLife;
+    if (alpha <= 0) continue;
     ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.scale(1 / zoom, 1 / zoom);
+    const pop = e.emphasis === 'use' ? 1 + (1 - alpha) * 0.3 : 1;
+    const fontSize = Math.round((e.emphasis === 'use' ? 11 : 9) * pop);
+    ctx.font = `bold ${fontSize}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.globalAlpha = Math.max(0, alpha);
     ctx.shadowColor = e.color;
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = e.emphasis === 'use' ? 10 : 6;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(e.text, 0, 0);
     ctx.fillStyle = e.color;
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, e.radius ?? 1.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillText(e.text, 0, 0);
     ctx.restore();
   }
 
