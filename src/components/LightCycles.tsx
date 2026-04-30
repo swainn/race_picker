@@ -151,10 +151,11 @@ const POWERUP_RADIUS = 7;
 const DISC_SPEED = 240;
 const DISC_LIFETIME = 2200;
 
-const REVEAL_PER_PARTICIPANT = 380; // ms each cycle materializes
-const REVEAL_TAIL = 800;             // pause after last
-const COUNTDOWN_DURATION = 3000;     // 3-2-1
-const GO_FLASH_DURATION = 700;
+const REVEAL_PER_PARTICIPANT = 160; // ms each cycle materializes
+const REVEAL_TAIL = 250;             // pause after last
+const COUNTDOWN_PER_NUMBER = 500;             // ms per digit (3-2-1)
+const COUNTDOWN_DURATION = 3 * COUNTDOWN_PER_NUMBER;
+const GO_FLASH_DURATION = 500;
 
 const REPLAY_DURATION = 3000;
 const REPLAY_SPEED = 0.35; // slow-mo factor
@@ -248,50 +249,49 @@ function getEntryImages(entry: Entry): string[] {
 }
 
 // Distribute spawn positions evenly around the arena perimeter, all facing inward.
+// Walks the perimeter as one continuous path of length innerW*2 + innerH*2 and
+// drops `n` cycles at equal arc-length intervals — works for any n, no side-bias.
 function spawnPositions(n: number): Array<{ x: number; y: number; dir: Direction }> {
+  if (n <= 0) return [];
   const padIn = 30;
+  const innerW = PLAY_WIDTH - 2 * padIn;   // top + bottom edge length
+  const innerH = PLAY_HEIGHT - 2 * padIn;  // left + right edge length
+  const perimeter = 2 * innerW + 2 * innerH;
+
   const slots: Array<{ x: number; y: number; dir: Direction }> = [];
-  if (n <= 0) return slots;
-
-  // Evenly distribute around 4 sides
-  const perSide = Math.ceil(n / 4);
-  const xStep = (PLAY_WIDTH - 2 * padIn) / Math.max(1, perSide);
-  const yStep = (PLAY_HEIGHT - 2 * padIn) / Math.max(1, perSide);
-
-  // Top edge → facing down
-  for (let i = 0; i < perSide && slots.length < n; i++) {
-    slots.push({
-      x: ARENA_LEFT + padIn + xStep * (i + 0.5),
-      y: ARENA_TOP + padIn,
-      dir: 'down',
-    });
+  for (let i = 0; i < n; i++) {
+    const offset = ((i + 0.5) / n) * perimeter;
+    if (offset < innerW) {
+      // Top edge — walking right, facing down
+      slots.push({
+        x: ARENA_LEFT + padIn + offset,
+        y: ARENA_TOP + padIn,
+        dir: 'down',
+      });
+    } else if (offset < innerW + innerH) {
+      // Right edge — walking down, facing left
+      slots.push({
+        x: ARENA_RIGHT - padIn,
+        y: ARENA_TOP + padIn + (offset - innerW),
+        dir: 'left',
+      });
+    } else if (offset < innerW * 2 + innerH) {
+      // Bottom edge — walking left, facing up
+      slots.push({
+        x: ARENA_RIGHT - padIn - (offset - innerW - innerH),
+        y: ARENA_BOTTOM - padIn,
+        dir: 'up',
+      });
+    } else {
+      // Left edge — walking up, facing right
+      slots.push({
+        x: ARENA_LEFT + padIn,
+        y: ARENA_BOTTOM - padIn - (offset - 2 * innerW - innerH),
+        dir: 'right',
+      });
+    }
   }
-  // Right edge → facing left
-  for (let i = 0; i < perSide && slots.length < n; i++) {
-    slots.push({
-      x: ARENA_RIGHT - padIn,
-      y: ARENA_TOP + padIn + yStep * (i + 0.5),
-      dir: 'left',
-    });
-  }
-  // Bottom edge → facing up
-  for (let i = 0; i < perSide && slots.length < n; i++) {
-    slots.push({
-      x: ARENA_RIGHT - padIn - xStep * (i + 0.5),
-      y: ARENA_BOTTOM - padIn,
-      dir: 'up',
-    });
-  }
-  // Left edge → facing right
-  for (let i = 0; i < perSide && slots.length < n; i++) {
-    slots.push({
-      x: ARENA_LEFT + padIn,
-      y: ARENA_BOTTOM - padIn - yStep * (i + 0.5),
-      dir: 'right',
-    });
-  }
-
-  return slots.slice(0, n);
+  return slots;
 }
 
 // Test if a point lies on (or within EPS of) an axis-aligned segment.
@@ -1924,8 +1924,8 @@ function drawSpawnReveal(
 
 function drawCountdown(ctx: CanvasRenderingContext2D, elapsed: number) {
   const remaining = COUNTDOWN_DURATION - elapsed;
-  const second = Math.ceil(remaining / 1000); // 3, 2, 1
-  const within = (elapsed % 1000) / 1000;
+  const second = Math.ceil(remaining / COUNTDOWN_PER_NUMBER); // 3, 2, 1
+  const within = (elapsed % COUNTDOWN_PER_NUMBER) / COUNTDOWN_PER_NUMBER;
   const scale = 1.0 + 0.6 * (1 - within);
   const alpha = 0.4 + 0.6 * (1 - within);
 
