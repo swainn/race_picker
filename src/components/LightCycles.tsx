@@ -161,7 +161,7 @@ const REPLAY_DURATION = 3000;
 const REPLAY_SPEED = 0.35; // slow-mo factor
 const FRAME_HISTORY_MS = 3000;
 
-const ANTI_SUICIDE_LOOK_AHEAD = 60; // px
+const ANTI_SUICIDE_LOOK_AHEAD = 100; // px
 const COLLISION_EPS = 1.6;
 
 const PALETTE = [
@@ -459,15 +459,17 @@ function movingTowardOther(c: Cycle, dir: Direction, other: Cycle): number | nul
   return null;
 }
 
-// Simple flood-fill from cycle's next-cell forward direction; counts open cells reachable.
-// Used by defensive personality to choose the most-spacious turn.
-function spaceAhead(c: Cycle, dir: Direction, all: Cycle[], budget: number): number {
-  const { dx, dy } = dirDelta(dir);
-  const startX = c.x + dx * 12;
-  const startY = c.y + dy * 12;
+// Flood-fill space estimator. Counts open coarse-grid cells reachable from
+// (startX, startY) without crossing any cycle's trails, the perimeter, or
+// any optional virtual segments (used to model "if I commit to this trail").
+function floodFillSpace(
+  startX: number, startY: number,
+  all: Cycle[],
+  virtualSegs: Segment[],
+  budget: number,
+): number {
   if (startX < ARENA_LEFT || startX > ARENA_RIGHT || startY < ARENA_TOP || startY > ARENA_BOTTOM) return 0;
 
-  // Coarse grid (cells of GRID_CELL*2) for quick BFS
   const cell = GRID_CELL * 2;
   const cols = Math.ceil(PLAY_WIDTH / cell);
   const rows = Math.ceil(PLAY_HEIGHT / cell);
@@ -490,6 +492,7 @@ function spaceAhead(c: Cycle, dir: Direction, all: Cycle[], budget: number): num
     for (const s of other.trail) markSeg(s);
     if (other.alive) markSeg(buildLiveSegment(other));
   }
+  for (const s of virtualSegs) markSeg(s);
 
   const startCx = Math.floor((startX - ARENA_LEFT) / cell);
   const startCy = Math.floor((startY - ARENA_TOP) / cell);
@@ -515,6 +518,44 @@ function spaceAhead(c: Cycle, dir: Direction, all: Cycle[], budget: number): num
     }
   }
   return count;
+}
+
+// Space ahead in a candidate direction, starting just past my current head.
+function spaceAhead(c: Cycle, dir: Direction, all: Cycle[], budget: number): number {
+  const { dx, dy } = dirDelta(dir);
+  return floodFillSpace(c.x + dx * 12, c.y + dy * 12, all, [], budget);
+}
+
+// Build the virtual segment representing my projected trail if I commit to
+// `dir` for `length` px. Used to estimate enclosure / boxing-in benefit.
+function projectedFutureSegment(c: Cycle, dir: Direction, length: number): Segment {
+  const { dx, dy } = dirDelta(dir);
+  return {
+    x1: c.x, y1: c.y,
+    x2: c.x + dx * length, y2: c.y + dy * length,
+    ownerId: c.entry.id, color: c.color,
+  };
+}
+
+// "Boxing-in" heuristic: how much does committing to `dir` for ~70px reduce
+// the target's reachable territory? Returns 0 if my virtual wall doesn't
+// shrink their space (or if I can't even reach a useful cut-off position).
+function enclosureBenefit(
+  c: Cycle, dir: Direction, target: Cycle, all: Cycle[],
+  targetBaselineSpace: number,
+): number {
+  const sample = sampleAheadOf(target, 8);
+  const myWall = projectedFutureSegment(c, dir, 70);
+  const constrainedSpace = floodFillSpace(sample.x, sample.y, all, [myWall], 220);
+  // Reduction is the win condition; cap it so a tiny chase opportunity
+  // doesn't dominate over genuine survival.
+  return Math.max(0, targetBaselineSpace - constrainedSpace);
+}
+
+// Sample point just ahead of `c` in its current direction (for territory queries).
+function sampleAheadOf(c: Cycle, dist: number): { x: number; y: number } {
+  const { dx, dy } = dirDelta(c.dir);
+  return { x: c.x + dx * dist, y: c.y + dy * dist };
 }
 
 // ─── AI Personalities ────────────────────────────────────────────────────────
@@ -576,28 +617,45 @@ function pickupAttraction(c: Cycle, dir: Direction, pickups: PowerUpPickup[]): n
 }
 
 // Choose the best (or a) turn given an option set; "stay" means continue current dir.
-function chooseTurn(ctx: AIContext, scoreFn: (dir: Direction) => number): Direction | null {
+// All personalities benefit from a baseline "territory awareness" term — even
+// aggressive cycles avoid driving into a corridor that closes around them.
+function chooseTurn(
+  ctx: AIContext,
+  scoreFn: (dir: Direction) => number,
+  territoryWeight: number = 0.45,
+): Direction | null {
   const c = ctx.cycle;
   const options: Direction[] = [c.dir, ...perpendicularDirs(c.dir)];
   let bestDir = c.dir;
   let bestScore = -Infinity;
+  // Slight bias toward continuing forward to avoid jittery turns when scores tie.
+  const continueBonus = 6;
   for (const d of options) {
     const clearance = lookAheadClearance(c, d, ctx.all, ANTI_SUICIDE_LOOK_AHEAD);
     if (clearance < 12) continue; // immediate suicide → skip
+    const territory = spaceAhead(c, d, ctx.all, 220);
+    if (territory < 4) continue; // headed into a sealed pocket → skip
     // Pickup attraction is dampened when the path is short — don't dive into a
     // wall just for a power-up.
     const safetyScale = Math.min(1, clearance / 40);
     const pickup = pickupAttraction(c, d, ctx.pickups) * safetyScale;
-    const score = scoreFn(d) + clearance * 0.2 + pickup;
+    const stay = d === c.dir ? continueBonus : 0;
+    const score = scoreFn(d)
+      + clearance * 0.2
+      + territory * territoryWeight
+      + pickup
+      + stay;
     if (score > bestScore) { bestScore = score; bestDir = d; }
   }
   if (bestScore === -Infinity) {
-    // All options crash; pick highest clearance regardless
+    // All options doomed; pick the one with most reachable territory.
     let safest: Direction = c.dir;
-    let safestClear = -1;
+    let safestSpace = -1;
     for (const d of options) {
+      const sp = spaceAhead(c, d, ctx.all, 220);
       const cl = lookAheadClearance(c, d, ctx.all, ANTI_SUICIDE_LOOK_AHEAD);
-      if (cl > safestClear) { safestClear = cl; safest = d; }
+      const composite = sp * 2 + cl;
+      if (composite > safestSpace) { safestSpace = composite; safest = d; }
     }
     return safest === c.dir ? null : safest;
   }
@@ -607,33 +665,63 @@ function chooseTurn(ctx: AIContext, scoreFn: (dir: Direction) => number): Direct
 function aiAggressive(ctx: AIContext): Direction | null {
   const target = nearestOpponent(ctx.cycle, ctx.all);
   if (!target) return aiWanderer(ctx);
+  // Pre-compute target's open territory once so we can score each direction
+  // by how much our virtual trail would shrink it.
+  const tSample = sampleAheadOf(target, 8);
+  const targetBaseline = floodFillSpace(tSample.x, tSample.y, ctx.all, [], 220);
   return chooseTurn(ctx, (d) => {
     const { dx, dy } = dirDelta(d);
-    // Try to cut in front of target's path
+    // Cut in front of target's projected path
     const tx = target.x + (dirDelta(target.dir).dx * 60);
     const ty = target.y + (dirDelta(target.dir).dy * 60);
     const headX = ctx.cycle.x + dx * 30;
     const headY = ctx.cycle.y + dy * 30;
-    const distToTargetFuture = Math.hypot(headX - tx, headY - ty);
-    return -distToTargetFuture * 0.5;
-  });
+    const cutDist = Math.hypot(headX - tx, headY - ty);
+    // Boxing-in: how much does my future trail shrink the target's space?
+    const enclosure = enclosureBenefit(ctx.cycle, d, target, ctx.all, targetBaseline);
+    return -cutDist * 0.4 + enclosure * 1.6;
+  }, 0.35);
 }
 
 function aiHunter(ctx: AIContext): Direction | null {
   const target = nearestOpponent(ctx.cycle, ctx.all);
   if (!target) return aiWanderer(ctx);
+  const tSample = sampleAheadOf(target, 8);
+  const targetBaseline = floodFillSpace(tSample.x, tSample.y, ctx.all, [], 220);
   return chooseTurn(ctx, (d) => {
     const { dx, dy } = dirDelta(d);
     const headX = ctx.cycle.x + dx * 24;
     const headY = ctx.cycle.y + dy * 24;
-    // Hunter scoring is large in magnitude (-700..0), so scale pickup attraction
-    // by giving the chase term a smaller weight too.
-    return -Math.hypot(headX - target.x, headY - target.y) * 0.35;
-  });
+    const chaseDist = Math.hypot(headX - target.x, headY - target.y);
+    const enclosure = enclosureBenefit(ctx.cycle, d, target, ctx.all, targetBaseline);
+    // Bonus for running parallel to target at close range — naturally walls them in.
+    const parallel = (d === target.dir || d === oppositeDir(target.dir))
+      && Math.hypot(target.x - ctx.cycle.x, target.y - ctx.cycle.y) < 90
+      ? 25 : 0;
+    return -chaseDist * 0.3 + enclosure * 1.4 + parallel;
+  }, 0.35);
 }
 
 function aiDefensive(ctx: AIContext): Direction | null {
-  return chooseTurn(ctx, (d) => spaceAhead(ctx.cycle, d, ctx.all, 200));
+  return chooseTurn(
+    ctx,
+    (d) => {
+      const space = spaceAhead(ctx.cycle, d, ctx.all, 220);
+      // Defensive also wants to AVOID being near other cycles.
+      let opponentRepel = 0;
+      for (const other of ctx.all) {
+        if (other === ctx.cycle || !other.alive) continue;
+        const { dx, dy } = dirDelta(d);
+        const myFutureX = ctx.cycle.x + dx * 30;
+        const myFutureY = ctx.cycle.y + dy * 30;
+        const dist = Math.hypot(other.x - myFutureX, other.y - myFutureY);
+        if (dist < 60) opponentRepel -= (60 - dist) * 0.4;
+      }
+      return space + opponentRepel;
+    },
+    // Defensive already weights territory in its scoreFn; lower base bonus.
+    0.2,
+  );
 }
 
 function aiWanderer(ctx: AIContext): Direction | null {
@@ -892,7 +980,12 @@ export const LightCycles: React.FC<Props> = ({
         // AI turn decisions on cooldown
         c.decisionCooldown -= dt;
         if (c.decisionCooldown <= 0 && wallNow >= c.hopUntil) {
-          c.decisionCooldown = 100 + Math.random() * 80;
+          // Adaptive cadence: when forward clearance is low, re-evaluate more
+          // frequently so cycles can react in tight spaces. When the path is
+          // wide open, we can afford a slower tick.
+          const fwdClear = lookAheadClearance(c, c.dir, cycles, ANTI_SUICIDE_LOOK_AHEAD);
+          const tight = fwdClear < 35;
+          c.decisionCooldown = tight ? 45 + Math.random() * 30 : 100 + Math.random() * 80;
           const turn = aiDecideTurn({
             cycle: c, all: cycles, discs, pickups, now: wallNow,
           });
