@@ -159,6 +159,7 @@ const GO_FLASH_DURATION = 500;
 
 const REPLAY_DURATION = 3000;
 const REPLAY_SPEED = 0.35; // slow-mo factor
+const REPLAY_END_PAUSE = 1600; // hold on final frame before looping
 const FRAME_HISTORY_MS = 3000;
 
 const ANTI_SUICIDE_LOOK_AHEAD = 100; // px
@@ -2061,7 +2062,19 @@ function drawReplay(
   const totalLength = data.frames[data.frames.length - 1].time - startTime;
   if (totalLength <= 0) return;
 
-  const replayElapsed = (wallNow % (REPLAY_DURATION / REPLAY_SPEED)) * REPLAY_SPEED;
+  // Loop = playback + freeze-frame pause so the viewer can read the cause.
+  const playbackWallTime = REPLAY_DURATION / REPLAY_SPEED; // ~8571ms
+  const totalCycle = playbackWallTime + REPLAY_END_PAUSE;
+  const cyclePos = wallNow % totalCycle;
+  let replayElapsed: number;
+  let isPaused = false;
+  if (cyclePos < playbackWallTime) {
+    replayElapsed = cyclePos * REPLAY_SPEED;
+  } else {
+    // Pause: lock onto the very last buffered frame.
+    replayElapsed = totalLength + 1;
+    isPaused = true;
+  }
   const targetTime = startTime + Math.min(totalLength, replayElapsed);
   // Pick nearest frame
   let snap = data.frames[0];
@@ -2211,12 +2224,23 @@ function drawReplay(
 
   // Replay overlay label
   ctx.save();
-  ctx.fillStyle = 'rgba(0, 229, 255, 0.85)';
-  ctx.shadowColor = '#00E5FF';
-  ctx.shadowBlur = 8;
-  ctx.font = 'bold 12px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText('▶ REPLAY · 0.35×', 12, 20);
+  if (isPaused) {
+    // Pulse the freeze-frame badge to draw attention to the cause-of-death moment
+    const pulse = 0.7 + 0.3 * Math.sin(wallNow / 180);
+    ctx.fillStyle = `rgba(255, 230, 0, ${pulse})`;
+    ctx.shadowColor = '#FFE600';
+    ctx.shadowBlur = 10;
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('❚❚ FREEZE FRAME', 12, 20);
+  } else {
+    ctx.fillStyle = 'rgba(0, 229, 255, 0.85)';
+    ctx.shadowColor = '#00E5FF';
+    ctx.shadowBlur = 8;
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('▶ REPLAY · 0.35×', 12, 20);
+  }
   // Eliminated participant tag
   if (targetCycle) {
     ctx.fillStyle = targetCycle.color;
