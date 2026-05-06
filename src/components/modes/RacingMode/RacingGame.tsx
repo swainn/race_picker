@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Entry } from '../types';
+import type { Entry } from '../../../types';
 import './RacingGame.css';
 
 const VEHICLE_MODES = ['car', 'boat', 'plane', 'balloon', 'rocket', 'duck', 'snail', 'turtle', 'cat', 'dog'] as const;

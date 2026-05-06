@@ -1,6 +1,18 @@
-# 🏁 Aquaveo Race Picker
+# 🎮 Aquaveo Picker
 
-A Mario Kart-inspired random selection tool that turns picking winners into an exciting racing game!
+A gamified random-selection tool with five game modes — race cars, battle bots, light cycles, Plinko balls, or wall climbers — all sharing the same participant list.
+
+## Game Modes
+
+Pick a mode from the dropdown at the top of the page:
+
+- **🏁 Racing** — Vehicle race across the bottom of the canvas with 11 sub-modes (cars, boats, planes, balloons, rockets, ducks, snails, turtles, cats, dogs, mixed)
+- **⚔️ Battle Bots** — Combat-arena elimination with weapons, hazards, takedowns, and instant replays
+- **🏍️ Light Cycles** — Tron-inspired light-cycle elimination with AI personalities and power-ups
+- **🎯 Plinko** — Plinko ball drop with elemental effects on winners (fire, ice, green, lightning)
+- **🧗 Wall Climber** — Vertical wall-climbing race with 9 climber sub-modes
+
+All modes share the same participant list and saved groups. Switching modes mid-race prompts a confirmation and resets the current race.
 
 ## Screenshots
 
@@ -121,11 +133,16 @@ npm run build
 
 ## Architecture
 
-- **App.tsx**: Main state management and winner dialog logic
-- **RacingGame.tsx**: Canvas rendering and race mechanics
-- **EntryManager.tsx**: Participant list UI
-- **App.css**: Main app styling and dialog designs
-- **RacingGame.css**: Canvas and winner banner styling
+- **App.tsx** — Top-level state (participants, groups, current mode, basic race state) and the mode dropdown
+- **components/EntryManager.tsx** — Participant list with image upload
+- **components/FinalStandingsDialog.tsx** — Shared standings dialog used by all modes
+- **components/modes/&lt;ModeName&gt;/** — Each game is a self-contained mode under its own folder:
+  - `RacingMode/` — vehicle race + 11 sub-mode toggle
+  - `BattleBotsMode/` — combat arena (takedowns, replays, hazards)
+  - `LightCyclesMode/` — Tron-style light cycles (AI personalities, power-ups)
+  - `PlinkoMode/` — ball drop with elemental winner effects
+  - `WallClimberMode/` — wall-climb race + 9 climber sub-modes
+- **components/modes/types.ts** — `ModeViewProps` contract every mode implements
 
 ## Future Enhancements
 
