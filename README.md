@@ -1,6 +1,6 @@
 # 🎮 Aquaveo Picker
 
-A gamified random-selection tool with five game modes — race cars, battle bots, light cycles, Plinko balls, or wall climbers — all sharing the same participant list.
+A gamified random-selection tool with six game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, or battleship grid — all sharing the same participant list.
 
 ## Game Modes
 
@@ -11,6 +11,7 @@ Pick a mode from the dropdown at the top of the page:
 - **🏍️ Light Cycles** — Tron-inspired light-cycle elimination with AI personalities and power-ups
 - **🎯 Plinko** — Plinko ball drop with elemental effects on winners (fire, ice, green, lightning)
 - **🧗 Wall Climber** — Vertical wall-climbing race with 9 climber sub-modes
+- **🚢 Battleship** — Each participant gets a ship on an auto-sized grid; rapid-fire cannon, broadside, and depth-charge shots hunt and target ships until the first one is sunk (configurable ship sizes and visibility)
 
 All modes share the same participant list and saved groups. Switching modes mid-race prompts a confirmation and resets the current race.
 
@@ -142,6 +143,7 @@ npm run build
   - `LightCyclesMode/` — Tron-style light cycles (AI personalities, power-ups)
   - `PlinkoMode/` — ball drop with elemental winner effects
   - `WallClimberMode/` — wall-climb race + 9 climber sub-modes
+  - `BattleshipMode/` — grid-based battleship picker (cannon/broadside/depth-charge shots, hunt+target AI, configurable ship sizes and visibility)
 - **components/modes/types.ts** — `ModeViewProps` contract every mode implements
 
 ## Future Enhancements
