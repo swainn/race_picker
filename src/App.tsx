@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
 import type { Entry } from './types';
 import { EntryManager } from './components/EntryManager';
-import { RacingGame } from './components/RacingGame';
+import { FinalStandingsDialog } from './components/FinalStandingsDialog';
+import { RacingMode } from './components/modes/RacingMode/RacingMode';
+import { BattleBotsMode } from './components/modes/BattleBotsMode/BattleBotsMode';
+import { LightCyclesMode } from './components/modes/LightCyclesMode/LightCyclesMode';
+import { PlinkoMode } from './components/modes/PlinkoMode/PlinkoMode';
+import { WallClimberMode } from './components/modes/WallClimberMode/WallClimberMode';
+import type { GameMode, ModeWinnerExtras } from './components/modes/types';
 import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
 const GROUPS_STORAGE_KEY = 'gamified_picker_groups';
-type VehicleMode = 'car' | 'boat' | 'plane' | 'balloon' | 'rocket' | 'duck' | 'snail' | 'turtle' | 'cat' | 'dog';
-type RacingMode = VehicleMode | 'mixed';
+const MODE_STORAGE_KEY = 'gamified_picker_mode';
 
 interface Group {
   id: number;
@@ -16,7 +21,14 @@ interface Group {
   timestamp: number;
 }
 
-// Load initial state from localStorage
+const MODES: { value: GameMode; label: string }[] = [
+  { value: 'racing', label: '🏁 Racing' },
+  { value: 'battle-bots', label: '⚔️ Battle Bots' },
+  { value: 'light-cycles', label: '🏍️ Light Cycles' },
+  { value: 'plinko', label: '🎯 Plinko' },
+  { value: 'wall-climber', label: '🧗 Wall Climber' },
+];
+
 function loadFromStorage<T>(key: string, defaultValue: T): T {
   try {
     const stored = localStorage.getItem(key);
@@ -27,65 +39,87 @@ function loadFromStorage<T>(key: string, defaultValue: T): T {
   }
 }
 
+function normalizeEntry(entry: Entry): Entry {
+  if (Array.isArray(entry.imageDataUrls) && entry.imageDataUrls.length > 0) {
+    return {
+      id: entry.id,
+      name: entry.name,
+      imageDataUrls: entry.imageDataUrls.filter(
+        (v): v is string => typeof v === 'string' && v.length > 0
+      ),
+    };
+  }
+  if (typeof entry.imageDataUrl === 'string' && entry.imageDataUrl.length > 0) {
+    return { id: entry.id, name: entry.name, imageDataUrls: [entry.imageDataUrl] };
+  }
+  return { id: entry.id, name: entry.name, imageDataUrls: [] };
+}
+
+function normalizeEntries(entries: Entry[]): Entry[] {
+  return entries.map(normalizeEntry);
+}
+
 function App() {
-  const [entries, setEntries] = useState<Entry[]>(() => loadFromStorage(STORAGE_KEY, []));
+  const [entries, setEntries] = useState<Entry[]>(() =>
+    normalizeEntries(loadFromStorage<Entry[]>(STORAGE_KEY, []))
+  );
   const [eliminatedIds, setEliminatedIds] = useState<number[]>([]);
   const [winOrder, setWinOrder] = useState<Map<number, number>>(new Map());
   const [winner, setWinner] = useState<string | null>(null);
   const [showRace, setShowRace] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const [showFinalStandings, setShowFinalStandings] = useState(false);
-  const [groups, setGroups] = useState<Group[]>(() => loadFromStorage(GROUPS_STORAGE_KEY, []));
+  const [groups, setGroups] = useState<Group[]>(() =>
+    loadFromStorage<Group[]>(GROUPS_STORAGE_KEY, []).map((g) => ({
+      ...g,
+      entries: normalizeEntries(g.entries),
+    }))
+  );
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
-  const [racingMode, setRacingMode] = useState<RacingMode>('car');
+  const [gameMode, setGameMode] = useState<GameMode>(() =>
+    loadFromStorage<GameMode>(MODE_STORAGE_KEY, 'racing')
+  );
 
-  // Save entries to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   }, [entries]);
 
+  useEffect(() => {
+    localStorage.setItem(MODE_STORAGE_KEY, JSON.stringify(gameMode));
+  }, [gameMode]);
+
   const handleEntriesChange = (newEntries: Entry[]) => {
-    setEntries(newEntries);
-    // Clean up eliminated IDs if entries are removed from the list
-    setEliminatedIds((prev) => prev.filter((id) => newEntries.some((e) => e.id === id)));
-    // Clean up win order
+    const normalized = normalizeEntries(newEntries);
+    setEntries(normalized);
+    setEliminatedIds((prev) => prev.filter((id) => normalized.some((e) => e.id === id)));
     setWinOrder((prev) => {
       const newMap = new Map(prev);
       newMap.forEach((_, id) => {
-        if (!newEntries.some((e) => e.id === id)) {
+        if (!normalized.some((e) => e.id === id)) {
           newMap.delete(id);
         }
       });
       return newMap;
     });
-    // Reset track view when entries change
     setResetKey((prev) => prev + 1);
   };
 
-  const handleWinner = (winnerEntry: Entry) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleWinner = (winnerEntry: Entry, _extras?: ModeWinnerExtras) => {
     setWinner(winnerEntry.name);
-    // Add winner to eliminated list and track order
     setEliminatedIds((prev) => [...prev, winnerEntry.id]);
     setWinOrder((prev) => new Map(prev).set(winnerEntry.id, prev.size + 1));
-    // Stop the race to show winner dialog
     setShowRace(false);
   };
 
   const handleRaceComplete = () => {
-    // This is called when user clicks "Next Race" button
     setWinner(null);
     const activeEntries = entries.filter((e) => !eliminatedIds.includes(e.id));
-    
-    // If only 1 racer left, close dialog briefly then declare them winner
     if (activeEntries.length === 1) {
-      setTimeout(() => {
-        handleWinner(activeEntries[0]);
-      }, 300);
+      setTimeout(() => handleWinner(activeEntries[0]), 300);
       return;
     }
-    
-    // Automatically start the next race
     if (activeEntries.length >= 2) {
       setShowRace(true);
     }
@@ -97,28 +131,22 @@ function App() {
       alert('Add at least 1 participant to start a race!');
       return;
     }
-    
-    // If only 1 racer left, close any open dialog then declare them winner
     if (activeEntries.length === 1) {
       setWinner(null);
-      setTimeout(() => {
-        handleWinner(activeEntries[0]);
-      }, 300);
+      setTimeout(() => handleWinner(activeEntries[0]), 300);
       return;
     }
-    
     setWinner(null);
     setShowRace(true);
   };
 
   const resetRace = () => {
-    // Reset eliminations, bringing all participants back to race
     setEliminatedIds([]);
     setWinOrder(new Map());
     setWinner(null);
     setShowRace(false);
     setShowFinalStandings(false);
-    setResetKey((prev) => prev + 1); // Force track to reset
+    setResetKey((prev) => prev + 1);
   };
 
   const resetAllEntries = () => {
@@ -132,21 +160,35 @@ function App() {
     }
   };
 
+  const isRaceInProgress = () => showRace || eliminatedIds.length > 0;
+
+  const handleModeChange = (next: GameMode) => {
+    if (next === gameMode) return;
+    if (isRaceInProgress()) {
+      const ok = window.confirm('Switching modes will reset the current race. Continue?');
+      if (!ok) return;
+    }
+    setEliminatedIds([]);
+    setWinOrder(new Map());
+    setWinner(null);
+    setShowRace(false);
+    setShowFinalStandings(false);
+    setResetKey((prev) => prev + 1);
+    setGameMode(next);
+  };
+
   const saveGroup = () => {
     if (entries.length === 0) {
       alert('Cannot save an empty group!');
       return;
     }
-    
     const groupName = groupNameInput.trim() || `Group ${new Date().toLocaleDateString()}`;
-    
     const newGroup: Group = {
       id: Date.now(),
       name: groupName,
       entries: [...entries],
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
-    
     const updatedGroups = [...groups, newGroup];
     setGroups(updatedGroups);
     localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(updatedGroups));
@@ -155,9 +197,9 @@ function App() {
   };
 
   const loadGroup = (groupId: number) => {
-    const group = groups.find(g => g.id === groupId);
+    const group = groups.find((g) => g.id === groupId);
     if (group) {
-      setEntries(group.entries);
+      setEntries(normalizeEntries(group.entries));
       setEliminatedIds([]);
       setWinOrder(new Map());
       setWinner(null);
@@ -169,7 +211,7 @@ function App() {
 
   const deleteGroup = (groupId: number) => {
     if (window.confirm('Delete this group?')) {
-      const updatedGroups = groups.filter(g => g.id !== groupId);
+      const updatedGroups = groups.filter((g) => g.id !== groupId);
       setGroups(updatedGroups);
       localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(updatedGroups));
     }
@@ -177,47 +219,61 @@ function App() {
 
   const activeEntries = entries.filter((e) => !eliminatedIds.includes(e.id));
 
-  const getModeEmoji = (mode: RacingMode) => {
-    switch (mode) {
-      case 'car':
-        return '🏁';
-      case 'boat':
-        return '⛵';
-      case 'plane':
-        return '✈️';
-      case 'balloon':
-        return '🎈';
-      case 'rocket':
-        return '🚀';
-      case 'duck':
-        return '🦆';
-      case 'snail':
-        return '🐌';
-      case 'turtle':
-        return '🐢';
-      case 'cat':
-        return '🐱';
-      case 'dog':
-        return '🐶';
-      case 'mixed':
-        return '🎲';
-      default:
-        return '🏁';
+  const modeProps = {
+    entries: activeEntries,
+    allEntries: entries,
+    eliminatedIds,
+    winOrder,
+    isRacing: showRace,
+    currentWinner: winner,
+    onWinner: handleWinner,
+    onRaceComplete: handleRaceComplete,
+    onShowFinalStandings: () => setShowFinalStandings(true),
+    onStartRace: startRace,
+    onResetRace: resetRace,
+  };
+
+  const renderMode = () => {
+    switch (gameMode) {
+      case 'racing':
+        return <RacingMode {...modeProps} />;
+      case 'battle-bots':
+        return <BattleBotsMode {...modeProps} />;
+      case 'light-cycles':
+        return <LightCyclesMode {...modeProps} />;
+      case 'plinko':
+        return <PlinkoMode {...modeProps} />;
+      case 'wall-climber':
+        return <WallClimberMode {...modeProps} />;
     }
   };
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>{getModeEmoji(racingMode)} Aquaveo Race Picker {getModeEmoji(racingMode)}</h1>
+        <h1>🎮 Aquaveo Picker 🎮</h1>
         <p>The Random Selection Tool for Winners!</p>
+        <div className="mode-select">
+          <label htmlFor="game-mode-select">Mode:</label>
+          <select
+            id="game-mode-select"
+            value={gameMode}
+            onChange={(e) => handleModeChange(e.target.value as GameMode)}
+          >
+            {MODES.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </header>
 
       <div className="app-container">
         <div className="sidebar">
           <h2>Participants</h2>
-          <EntryManager 
-            entries={entries} 
+          <EntryManager
+            entries={entries}
             onEntriesChange={handleEntriesChange}
             eliminatedIds={eliminatedIds}
             winOrder={winOrder}
@@ -242,9 +298,12 @@ function App() {
             <button onClick={saveGroup} className="save-group-button">
               Save Current Group
             </button>
-            
+
             {groups.length > 0 && (
-              <button onClick={() => setShowGroupManager(!showGroupManager)} className="manage-groups-button">
+              <button
+                onClick={() => setShowGroupManager(!showGroupManager)}
+                className="manage-groups-button"
+              >
                 {showGroupManager ? 'Hide Groups' : 'View Groups'} ({groups.length})
               </button>
             )}
@@ -273,151 +332,18 @@ function App() {
         </div>
 
         <div className="main-content">
-          <div className="race-controls">
-            {activeEntries.length >= 1 && (
-              <button onClick={startRace} className="start-race-button">
-                🏁 Start Race ({activeEntries.length})
-              </button>
-            )}
-
-            {eliminatedIds.length > 0 && (
-              <button onClick={resetRace} className="reset-race-button">
-                🔄 Reset Race
-              </button>
-            )}
-          </div>
-
-          <RacingGame
-            key={resetKey}
-            entries={activeEntries}
-            allEntries={entries}
-            eliminatedIds={eliminatedIds}
-            winOrder={winOrder}
-            onWinner={handleWinner}
-            onRaceComplete={handleRaceComplete}
-            onShowFinalStandings={() => setShowFinalStandings(true)}
-            isRacing={showRace}
-            currentWinner={winner}
-            mode={racingMode}
-          />
-
-          <div className="mode-toggle" role="radiogroup" aria-label="Racing mode">
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="car"
-                checked={racingMode === 'car'}
-                onChange={() => setRacingMode('car')}
-              />
-              <span>🚗 Cars</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="boat"
-                checked={racingMode === 'boat'}
-                onChange={() => setRacingMode('boat')}
-              />
-              <span>⛵ Boats</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="plane"
-                checked={racingMode === 'plane'}
-                onChange={() => setRacingMode('plane')}
-              />
-              <span>✈️ Planes</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="balloon"
-                checked={racingMode === 'balloon'}
-                onChange={() => setRacingMode('balloon')}
-              />
-              <span>🎈 Balloons</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="rocket"
-                checked={racingMode === 'rocket'}
-                onChange={() => setRacingMode('rocket')}
-              />
-              <span>🚀 Rockets</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="duck"
-                checked={racingMode === 'duck'}
-                onChange={() => setRacingMode('duck')}
-              />
-              <span>🦆 Ducks</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="snail"
-                checked={racingMode === 'snail'}
-                onChange={() => setRacingMode('snail')}
-              />
-              <span>🐌 Snails</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="turtle"
-                checked={racingMode === 'turtle'}
-                onChange={() => setRacingMode('turtle')}
-              />
-              <span>🐢 Turtles</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="cat"
-                checked={racingMode === 'cat'}
-                onChange={() => setRacingMode('cat')}
-              />
-              <span>🐱 Cats</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="dog"
-                checked={racingMode === 'dog'}
-                onChange={() => setRacingMode('dog')}
-              />
-              <span>🐶 Dogs</span>
-            </label>
-            <label className="mode-option">
-              <input
-                type="radio"
-                name="racingMode"
-                value="mixed"
-                checked={racingMode === 'mixed'}
-                onChange={() => setRacingMode('mixed')}
-              />
-              <span>🎲 Mixed</span>
-            </label>
+          <div key={`${gameMode}-${resetKey}`} style={{ width: '100%' }}>
+            {renderMode()}
           </div>
 
           {winner && !showRace && (
             <div className="winner-info">
-              <p>Last winner: <strong>{winner}</strong></p>
-              <p>Racing: {activeEntries.length} / {entries.length}</p>
+              <p>
+                Last winner: <strong>{winner}</strong>
+              </p>
+              <p>
+                Racing: {activeEntries.length} / {entries.length}
+              </p>
             </div>
           )}
 
@@ -435,53 +361,3 @@ function App() {
 }
 
 export default App;
-
-interface FinalStandingsProps {
-  entries: Entry[];
-  winOrder: Map<number, number>;
-  onClose: () => void;
-}
-
-function FinalStandingsDialog({ entries, winOrder, onClose }: FinalStandingsProps) {
-  // Sort entries by their win order
-  const standings = entries
-    .filter((e) => winOrder.has(e.id))
-    .sort((a, b) => (winOrder.get(a.id) || 0) - (winOrder.get(b.id) || 0));
-
-  const getOrdinal = (n: number) => {
-    const s = ['th', 'st', 'nd', 'rd'];
-    const v = n % 100;
-    return n + (s[(v - 20) % 10] || s[v] || s[0]);
-  };
-
-  return (
-    <div className="dialog-overlay" onClick={onClose}>
-      <div className="standings-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="standings-header">
-          <h2>🏆 Final Standings 🏆</h2>
-          <button
-            type="button"
-            className="standings-close-x"
-            aria-label="Close final standings"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
-        <div className="standings-body">
-          <div className="standings-list">
-            {standings.map((entry, idx) => (
-              <div key={entry.id} className="standing-entry">
-                <span className="standing-rank">{getOrdinal(idx + 1)}</span>
-                <span className="standing-name">{entry.name}</span>
-              </div>
-            ))}
-          </div>
-          <button onClick={onClose} className="close-standings-button">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
