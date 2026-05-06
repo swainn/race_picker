@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import type { Ship } from './battleshipPlacement';
-import { cellKey } from './battleshipPlacement';
 import type { RoundState, ShotResult } from './battleshipTargeting';
 import './BattleshipGrid.css';
 
@@ -8,6 +7,8 @@ export type Visibility = 'hidden' | 'ghosted' | 'visible';
 
 interface Props {
   stateRef: React.MutableRefObject<RoundState | null>;
+  /** Snapshot of ships for the legend (avoids reading stateRef during render). */
+  ships: Ship[];
   visibility: Visibility;
   bannerName: string | null;
   /** Bumped by the wrapper after each shot to trigger a redraw. */
@@ -154,7 +155,13 @@ function drawShots(
   }
 }
 
-export function BattleshipGrid({ stateRef, visibility, bannerName, frameKey }: Props) {
+export function BattleshipGrid({
+  stateRef,
+  ships,
+  visibility,
+  bannerName,
+  frameKey,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -172,8 +179,6 @@ export function BattleshipGrid({ stateRef, visibility, bannerName, frameKey }: P
     drawShips(ctx, state.ships, cell, visibility);
     drawShots(ctx, state.shots, state.ships, cell, visibility);
   }, [frameKey, visibility, stateRef]);
-
-  const ships = stateRef.current?.ships ?? [];
 
   return (
     <div className="battleship-grid-wrap">
@@ -200,5 +205,3 @@ export function BattleshipGrid({ stateRef, visibility, bannerName, frameKey }: P
     </div>
   );
 }
-
-export { cellKey };
