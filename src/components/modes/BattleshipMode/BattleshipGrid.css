@@ -1,0 +1,72 @@
+.battleship-grid-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.battleship-canvas {
+  background: #0a2540;
+  border-radius: 12px;
+  border: 2px solid #143a66;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  max-width: 100%;
+  height: auto;
+}
+
+.battleship-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(10, 37, 64, 0.92);
+  border: 3px solid #ff6b6b;
+  border-radius: 12px;
+  padding: 24px 40px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 12px rgba(255, 107, 107, 0.8);
+  pointer-events: none;
+  z-index: 5;
+  white-space: nowrap;
+}
+
+.battleship-canvas-host {
+  position: relative;
+  display: inline-block;
+}
+
+.battleship-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: center;
+  max-width: 100%;
+  padding: 8px;
+}
+
+.battleship-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #1a3a5a;
+  border: 1px solid #2c4d70;
+  border-radius: 999px;
+  font-size: 13px;
+  color: #f0eee9;
+}
+
+.battleship-legend-chip.sunk {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.battleship-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
