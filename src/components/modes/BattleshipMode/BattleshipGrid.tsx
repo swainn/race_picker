@@ -247,6 +247,74 @@ function drawCannons(
   }
 }
 
+function drawSmokePuff(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  ageMs: number,
+  lifeMs: number
+) {
+  const t = Math.min(1, ageMs / lifeMs);
+  const radius = 3 + t * 8;
+  const alpha = (1 - t) * 0.55;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const grad = ctx.createRadialGradient(x, y, 1, x, y, radius);
+  grad.addColorStop(0, 'rgba(245, 245, 245, 0.9)');
+  grad.addColorStop(0.7, 'rgba(200, 200, 200, 0.4)');
+  grad.addColorStop(1, 'rgba(180, 180, 180, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawTracerProjectile(
+  ctx: CanvasRenderingContext2D,
+  pos: { x: number; y: number },
+  velocityUnit: { x: number; y: number },
+  tailLen: number
+) {
+  // Tail gradient: hot-yellow at projectile end, fading to transparent.
+  ctx.save();
+  const tailEnd = {
+    x: pos.x - velocityUnit.x * tailLen,
+    y: pos.y - velocityUnit.y * tailLen,
+  };
+  const grad = ctx.createLinearGradient(pos.x, pos.y, tailEnd.x, tailEnd.y);
+  grad.addColorStop(0, 'rgba(255, 230, 140, 0.95)');
+  grad.addColorStop(0.4, 'rgba(255, 170, 50, 0.7)');
+  grad.addColorStop(1, 'rgba(255, 110, 30, 0)');
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tailEnd.x, tailEnd.y);
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+  ctx.restore();
+
+  // Glow halo around the projectile head.
+  ctx.save();
+  const halo = ctx.createRadialGradient(pos.x, pos.y, 1, pos.x, pos.y, 12);
+  halo.addColorStop(0, 'rgba(255, 240, 180, 0.85)');
+  halo.addColorStop(1, 'rgba(255, 200, 80, 0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // White-hot core.
+  ctx.save();
+  ctx.fillStyle = '#fff8d4';
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, PROJECTILE_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawProjectiles(
   ctx: CanvasRenderingContext2D,
   projectiles: Projectile[],
@@ -260,7 +328,7 @@ function drawProjectiles(
 
     // Muzzle flash for the brief window after fire.
     const sinceFire = now - p.fireTime;
-    if (sinceFire < MUZZLE_FLASH_MS) {
+    if (sinceFire >= 0 && sinceFire < MUZZLE_FLASH_MS) {
       const anchor = cannonAnchorPx(p.corner, canvasW, canvasH);
       const tip = cannonBarrelTipPx(
         anchor,
@@ -287,68 +355,69 @@ function drawProjectiles(
       ctx.restore();
     }
 
+    // Direction unit vector (chord). For arcing projectiles this is just the
+    // chord, used only for tail orientation; we approximate by sampling a
+    // recent position along the arc.
+    let velocityUnit = { x: 0, y: 0 };
     if (p.arcing) {
-      // Arc trail: dotted line from from→current pos following the arc shape.
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255, 220, 120, 0.5)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([3, 4]);
-      ctx.beginPath();
-      const steps = 12;
-      const tNow = (now - p.fireTime) / p.travelMs;
-      for (let i = 0; i <= steps; i++) {
-        const t = (i / steps) * Math.min(1, tNow);
-        const sample = projectilePosition(
-          p,
-          p.fireTime + t * p.travelMs
-        );
-        if (i === 0) ctx.moveTo(sample.x, sample.y);
-        else ctx.lineTo(sample.x, sample.y);
+      const earlier = projectilePosition(
+        p,
+        Math.max(p.fireTime, now - 30)
+      );
+      const dx = pos.x - earlier.x;
+      const dy = pos.y - earlier.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0) velocityUnit = { x: dx / len, y: dy / len };
+    } else {
+      const dx = p.toPx.x - p.fromPx.x;
+      const dy = p.toPx.y - p.fromPx.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0) velocityUnit = { x: dx / len, y: dy / len };
+    }
+
+    if (p.arcing) {
+      // Smoke puffs along the path: emit one every ~25 ms of flight.
+      const PUFF_INTERVAL_MS = 25;
+      const PUFF_LIFE_MS = 700;
+      const tNow = Math.min(1, (now - p.fireTime) / p.travelMs);
+      const flightSoFarMs = tNow * p.travelMs;
+      const puffCount = Math.floor(flightSoFarMs / PUFF_INTERVAL_MS);
+      for (let i = 0; i <= puffCount; i++) {
+        const emitMs = i * PUFF_INTERVAL_MS;
+        const ageMs = flightSoFarMs - emitMs;
+        if (ageMs > PUFF_LIFE_MS) continue;
+        const sample = projectilePosition(p, p.fireTime + emitMs);
+        drawSmokePuff(ctx, sample.x, sample.y, ageMs, PUFF_LIFE_MS);
       }
-      ctx.stroke();
+      // Larger glow + cream-white shell for the arcing round.
+      ctx.save();
+      const halo = ctx.createRadialGradient(
+        pos.x,
+        pos.y,
+        1,
+        pos.x,
+        pos.y,
+        16
+      );
+      halo.addColorStop(0, 'rgba(255, 240, 180, 0.9)');
+      halo.addColorStop(1, 'rgba(255, 200, 80, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 16, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
 
       ctx.save();
-      ctx.fillStyle = '#1a1a1a';
+      ctx.fillStyle = '#fff4c2';
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, ARC_PROJECTILE_RADIUS, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#3a3a3a';
+      ctx.strokeStyle = '#cc7a18';
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.restore();
     } else {
-      // Tail trail (12 px back along velocity).
-      const dx = p.toPx.x - p.fromPx.x;
-      const dy = p.toPx.y - p.fromPx.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len > 0) {
-        const ux = dx / len;
-        const uy = dy / len;
-        const tailLen = 14;
-        ctx.save();
-        const grad = ctx.createLinearGradient(
-          pos.x,
-          pos.y,
-          pos.x - ux * tailLen,
-          pos.y - uy * tailLen
-        );
-        grad.addColorStop(0, 'rgba(120, 120, 120, 0.9)');
-        grad.addColorStop(1, 'rgba(120, 120, 120, 0)');
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(pos.x - ux * tailLen, pos.y - uy * tailLen);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-        ctx.restore();
-      }
-      ctx.save();
-      ctx.fillStyle = '#0a0a0a';
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, PROJECTILE_RADIUS, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+      drawTracerProjectile(ctx, pos, velocityUnit, 32);
     }
   }
 }

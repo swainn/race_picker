@@ -26,12 +26,12 @@ import {
 import './BattleshipMode.css';
 
 const SETTINGS_KEY = 'gamified_picker_battleship_settings';
-const SHOT_INTERVAL_MS = 220;
+const SHOT_INTERVAL_MS = 500;
 const BANNER_DURATION_MS = 1500;
 
-const CANNON_TRAVEL_MS = 80;
-const BROADSIDE_PROJECTILE_GAP_MS = 35;
-const DEPTH_CHARGE_TRAVEL_MS = 180;
+const CANNON_TRAVEL_MS = 220;
+const BROADSIDE_PROJECTILE_GAP_MS = 100;
+const DEPTH_CHARGE_TRAVEL_MS = 450;
 
 const MAX_GRID = 640;
 const MIN_CELL = 24;
