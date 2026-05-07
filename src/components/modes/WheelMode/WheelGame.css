@@ -1,0 +1,228 @@
+.wheel-game-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.wheel-canvas {
+  border: 3px solid #333;
+  background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+  border-radius: 12px;
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.wheel-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.wheel-spin-button {
+  padding: 12px 28px;
+  font-size: 18px;
+  font-weight: bold;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 12px rgba(238, 90, 82, 0.35);
+}
+
+.wheel-spin-button:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 6px 16px rgba(238, 90, 82, 0.45);
+}
+
+.wheel-spin-button:active {
+  transform: translateY(0);
+}
+
+.wheel-reset-button {
+  padding: 10px 18px;
+  font-size: 14px;
+  background-color: #6c757d;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.wheel-reset-button:hover {
+  background-color: #5a6268;
+}
+
+.wheel-sound-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wheel-sound-select {
+  padding: 8px 10px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #222;
+  cursor: pointer;
+}
+
+.wheel-mute-button {
+  width: 38px;
+  height: 38px;
+  font-size: 18px;
+  background: #fff;
+  color: #222;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wheel-mute-button.muted {
+  background: #ffe0e0;
+  border-color: #ff6b6b;
+}
+
+.wheel-winner-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 16px;
+  padding: 18px 28px;
+  background: linear-gradient(135deg, #ffd54f 0%, #ff8a65 100%);
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  animation: wheelWinnerAppear 0.4s ease-out forwards;
+}
+
+.wheel-winner-overlay h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #1a1a1a;
+  text-align: center;
+}
+
+.wheel-winner-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  object-fit: cover;
+}
+
+.wheel-winner-spin-again {
+  padding: 10px 22px;
+  font-size: 15px;
+  font-weight: bold;
+  background-color: #2d3436;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.wheel-winner-spin-again:hover {
+  background-color: #1e272e;
+}
+
+@keyframes wheelWinnerAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.wheel-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  position: relative;
+}
+
+.runner-game-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.runner-game-card {
+  background: #0a0a0a;
+  border: 2px solid #ff7518;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 95vw;
+}
+
+.runner-game-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  font-family: sans-serif;
+}
+
+.runner-game-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #ff7518;
+}
+
+.runner-game-hint {
+  flex: 1;
+  font-size: 13px;
+  color: #ccc;
+}
+
+.runner-game-close {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.runner-game-close:hover {
+  background: #222;
+}
+
+.runner-game-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.runner-game-footer {
+  color: #ccc;
+  font-family: sans-serif;
+  font-size: 13px;
+  text-align: right;
+}
