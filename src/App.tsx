@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Entry } from './types';
-import { EntryManager } from './components/EntryManager';
 import { FinalStandingsDialog } from './components/FinalStandingsDialog';
+import { ManagementDialog } from './components/ManagementDialog';
 import { RacingMode } from './components/modes/RacingMode/RacingMode';
 import { BattleBotsMode } from './components/modes/BattleBotsMode/BattleBotsMode';
 import { LightCyclesMode } from './components/modes/LightCyclesMode/LightCyclesMode';
@@ -77,7 +77,7 @@ function App() {
       entries: normalizeEntries(g.entries),
     }))
   );
-  const [showGroupManager, setShowGroupManager] = useState(false);
+  const [showManagementModal, setShowManagementModal] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [gameMode, setGameMode] = useState<GameMode>(() =>
     loadFromStorage<GameMode>(MODE_STORAGE_KEY, 'racing')
@@ -207,7 +207,6 @@ function App() {
       setWinner(null);
       setShowRace(false);
       setShowFinalStandings(false);
-      setShowGroupManager(false);
     }
   };
 
@@ -255,86 +254,39 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🎮 Aquaveo Picker 🎮</h1>
-        <p>The Random Selection Tool for Winners!</p>
-        <div className="mode-select">
-          <label htmlFor="game-mode-select">Mode:</label>
-          <select
-            id="game-mode-select"
-            value={gameMode}
-            onChange={(e) => handleModeChange(e.target.value as GameMode)}
-          >
-            {MODES.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+        <div className="header-content">
+          <div className="header-title">
+            <h1>🎮 Aquaveo Picker 🎮</h1>
+            <p>The Random Selection Tool for Winners!</p>
+          </div>
+          <div className="header-controls">
+            <div className="mode-select">
+              <label htmlFor="game-mode-select">Mode:</label>
+              <select
+                id="game-mode-select"
+                value={gameMode}
+                onChange={(e) => handleModeChange(e.target.value as GameMode)}
+              >
+                {MODES.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowManagementModal(true)}
+              className="header-management-button"
+              aria-label="Manage participants and groups"
+            >
+              ⚙️ Participants ({entries.length})
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="app-container">
-        <div className="sidebar">
-          <h2>Participants</h2>
-          <EntryManager
-            entries={entries}
-            onEntriesChange={handleEntriesChange}
-            eliminatedIds={eliminatedIds}
-            winOrder={winOrder}
-          />
-
-          {entries.length > 0 && (
-            <button onClick={resetAllEntries} className="reset-button">
-              Clear All
-            </button>
-          )}
-
-          <div className="group-controls">
-            <h3>💾 Groups</h3>
-            <input
-              type="text"
-              value={groupNameInput}
-              onChange={(e) => setGroupNameInput(e.target.value)}
-              placeholder="Group name..."
-              className="group-name-input"
-              onKeyPress={(e) => e.key === 'Enter' && saveGroup()}
-            />
-            <button onClick={saveGroup} className="save-group-button">
-              Save Current Group
-            </button>
-
-            {groups.length > 0 && (
-              <button
-                onClick={() => setShowGroupManager(!showGroupManager)}
-                className="manage-groups-button"
-              >
-                {showGroupManager ? 'Hide Groups' : 'View Groups'} ({groups.length})
-              </button>
-            )}
-
-            {showGroupManager && (
-              <div className="groups-list">
-                {groups.map((group) => (
-                  <div key={group.id} className="group-item">
-                    <div className="group-info">
-                      <p className="group-name">{group.name}</p>
-                      <p className="group-count">{group.entries.length} participants</p>
-                    </div>
-                    <div className="group-buttons">
-                      <button onClick={() => loadGroup(group.id)} className="load-group-button">
-                        Load
-                      </button>
-                      <button onClick={() => deleteGroup(group.id)} className="delete-group-button">
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
         <div className="main-content">
           <div key={`${gameMode}-${resetKey}`} style={{ width: '100%' }}>
             {renderMode()}
@@ -360,6 +312,23 @@ function App() {
           )}
         </div>
       </div>
+
+      {showManagementModal && (
+        <ManagementDialog
+          entries={entries}
+          onEntriesChange={handleEntriesChange}
+          eliminatedIds={eliminatedIds}
+          winOrder={winOrder}
+          onResetAll={resetAllEntries}
+          groupNameInput={groupNameInput}
+          onGroupNameInputChange={setGroupNameInput}
+          onSaveGroup={saveGroup}
+          groups={groups}
+          onLoadGroup={loadGroup}
+          onDeleteGroup={deleteGroup}
+          onClose={() => setShowManagementModal(false)}
+        />
+      )}
     </div>
   );
 }
