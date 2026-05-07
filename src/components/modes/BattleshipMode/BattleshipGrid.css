@@ -33,6 +33,12 @@
   white-space: nowrap;
 }
 
+.battleship-banner.battleship-banner-final {
+  border-color: #ffd166;
+  text-shadow: 0 0 18px rgba(255, 215, 90, 0.9);
+  box-shadow: 0 0 28px rgba(255, 215, 90, 0.45);
+}
+
 .battleship-canvas-host {
   position: relative;
   display: inline-block;

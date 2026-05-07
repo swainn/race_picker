@@ -27,7 +27,12 @@ interface Props {
   /** Snapshot of ships for the legend (avoids reading stateRef during render). */
   ships: Ship[];
   visibility: Visibility;
-  bannerName: string | null;
+  banner: { kind: 'sunk' | 'final'; name: string } | null;
+  /**
+   * If set, the ship belonging to this entry is drawn with a pulsing golden
+   * highlight. Used for the final-round survivor reveal.
+   */
+  highlightEntryId: number | null;
   /** Live array of in-flight projectiles. The component reads it on every rAF tick. */
   projectilesRef: React.MutableRefObject<Projectile[]>;
   /** Cells whose impact effect is allowed to render (projectile already landed). */
@@ -247,6 +252,54 @@ function drawCannons(
   }
 }
 
+function drawHighlightRing(
+  ctx: CanvasRenderingContext2D,
+  ship: Ship,
+  cell: number,
+  now: number
+) {
+  const ox = CANNON_PAD;
+  const oy = CANNON_PAD;
+  // Pulse oscillates between 0..1 every ~1.5s.
+  const phase = (now / 1500) * Math.PI * 2;
+  const pulse = (Math.sin(phase) + 1) / 2;
+  const haloAlpha = 0.45 + pulse * 0.45;
+  const glowExtent = 6 + pulse * 6;
+
+  // Outer glow halo around each ship cell.
+  ctx.save();
+  ctx.shadowColor = 'rgba(255, 220, 90, 0.95)';
+  ctx.shadowBlur = 18 + pulse * 12;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = `rgba(255, 215, 80, ${haloAlpha})`;
+  for (const c of ship.cells) {
+    ctx.strokeRect(
+      ox + c.x * cell + 1 - glowExtent / 6,
+      oy + c.y * cell + 1 - glowExtent / 6,
+      cell - 2 + glowExtent / 3,
+      cell - 2 + glowExtent / 3
+    );
+  }
+  ctx.restore();
+
+  // Inner shimmer fill.
+  ctx.save();
+  ctx.fillStyle = `rgba(255, 235, 150, ${0.15 + pulse * 0.2})`;
+  for (const c of ship.cells) {
+    ctx.fillRect(ox + c.x * cell + 3, oy + c.y * cell + 3, cell - 6, cell - 6);
+  }
+  ctx.restore();
+
+  // Bright outline that pulses width.
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 245, 200, ${0.7 + pulse * 0.3})`;
+  ctx.lineWidth = 2 + pulse * 1.5;
+  for (const c of ship.cells) {
+    ctx.strokeRect(ox + c.x * cell + 2, oy + c.y * cell + 2, cell - 4, cell - 4);
+  }
+  ctx.restore();
+}
+
 function drawSmokePuff(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -426,7 +479,8 @@ export function BattleshipGrid({
   stateRef,
   ships,
   visibility,
-  bannerName,
+  banner,
+  highlightEntryId,
   projectilesRef,
   committedHitsRef,
   committedMissesRef,
@@ -465,6 +519,16 @@ export function BattleshipGrid({
     );
     drawCannons(ctx, dim, dim, cannonAnglesRef.current);
     drawProjectiles(ctx, projectilesRef.current, dim, dim, now);
+
+    // Final-round survivor highlight — draw on top so the glow reads clearly.
+    if (highlightEntryId !== null) {
+      const highlightShip = state.ships.find(
+        (s) => s.entryId === highlightEntryId && !s.sunk
+      );
+      if (highlightShip) {
+        drawHighlightRing(ctx, highlightShip, cell, now);
+      }
+    }
   };
 
   // Drive an rAF loop while there are in-flight projectiles. The loop
@@ -473,21 +537,23 @@ export function BattleshipGrid({
   useEffect(() => {
     let cancelled = false;
 
+    const shouldKeepAnimating = () =>
+      projectilesRef.current.some((p) => !p.impacted) ||
+      highlightEntryId !== null;
+
     const tick = () => {
       if (cancelled) return;
       const now = performance.now();
       drawAll(now);
-      if (projectilesRef.current.some((p) => !p.impacted)) {
+      if (shouldKeepAnimating()) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
         rafRef.current = null;
       }
     };
 
-    // Always do at least one draw on frameKey change; start the loop if any
-    // projectiles need animating.
     drawAll(performance.now());
-    if (projectilesRef.current.some((p) => !p.impacted)) {
+    if (shouldKeepAnimating()) {
       rafRef.current = requestAnimationFrame(tick);
     }
 
@@ -499,14 +565,19 @@ export function BattleshipGrid({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frameKey, visibility]);
+  }, [frameKey, visibility, highlightEntryId]);
 
   return (
     <div className="battleship-grid-wrap">
       <div className="battleship-canvas-host">
         <canvas ref={canvasRef} className="battleship-canvas" />
-        {bannerName && (
-          <div className="battleship-banner">💥 {bannerName} sunk! 💥</div>
+        {banner && banner.kind === 'sunk' && (
+          <div className="battleship-banner">💥 {banner.name} sunk! 💥</div>
+        )}
+        {banner && banner.kind === 'final' && (
+          <div className="battleship-banner battleship-banner-final">
+            🏆 Last ship standing — {banner.name}! 🏆
+          </div>
         )}
       </div>
       <div className="battleship-legend">

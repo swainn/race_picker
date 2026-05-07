@@ -229,7 +229,9 @@ export function BattleshipMode(props: ModeViewProps) {
 
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [frameKey, setFrameKey] = useState(0);
-  const [bannerName, setBannerName] = useState<string | null>(null);
+  const [banner, setBanner] = useState<
+    { kind: 'sunk' | 'final'; name: string } | null
+  >(null);
   const [roundSeed, setRoundSeed] = useState(0);
   const [shipsForLegend, setShipsForLegend] = useState<Ship[]>([]);
 
@@ -262,8 +264,11 @@ export function BattleshipMode(props: ModeViewProps) {
   );
 
   // Build / rebuild round. Branches on persistentLayout setting.
+  // entries.length === 1 is the "final round" — we still build (1 ship for the
+  // survivor) so the grid can render with a highlight effect; auto-declare
+  // happens via a separate effect below.
   useEffect(() => {
-    if (entries.length < 2) {
+    if (entries.length < 1) {
       stateRef.current = null;
       lastPersistentBuildKeyRef.current = null;
       setShipsForLegend([]);
@@ -308,7 +313,7 @@ export function BattleshipMode(props: ModeViewProps) {
     cannonAnglesRef.current = defaultCannonAngles();
     pendingWinnerRef.current = null;
     winnerSentRef.current = false;
-    setBannerName(null);
+    setBanner(null);
     setFrameKey((k) => k + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -369,10 +374,10 @@ export function BattleshipMode(props: ModeViewProps) {
             winnerSentRef.current = true;
             const sunkEntry = entries.find((e) => e.id === pending.entryId);
             if (sunkEntry) {
-              setBannerName(sunkEntry.name);
+              setBanner({ kind: 'sunk', name: sunkEntry.name });
               bannerTimeoutRef.current = window.setTimeout(() => {
                 onWinner(sunkEntry);
-                setBannerName(null);
+                setBanner(null);
               }, BANNER_DURATION_MS);
             }
           }
@@ -568,11 +573,30 @@ export function BattleshipMode(props: ModeViewProps) {
   // Reset banner / winner-sent flag when the parent clears the race.
   useEffect(() => {
     if (eliminatedIds.length === 0 && !isRacing) {
-      setBannerName(null);
+      setBanner(null);
       winnerSentRef.current = false;
       pendingWinnerRef.current = null;
     }
   }, [eliminatedIds.length, isRacing]);
+
+  // Final-round auto-declare: when only one participant remains active and at
+  // least one has already been picked, hold the grid for a moment with the
+  // survivor highlighted, then declare them via onWinner.
+  const isFinalRound = entries.length === 1 && allEntries.length >= 2;
+  const survivor = isFinalRound ? entries[0] : null;
+  useEffect(() => {
+    if (!isFinalRound || !survivor) return;
+    if (winnerSentRef.current) return;
+    setBanner({ kind: 'final', name: survivor.name });
+    setFrameKey((k) => k + 1);
+    const t = window.setTimeout(() => {
+      winnerSentRef.current = true;
+      onWinner(survivor);
+      setBanner(null);
+    }, 2500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFinalRound, survivor?.id]);
 
   const updateSettings = (next: Partial<Settings>) => {
     setSettings((prev) => {
@@ -686,7 +710,7 @@ export function BattleshipMode(props: ModeViewProps) {
         </fieldset>
       </div>
 
-      {entries.length < 2 ? (
+      {entries.length < 1 || (entries.length === 1 && allEntries.length < 2) ? (
         <div className="mode-placeholder">
           🚢 Add at least 2 participants to start a battle.
         </div>
@@ -695,7 +719,8 @@ export function BattleshipMode(props: ModeViewProps) {
           stateRef={stateRef}
           ships={shipsForLegend}
           visibility={settings.visibility}
-          bannerName={bannerName}
+          banner={banner}
+          highlightEntryId={isFinalRound ? survivor?.id ?? null : null}
           projectilesRef={projectilesRef}
           committedHitsRef={committedHitsRef}
           committedMissesRef={committedMissesRef}
