@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ModeViewProps } from '../types';
 import {
+  cellKey,
   placeShipsWithRetry,
+  type Cell,
   type Ship,
   type ShipSizesMode,
 } from './battleshipPlacement';
@@ -13,11 +15,29 @@ import {
   type RoundState,
 } from './battleshipTargeting';
 import { BattleshipGrid, type Visibility } from './BattleshipGrid';
+import {
+  CANNON_CORNERS,
+  cannonAnchorPx,
+  cellCenterPx,
+  pickCannon,
+  type CannonCorner,
+  type Projectile,
+} from './battleshipCannons';
 import './BattleshipMode.css';
 
 const SETTINGS_KEY = 'gamified_picker_battleship_settings';
 const SHOT_INTERVAL_MS = 220;
 const BANNER_DURATION_MS = 1500;
+
+const CANNON_TRAVEL_MS = 80;
+const BROADSIDE_PROJECTILE_GAP_MS = 35;
+const DEPTH_CHARGE_TRAVEL_MS = 180;
+
+const MAX_GRID = 640;
+const MIN_CELL = 24;
+function cellPxFor(gridSize: number): number {
+  return Math.max(MIN_CELL, Math.floor(MAX_GRID / gridSize));
+}
 
 interface Settings {
   shipSizes: ShipSizesMode;
@@ -73,6 +93,18 @@ function buildRound(
   };
 }
 
+function defaultCannonAngles(): Record<CannonCorner, number> {
+  // Point each barrel toward the center of the canvas at startup.
+  return {
+    tl: Math.PI / 4,
+    tr: (Math.PI * 3) / 4,
+    bl: -Math.PI / 4,
+    br: -(Math.PI * 3) / 4,
+  };
+}
+
+let projectileIdSeq = 1;
+
 export function BattleshipMode(props: ModeViewProps) {
   const {
     entries,
@@ -93,30 +125,136 @@ export function BattleshipMode(props: ModeViewProps) {
   const intervalRef = useRef<number | null>(null);
   const bannerTimeoutRef = useRef<number | null>(null);
   const winnerSentRef = useRef<boolean>(false);
+  const sweepRafRef = useRef<number | null>(null);
+
+  const projectilesRef = useRef<Projectile[]>([]);
+  const committedHitsRef = useRef<Set<string>>(new Set());
+  const committedMissesRef = useRef<Set<string>>(new Set());
+  const cannonAnglesRef = useRef<Record<CannonCorner, number>>(
+    defaultCannonAngles()
+  );
+  const pendingWinnerRef = useRef<{
+    entryId: number;
+    name: string;
+  } | null>(null);
 
   const entryIdsKey = useMemo(
     () => entries.map((e) => e.id).join(','),
     [entries]
   );
 
-  // (Re)build round whenever entries change, ship-sizes setting changes, or roundSeed bumps.
+  // Build / rebuild round.
   useEffect(() => {
     if (entries.length < 2) {
       stateRef.current = null;
       setShipsForLegend([]);
+      projectilesRef.current = [];
+      committedHitsRef.current = new Set();
+      committedMissesRef.current = new Set();
+      cannonAnglesRef.current = defaultCannonAngles();
+      pendingWinnerRef.current = null;
       setFrameKey((k) => k + 1);
       return;
     }
     const round = buildRound(entries, settings);
     stateRef.current = round;
     setShipsForLegend(round.ships);
+    projectilesRef.current = [];
+    committedHitsRef.current = new Set();
+    committedMissesRef.current = new Set();
+    cannonAnglesRef.current = defaultCannonAngles();
+    pendingWinnerRef.current = null;
     winnerSentRef.current = false;
     setBannerName(null);
     setFrameKey((k) => k + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryIdsKey, settings.shipSizes, roundSeed]);
 
-  // Drive the shot loop while isRacing is true.
+  // Sweep loop: drives a rAF that watches in-flight projectiles and commits
+  // their impact effects when each lands. Runs only while projectiles exist.
+  useEffect(() => {
+    let cancelled = false;
+
+    const sweep = () => {
+      if (cancelled) return;
+      const now = performance.now();
+      let landedAny = false;
+      let landedSinkEntryId: number | null = null;
+
+      for (const p of projectilesRef.current) {
+        if (p.impacted) continue;
+        if (now >= p.fireTime + p.travelMs) {
+          p.impacted = true;
+          for (const h of p.hitsRevealOnImpact) {
+            committedHitsRef.current.add(cellKey(h));
+          }
+          for (const m of p.missesRevealOnImpact) {
+            committedMissesRef.current.add(cellKey(m));
+          }
+          if (p.sinksEntryId !== null) {
+            landedSinkEntryId = p.sinksEntryId;
+          }
+          landedAny = true;
+        }
+      }
+
+      if (landedAny) {
+        // Drop fully-impacted projectiles whose tail has decayed (after a
+        // short grace period the visuals are no longer needed).
+        const stillNeeded = projectilesRef.current.filter(
+          (p) => !p.impacted || now - (p.fireTime + p.travelMs) < 50
+        );
+        if (stillNeeded.length !== projectilesRef.current.length) {
+          projectilesRef.current = stillNeeded;
+        }
+        // If a ship was sunk this frame, refresh the legend & start banner.
+        if (landedSinkEntryId !== null) {
+          const state = stateRef.current;
+          if (state) setShipsForLegend([...state.ships]);
+          const pending = pendingWinnerRef.current;
+          if (
+            pending &&
+            pending.entryId === landedSinkEntryId &&
+            !winnerSentRef.current
+          ) {
+            winnerSentRef.current = true;
+            const sunkEntry = entries.find((e) => e.id === pending.entryId);
+            if (sunkEntry) {
+              setBannerName(sunkEntry.name);
+              bannerTimeoutRef.current = window.setTimeout(() => {
+                onWinner(sunkEntry);
+                setBannerName(null);
+              }, BANNER_DURATION_MS);
+            }
+          }
+        }
+        setFrameKey((k) => k + 1);
+      }
+
+      if (projectilesRef.current.length > 0) {
+        sweepRafRef.current = requestAnimationFrame(sweep);
+      } else {
+        sweepRafRef.current = null;
+      }
+    };
+
+    if (projectilesRef.current.length > 0) {
+      sweepRafRef.current = requestAnimationFrame(sweep);
+    }
+
+    return () => {
+      cancelled = true;
+      if (sweepRafRef.current !== null) {
+        cancelAnimationFrame(sweepRafRef.current);
+        sweepRafRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameKey, entryIdsKey, roundSeed]);
+
+  // Shot loop: ticks every SHOT_INTERVAL_MS while isRacing. Spawns projectiles
+  // (does NOT directly commit impact effects — the sweep loop does that on
+  // landing).
   useEffect(() => {
     if (!isRacing) {
       if (intervalRef.current !== null) {
@@ -132,34 +270,131 @@ export function BattleshipMode(props: ModeViewProps) {
       const state = stateRef.current;
       if (!state) return;
       if (winnerSentRef.current) return;
-
-      const center = pickShotCenter(state, Math.random);
-      const type = rollShotType(Math.random);
-      const cells = expandShot(center, type, state.gridSize, Math.random);
-      const { firstSunkEntryId, result } = applyShot(state, type, center, cells);
-
-      setFrameKey((k) => k + 1);
-      // If any ship sunk this tick, refresh the legend (the only place the
-      // legend's `sunk` flag matters). Avoids ref-read-during-render.
-      if (result.sunkShipIds.length > 0) {
-        setShipsForLegend([...state.ships]);
-      }
-
-      if (firstSunkEntryId !== null) {
-        winnerSentRef.current = true;
+      // Stop firing once a winner has been queued (waiting for landing).
+      if (pendingWinnerRef.current !== null) {
         if (intervalRef.current !== null) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
+        return;
+      }
+
+      const center = pickShotCenter(state, Math.random);
+      const type = rollShotType(Math.random);
+      const cells = expandShot(center, type, state.gridSize, Math.random);
+      const { firstSunkEntryId } = applyShot(state, type, center, cells);
+
+      // Compute per-cell hit/miss split *as it actually was applied*. applyShot
+      // ignored cells that were already in shotCells; we mirror that here.
+      const newlyResolved = state.shots[state.shots.length - 1];
+      const hits = newlyResolved?.hits ?? [];
+      const misses = newlyResolved?.misses ?? [];
+
+      // Pick the firing cannon (uniformly random across the 4 corners).
+      const corner = pickCannon(Math.random);
+      const cell = cellPxFor(state.gridSize);
+      const canvasDim = state.gridSize * cell + 60 * 2; // CANNON_PAD * 2
+      const anchor = cannonAnchorPx(corner, canvasDim, canvasDim);
+
+      // Aim the firing cannon at the target cell (snap-aim for v1).
+      const centerPx = cellCenterPx(center, cell);
+      const targetAngle = Math.atan2(
+        centerPx.y - anchor.y,
+        centerPx.x - anchor.x
+      );
+      cannonAnglesRef.current = {
+        ...cannonAnglesRef.current,
+        [corner]: targetAngle,
+      };
+
+      const now = performance.now();
+
+      const spawnProjectile = (
+        targetCell: Cell,
+        offsetMs: number,
+        travelMs: number,
+        arcing: boolean,
+        cellHits: Cell[],
+        cellMisses: Cell[],
+        sinksEntryId: number | null
+      ) => {
+        const toPx = cellCenterPx(targetCell, cell);
+        const p: Projectile = {
+          id: projectileIdSeq++,
+          corner,
+          fromPx: anchor,
+          toPx,
+          toCell: targetCell,
+          fireTime: now + offsetMs,
+          travelMs,
+          arcing,
+          type,
+          hitsRevealOnImpact: cellHits,
+          missesRevealOnImpact: cellMisses,
+          sinksEntryId,
+          impacted: false,
+        };
+        projectilesRef.current = [...projectilesRef.current, p];
+      };
+
+      if (type === 'cannon') {
+        // Single projectile — center cell is the only cell.
+        spawnProjectile(
+          center,
+          0,
+          CANNON_TRAVEL_MS,
+          false,
+          hits,
+          misses,
+          firstSunkEntryId
+        );
+      } else if (type === 'broadside') {
+        // 3 projectiles, one per cell in the line, fired sequentially. Each
+        // projectile reveals only its own cell's hit/miss when it lands. The
+        // sink (if any) attaches to the last projectile.
+        const orderedCells = newlyResolved?.cells ?? [];
+        const cellsToReveal = orderedCells;
+        for (let i = 0; i < cellsToReveal.length; i++) {
+          const c = cellsToReveal[i];
+          const cellHits = hits.filter((h) => h.x === c.x && h.y === c.y);
+          const cellMisses = misses.filter((m) => m.x === c.x && m.y === c.y);
+          const isLast = i === cellsToReveal.length - 1;
+          spawnProjectile(
+            c,
+            i * BROADSIDE_PROJECTILE_GAP_MS,
+            CANNON_TRAVEL_MS,
+            false,
+            cellHits,
+            cellMisses,
+            isLast ? firstSunkEntryId : null
+          );
+        }
+      } else {
+        // Depth charge: single arcing projectile that resolves all cells when
+        // it lands.
+        spawnProjectile(
+          center,
+          0,
+          DEPTH_CHARGE_TRAVEL_MS,
+          true,
+          hits,
+          misses,
+          firstSunkEntryId
+        );
+      }
+
+      // Queue the pending winner so the banner waits for landing.
+      if (firstSunkEntryId !== null) {
         const sunkEntry = entries.find((e) => e.id === firstSunkEntryId);
         if (sunkEntry) {
-          setBannerName(sunkEntry.name);
-          bannerTimeoutRef.current = window.setTimeout(() => {
-            onWinner(sunkEntry);
-            setBannerName(null);
-          }, BANNER_DURATION_MS);
+          pendingWinnerRef.current = {
+            entryId: sunkEntry.id,
+            name: sunkEntry.name,
+          };
         }
       }
+
+      setFrameKey((k) => k + 1);
     }, SHOT_INTERVAL_MS);
 
     return () => {
@@ -175,7 +410,9 @@ export function BattleshipMode(props: ModeViewProps) {
   useEffect(() => {
     return () => {
       if (intervalRef.current !== null) clearInterval(intervalRef.current);
-      if (bannerTimeoutRef.current !== null) clearTimeout(bannerTimeoutRef.current);
+      if (bannerTimeoutRef.current !== null)
+        clearTimeout(bannerTimeoutRef.current);
+      if (sweepRafRef.current !== null) cancelAnimationFrame(sweepRafRef.current);
     };
   }, []);
 
@@ -184,6 +421,7 @@ export function BattleshipMode(props: ModeViewProps) {
     if (eliminatedIds.length === 0 && !isRacing) {
       setBannerName(null);
       winnerSentRef.current = false;
+      pendingWinnerRef.current = null;
     }
   }, [eliminatedIds.length, isRacing]);
 
@@ -195,6 +433,10 @@ export function BattleshipMode(props: ModeViewProps) {
     });
     setRoundSeed((s) => s + 1);
   };
+
+  // Reference unused helpers/types so the compiler doesn't complain about
+  // imports that exist solely for the rendering path inside the grid.
+  void CANNON_CORNERS;
 
   return (
     <div className="battleship-mode">
@@ -281,6 +523,10 @@ export function BattleshipMode(props: ModeViewProps) {
           ships={shipsForLegend}
           visibility={settings.visibility}
           bannerName={bannerName}
+          projectilesRef={projectilesRef}
+          committedHitsRef={committedHitsRef}
+          committedMissesRef={committedMissesRef}
+          cannonAnglesRef={cannonAnglesRef}
           frameKey={frameKey}
         />
       )}
