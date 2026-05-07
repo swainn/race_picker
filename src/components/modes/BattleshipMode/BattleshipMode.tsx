@@ -169,31 +169,26 @@ function softResetRound(state: RoundState, eliminatedIds: number[]): void {
       ship.sunk = false;
     }
   }
-  const shotCells = new Set<string>();
-  const sunkCells: Cell[] = [];
-  for (const s of state.ships) {
-    if (s.sunk) {
-      for (const c of s.cells) {
-        shotCells.add(cellKey(c));
-        sunkCells.push(c);
-      }
+  // Active-ship cells need to come back out of shotCells so the AI can fire
+  // at them again next round. Water cells (misses) and sunk-ship cells stay
+  // in shotCells so they don't get re-targeted.
+  const activeShipCells = new Set<string>();
+  for (const ship of state.ships) {
+    if (!ship.sunk) {
+      for (const c of ship.cells) activeShipCells.add(cellKey(c));
     }
   }
-  state.shots = sunkCells.length
-    ? [
-        {
-          type: 'cannon',
-          center: { x: 0, y: 0 },
-          cells: sunkCells,
-          hits: sunkCells,
-          misses: [],
-          sunkShipIds: state.ships.filter((s) => s.sunk).map((s) => s.id),
-        },
-      ]
-    : [];
-  state.shotCells = shotCells;
+  const newShotCells = new Set<string>();
+  for (const k of state.shotCells) {
+    if (!activeShipCells.has(k)) newShotCells.add(k);
+  }
+  state.shotCells = newShotCells;
   state.targetingMode = 'hunt';
   state.targetQueue = [];
+  // state.shots is left intact so prior rounds' miss splashes keep rendering.
+  // The renderer gates hit visuals on committedHitsRef (managed by the
+  // caller), so cleared active-ship hits won't draw even though their entries
+  // remain in state.shots.
 }
 
 function sunkShipCellKeys(state: RoundState): Set<string> {
@@ -286,11 +281,12 @@ export function BattleshipMode(props: ModeViewProps) {
         stateRef.current !== null &&
         lastPersistentBuildKeyRef.current === allEntryIdsKey;
       if (haveBuiltForThisGame) {
-        // Soft reset between rounds: keep ships, mark new eliminations as
-        // sunk, clear non-sunk hit/miss state, restart targeting in hunt.
+        // Soft reset between rounds: keep ships + prior water-shot history.
+        // Mark new eliminations as sunk; clear active-ship hits; restart
+        // targeting in hunt. committedMissesRef is intentionally preserved
+        // so prior rounds' miss splashes stay on the grid.
         softResetRound(stateRef.current!, eliminatedIds);
         committedHitsRef.current = sunkShipCellKeys(stateRef.current!);
-        committedMissesRef.current = new Set();
       } else {
         // Full rebuild for the current allEntries set.
         const round = buildPersistentRound(allEntries, eliminatedIds, settings);
