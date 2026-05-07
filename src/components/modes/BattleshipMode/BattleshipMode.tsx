@@ -13,6 +13,7 @@ import {
   pickShotCenter,
   rollShotType,
   type RoundState,
+  type ShotResult,
 } from './battleshipTargeting';
 import { BattleshipGrid, type Visibility } from './BattleshipGrid';
 import {
@@ -39,14 +40,18 @@ function cellPxFor(gridSize: number): number {
   return Math.max(MIN_CELL, Math.floor(MAX_GRID / gridSize));
 }
 
+type PersistentLayout = 'off' | 'on';
+
 interface Settings {
   shipSizes: ShipSizesMode;
   visibility: Visibility;
+  persistentLayout: PersistentLayout;
 }
 
 const DEFAULT_SETTINGS: Settings = {
   shipSizes: 'uniform',
   visibility: 'ghosted',
+  persistentLayout: 'off',
 };
 
 function loadSettings(): Settings {
@@ -60,6 +65,7 @@ function loadSettings(): Settings {
         parsed.visibility === 'hidden' || parsed.visibility === 'visible'
           ? parsed.visibility
           : 'ghosted',
+      persistentLayout: parsed.persistentLayout === 'on' ? 'on' : 'off',
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -93,6 +99,111 @@ function buildRound(
   };
 }
 
+/**
+ * Builds a round with one ship per entry in `allEntries`. Ships whose entryId
+ * is in `eliminatedIds` are pre-marked as sunk with all cells in
+ * `shotCells`/`shots`. Used for persistent-layout mode.
+ */
+function buildPersistentRound(
+  allEntries: ModeViewProps['allEntries'],
+  eliminatedIds: number[],
+  settings: Settings
+): RoundState {
+  const { ships, gridSize } = placeShipsWithRetry(
+    allEntries,
+    settings.shipSizes,
+    Math.random
+  );
+  const eliminatedSet = new Set(eliminatedIds);
+  const shotCells = new Set<string>();
+  const sunkCells: Cell[] = [];
+  for (const ship of ships) {
+    if (eliminatedSet.has(ship.entryId)) {
+      ship.sunk = true;
+      for (const c of ship.cells) {
+        const k = cellKey(c);
+        ship.hits.add(k);
+        shotCells.add(k);
+        sunkCells.push(c);
+      }
+    }
+  }
+  const shots: ShotResult[] = [];
+  if (sunkCells.length > 0) {
+    shots.push({
+      type: 'cannon',
+      center: { x: 0, y: 0 },
+      cells: sunkCells,
+      hits: sunkCells,
+      misses: [],
+      sunkShipIds: ships.filter((s) => s.sunk).map((s) => s.id),
+    });
+  }
+  return {
+    gridSize,
+    ships,
+    shots,
+    shotCells,
+    targetingMode: 'hunt',
+    targetQueue: [],
+  };
+}
+
+/**
+ * Mutates `state` in place to start a fresh round on the same ship layout.
+ * Marks any newly-eliminated ships as sunk, clears non-sunk hits, rebuilds
+ * shotCells/shots to contain only sunk ships' cells, and resets targeting.
+ * Used for persistent-layout mode between rounds.
+ */
+function softResetRound(state: RoundState, eliminatedIds: number[]): void {
+  const eliminatedSet = new Set(eliminatedIds);
+  for (const ship of state.ships) {
+    if (eliminatedSet.has(ship.entryId)) {
+      ship.sunk = true;
+      ship.hits = new Set<string>();
+      for (const c of ship.cells) ship.hits.add(cellKey(c));
+    } else {
+      // Active ship: clear any hits accumulated this round so the new round
+      // starts visually clean (no leftover red crosses).
+      ship.hits = new Set<string>();
+      ship.sunk = false;
+    }
+  }
+  const shotCells = new Set<string>();
+  const sunkCells: Cell[] = [];
+  for (const s of state.ships) {
+    if (s.sunk) {
+      for (const c of s.cells) {
+        shotCells.add(cellKey(c));
+        sunkCells.push(c);
+      }
+    }
+  }
+  state.shots = sunkCells.length
+    ? [
+        {
+          type: 'cannon',
+          center: { x: 0, y: 0 },
+          cells: sunkCells,
+          hits: sunkCells,
+          misses: [],
+          sunkShipIds: state.ships.filter((s) => s.sunk).map((s) => s.id),
+        },
+      ]
+    : [];
+  state.shotCells = shotCells;
+  state.targetingMode = 'hunt';
+  state.targetQueue = [];
+}
+
+function sunkShipCellKeys(state: RoundState): Set<string> {
+  const out = new Set<string>();
+  for (const s of state.ships) {
+    if (s.sunk) for (const c of s.cells) out.add(cellKey(c));
+  }
+  return out;
+}
+
 function defaultCannonAngles(): Record<CannonCorner, number> {
   // Point each barrel toward the center of the canvas at startup.
   return {
@@ -108,6 +219,7 @@ let projectileIdSeq = 1;
 export function BattleshipMode(props: ModeViewProps) {
   const {
     entries,
+    allEntries,
     eliminatedIds,
     isRacing,
     onWinner,
@@ -137,16 +249,23 @@ export function BattleshipMode(props: ModeViewProps) {
     entryId: number;
     name: string;
   } | null>(null);
+  /** allEntries-id-key at the time persistent placements were last built. */
+  const lastPersistentBuildKeyRef = useRef<string | null>(null);
 
   const entryIdsKey = useMemo(
     () => entries.map((e) => e.id).join(','),
     [entries]
   );
+  const allEntryIdsKey = useMemo(
+    () => allEntries.map((e) => e.id).join(','),
+    [allEntries]
+  );
 
-  // Build / rebuild round.
+  // Build / rebuild round. Branches on persistentLayout setting.
   useEffect(() => {
     if (entries.length < 2) {
       stateRef.current = null;
+      lastPersistentBuildKeyRef.current = null;
       setShipsForLegend([]);
       projectilesRef.current = [];
       committedHitsRef.current = new Set();
@@ -156,19 +275,49 @@ export function BattleshipMode(props: ModeViewProps) {
       setFrameKey((k) => k + 1);
       return;
     }
-    const round = buildRound(entries, settings);
-    stateRef.current = round;
-    setShipsForLegend(round.ships);
+
+    if (settings.persistentLayout === 'on') {
+      const haveBuiltForThisGame =
+        stateRef.current !== null &&
+        lastPersistentBuildKeyRef.current === allEntryIdsKey;
+      if (haveBuiltForThisGame) {
+        // Soft reset between rounds: keep ships, mark new eliminations as
+        // sunk, clear non-sunk hit/miss state, restart targeting in hunt.
+        softResetRound(stateRef.current!, eliminatedIds);
+        committedHitsRef.current = sunkShipCellKeys(stateRef.current!);
+        committedMissesRef.current = new Set();
+      } else {
+        // Full rebuild for the current allEntries set.
+        const round = buildPersistentRound(allEntries, eliminatedIds, settings);
+        stateRef.current = round;
+        lastPersistentBuildKeyRef.current = allEntryIdsKey;
+        committedHitsRef.current = sunkShipCellKeys(round);
+        committedMissesRef.current = new Set();
+      }
+    } else {
+      // Non-persistent: rebuild ships every round from active entries.
+      const round = buildRound(entries, settings);
+      stateRef.current = round;
+      lastPersistentBuildKeyRef.current = null;
+      committedHitsRef.current = new Set();
+      committedMissesRef.current = new Set();
+    }
+
+    setShipsForLegend(stateRef.current?.ships ?? []);
     projectilesRef.current = [];
-    committedHitsRef.current = new Set();
-    committedMissesRef.current = new Set();
     cannonAnglesRef.current = defaultCannonAngles();
     pendingWinnerRef.current = null;
     winnerSentRef.current = false;
     setBannerName(null);
     setFrameKey((k) => k + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryIdsKey, settings.shipSizes, roundSeed]);
+  }, [
+    entryIdsKey,
+    allEntryIdsKey,
+    settings.shipSizes,
+    settings.persistentLayout,
+    roundSeed,
+  ]);
 
   // Sweep loop: drives a rAF that watches in-flight projectiles and commits
   // their impact effects when each lands. Runs only while projectiles exist.
@@ -509,6 +658,30 @@ export function BattleshipMode(props: ModeViewProps) {
               onChange={() => updateSettings({ visibility: 'visible' })}
             />
             Visible
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Persistent layout:</legend>
+          <label>
+            <input
+              type="radio"
+              name="bs-persistent"
+              value="off"
+              checked={settings.persistentLayout === 'off'}
+              onChange={() => updateSettings({ persistentLayout: 'off' })}
+            />
+            Off
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="bs-persistent"
+              value="on"
+              checked={settings.persistentLayout === 'on'}
+              onChange={() => updateSettings({ persistentLayout: 'on' })}
+            />
+            On
           </label>
         </fieldset>
       </div>
