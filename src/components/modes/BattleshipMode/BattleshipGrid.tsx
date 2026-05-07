@@ -29,10 +29,10 @@ interface Props {
   visibility: Visibility;
   banner: { kind: 'sunk' | 'final'; name: string } | null;
   /**
-   * If set, the ship belonging to this entry is drawn with a pulsing golden
-   * highlight. Used for the final-round survivor reveal.
+   * If set, the ship belonging to this entry is drawn with the gold-shining
+   * "crowned champion" effect. Used after the user clicks Crown Champion.
    */
-  highlightEntryId: number | null;
+  crownedEntryId: number | null;
   /** Live array of in-flight projectiles. The component reads it on every rAF tick. */
   projectilesRef: React.MutableRefObject<Projectile[]>;
   /** Cells whose impact effect is allowed to render (projectile already landed). */
@@ -252,7 +252,7 @@ function drawCannons(
   }
 }
 
-function drawHighlightRing(
+function drawCrownedShip(
   ctx: CanvasRenderingContext2D,
   ship: Ship,
   cell: number,
@@ -260,44 +260,108 @@ function drawHighlightRing(
 ) {
   const ox = CANNON_PAD;
   const oy = CANNON_PAD;
-  // Pulse oscillates between 0..1 every ~1.5s.
-  const phase = (now / 1500) * Math.PI * 2;
-  const pulse = (Math.sin(phase) + 1) / 2;
-  const haloAlpha = 0.45 + pulse * 0.45;
-  const glowExtent = 6 + pulse * 6;
 
-  // Outer glow halo around each ship cell.
-  ctx.save();
-  ctx.shadowColor = 'rgba(255, 220, 90, 0.95)';
-  ctx.shadowBlur = 18 + pulse * 12;
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = `rgba(255, 215, 80, ${haloAlpha})`;
+  // Compute the ship's bounding rectangle in pixel space (ships are rows or
+  // columns of cells, so the bounding box is a tight fit).
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
   for (const c of ship.cells) {
-    ctx.strokeRect(
-      ox + c.x * cell + 1 - glowExtent / 6,
-      oy + c.y * cell + 1 - glowExtent / 6,
-      cell - 2 + glowExtent / 3,
-      cell - 2 + glowExtent / 3
-    );
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y > maxY) maxY = c.y;
+  }
+  const x0 = ox + minX * cell + 2;
+  const y0 = oy + minY * cell + 2;
+  const x1 = ox + (maxX + 1) * cell - 2;
+  const y1 = oy + (maxY + 1) * cell - 2;
+  const w = x1 - x0;
+  const h = y1 - y0;
+
+  // Pulse: 0..1 over ~1.4s.
+  const pulse = (Math.sin((now / 1400) * Math.PI * 2) + 1) / 2;
+
+  // Layer 1: gold body fill.
+  ctx.save();
+  const bodyGrad = ctx.createLinearGradient(x0, y0, x0, y1);
+  bodyGrad.addColorStop(0, '#ffe27a');
+  bodyGrad.addColorStop(0.5, '#fff4b8');
+  bodyGrad.addColorStop(1, '#d99b00');
+  ctx.fillStyle = bodyGrad;
+  ctx.fillRect(x0, y0, w, h);
+  ctx.restore();
+
+  // Layer 2: outer halo glow (uses canvas shadowBlur for a soft bloom).
+  ctx.save();
+  ctx.shadowColor = `rgba(255, 215, 60, ${0.85 + pulse * 0.15})`;
+  ctx.shadowBlur = 28 + pulse * 18;
+  ctx.lineWidth = 3 + pulse * 1.5;
+  ctx.strokeStyle = `rgba(255, 235, 120, ${0.85 + pulse * 0.15})`;
+  ctx.strokeRect(x0 - 1, y0 - 1, w + 2, h + 2);
+  ctx.restore();
+
+  // Layer 3: animated shimmer band sweeping across the ship.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x0, y0, w, h);
+  ctx.clip();
+  const isHorizontal = w >= h;
+  const longAxis = isHorizontal ? w : h;
+  const shimmerLen = Math.max(longAxis * 0.35, 24);
+  // 0..(longAxis + shimmerLen*2) over ~1.6s, repeating.
+  const phase = (now / 1600) % 1;
+  const start = -shimmerLen + phase * (longAxis + shimmerLen * 2);
+  if (isHorizontal) {
+    const grad = ctx.createLinearGradient(x0 + start, 0, x0 + start + shimmerLen, 0);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.7)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x0 + start, y0, shimmerLen, h);
+  } else {
+    const grad = ctx.createLinearGradient(0, y0 + start, 0, y0 + start + shimmerLen);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.7)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x0, y0 + start, w, shimmerLen);
   }
   ctx.restore();
 
-  // Inner shimmer fill.
+  // Layer 4: bright outer outline on top of everything.
   ctx.save();
-  ctx.fillStyle = `rgba(255, 235, 150, ${0.15 + pulse * 0.2})`;
-  for (const c of ship.cells) {
-    ctx.fillRect(ox + c.x * cell + 3, oy + c.y * cell + 3, cell - 6, cell - 6);
-  }
+  ctx.strokeStyle = `rgba(255, 215, 50, ${0.85 + pulse * 0.15})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x0, y0, w, h);
   ctx.restore();
 
-  // Bright outline that pulses width.
-  ctx.save();
-  ctx.strokeStyle = `rgba(255, 245, 200, ${0.7 + pulse * 0.3})`;
-  ctx.lineWidth = 2 + pulse * 1.5;
-  for (const c of ship.cells) {
-    ctx.strokeRect(ox + c.x * cell + 2, oy + c.y * cell + 2, cell - 4, cell - 4);
+  // Layer 5: small twinkle sparks at each corner of the ship.
+  const corners: Array<[number, number]> = [
+    [x0, y0],
+    [x1, y0],
+    [x0, y1],
+    [x1, y1],
+  ];
+  for (let i = 0; i < corners.length; i++) {
+    const [cx, cy] = corners[i];
+    // Each corner has its own offset phase so they twinkle independently.
+    const sparklePhase = ((now / 800) + i * 0.25) % 1;
+    const sparkleAlpha = Math.sin(sparklePhase * Math.PI);
+    if (sparkleAlpha <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = sparkleAlpha;
+    const sparkleGrad = ctx.createRadialGradient(cx, cy, 1, cx, cy, 8);
+    sparkleGrad.addColorStop(0, 'rgba(255, 255, 240, 1)');
+    sparkleGrad.addColorStop(0.4, 'rgba(255, 220, 100, 0.7)');
+    sparkleGrad.addColorStop(1, 'rgba(255, 200, 60, 0)');
+    ctx.fillStyle = sparkleGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
-  ctx.restore();
 }
 
 function drawSmokePuff(
@@ -480,7 +544,7 @@ export function BattleshipGrid({
   ships,
   visibility,
   banner,
-  highlightEntryId,
+  crownedEntryId,
   projectilesRef,
   committedHitsRef,
   committedMissesRef,
@@ -520,13 +584,13 @@ export function BattleshipGrid({
     drawCannons(ctx, dim, dim, cannonAnglesRef.current);
     drawProjectiles(ctx, projectilesRef.current, dim, dim, now);
 
-    // Final-round survivor highlight — draw on top so the glow reads clearly.
-    if (highlightEntryId !== null) {
-      const highlightShip = state.ships.find(
-        (s) => s.entryId === highlightEntryId && !s.sunk
+    // Crowned-champion gold-shine — draw on top so the glow reads clearly.
+    if (crownedEntryId !== null) {
+      const crownedShip = state.ships.find(
+        (s) => s.entryId === crownedEntryId
       );
-      if (highlightShip) {
-        drawHighlightRing(ctx, highlightShip, cell, now);
+      if (crownedShip) {
+        drawCrownedShip(ctx, crownedShip, cell, now);
       }
     }
   };
@@ -539,7 +603,7 @@ export function BattleshipGrid({
 
     const shouldKeepAnimating = () =>
       projectilesRef.current.some((p) => !p.impacted) ||
-      highlightEntryId !== null;
+      crownedEntryId !== null;
 
     const tick = () => {
       if (cancelled) return;
@@ -565,7 +629,7 @@ export function BattleshipGrid({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frameKey, visibility, highlightEntryId]);
+  }, [frameKey, visibility, crownedEntryId]);
 
   return (
     <div className="battleship-grid-wrap">
@@ -576,7 +640,7 @@ export function BattleshipGrid({
         )}
         {banner && banner.kind === 'final' && (
           <div className="battleship-banner battleship-banner-final">
-            🏆 Last ship standing — {banner.name}! 🏆
+            🏆 {banner.name} — Champion! 🏆
           </div>
         )}
       </div>

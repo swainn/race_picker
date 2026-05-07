@@ -229,6 +229,16 @@ export function BattleshipMode(props: ModeViewProps) {
   >(null);
   const [roundSeed, setRoundSeed] = useState(0);
   const [shipsForLegend, setShipsForLegend] = useState<Ship[]>([]);
+  /**
+   * When non-null, the round is "frozen" — the user has crowned the final
+   * winner. The ship belonging to this entryId draws with the gold shining
+   * effect, and the round state stays put until Reset Race / participant-list
+   * change.
+   */
+  const [crownedEntryId, setCrownedEntryId] = useState<number | null>(null);
+  /** allEntries-id-key at the moment the winner was crowned. Used to detect
+   *  participant-list changes that should auto-unfreeze. */
+  const crownedAtKeyRef = useRef<string | null>(null);
 
   const stateRef = useRef<RoundState | null>(null);
   const intervalRef = useRef<number | null>(null);
@@ -260,9 +270,20 @@ export function BattleshipMode(props: ModeViewProps) {
 
   // Build / rebuild round. Branches on persistentLayout setting.
   // entries.length === 1 is the "final round" — we still build (1 ship for the
-  // survivor) so the grid can render with a highlight effect; auto-declare
-  // happens via a separate effect below.
+  // survivor) so the grid can render with the Crown Champion button.
   useEffect(() => {
+    // Frozen post-crown: keep the grid untouched until Reset Race or a
+    // participant-list change unfreezes us.
+    if (crownedEntryId !== null) {
+      if (crownedAtKeyRef.current === allEntryIdsKey) {
+        return; // stay frozen on the crowned grid
+      }
+      // Participant list changed — unfreeze and fall through to a fresh build.
+      crownedAtKeyRef.current = null;
+      setCrownedEntryId(null);
+      setBanner(null);
+    }
+
     if (entries.length < 1) {
       stateRef.current = null;
       lastPersistentBuildKeyRef.current = null;
@@ -318,6 +339,7 @@ export function BattleshipMode(props: ModeViewProps) {
     settings.shipSizes,
     settings.persistentLayout,
     roundSeed,
+    crownedEntryId,
   ]);
 
   // Sweep loop: drives a rAF that watches in-flight projectiles and commits
@@ -572,27 +594,27 @@ export function BattleshipMode(props: ModeViewProps) {
       setBanner(null);
       winnerSentRef.current = false;
       pendingWinnerRef.current = null;
+      crownedAtKeyRef.current = null;
+      setCrownedEntryId(null);
     }
   }, [eliminatedIds.length, isRacing]);
 
-  // Final-round auto-declare: when only one participant remains active and at
-  // least one has already been picked, hold the grid for a moment with the
-  // survivor highlighted, then declare them via onWinner.
-  const isFinalRound = entries.length === 1 && allEntries.length >= 2;
-  const survivor = isFinalRound ? entries[0] : null;
-  useEffect(() => {
-    if (!isFinalRound || !survivor) return;
-    if (winnerSentRef.current) return;
+  // Final-round detection: one active participant remains and at least one
+  // has been picked. The winner is *not* auto-declared — the user clicks the
+  // "Crown Champion" button to record the win + show the gold shining effect.
+  const isCrowned = crownedEntryId !== null;
+  const isFinalRoundPending =
+    !isCrowned && entries.length === 1 && allEntries.length >= 2;
+  const survivor = isFinalRoundPending ? entries[0] : null;
+
+  const crownChampion = () => {
+    if (!survivor) return;
+    crownedAtKeyRef.current = allEntryIdsKey;
+    setCrownedEntryId(survivor.id);
     setBanner({ kind: 'final', name: survivor.name });
     setFrameKey((k) => k + 1);
-    const t = window.setTimeout(() => {
-      winnerSentRef.current = true;
-      onWinner(survivor);
-      setBanner(null);
-    }, 2500);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFinalRound, survivor?.id]);
+    onWinner(survivor);
+  };
 
   const updateSettings = (next: Partial<Settings>) => {
     setSettings((prev) => {
@@ -613,6 +635,19 @@ export function BattleshipMode(props: ModeViewProps) {
         {entries.length >= 2 && !isRacing && (
           <button onClick={onStartRace} className="start-race-button">
             🚢 Open Fire ({entries.length})
+          </button>
+        )}
+        {isFinalRoundPending && (
+          <button onClick={crownChampion} className="crown-champion-button">
+            🏆 Crown Champion
+          </button>
+        )}
+        {isCrowned && (
+          <button
+            onClick={props.onShowFinalStandings}
+            className="final-standings-button"
+          >
+            📊 Show Final Standings
           </button>
         )}
         {eliminatedIds.length > 0 && (
@@ -706,7 +741,9 @@ export function BattleshipMode(props: ModeViewProps) {
         </fieldset>
       </div>
 
-      {entries.length < 1 || (entries.length === 1 && allEntries.length < 2) ? (
+      {!isCrowned &&
+      (entries.length < 1 ||
+        (entries.length === 1 && allEntries.length < 2)) ? (
         <div className="mode-placeholder">
           🚢 Add at least 2 participants to start a battle.
         </div>
@@ -716,7 +753,7 @@ export function BattleshipMode(props: ModeViewProps) {
           ships={shipsForLegend}
           visibility={settings.visibility}
           banner={banner}
-          highlightEntryId={isFinalRound ? survivor?.id ?? null : null}
+          crownedEntryId={crownedEntryId}
           projectilesRef={projectilesRef}
           committedHitsRef={committedHitsRef}
           committedMissesRef={committedMissesRef}
