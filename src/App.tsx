@@ -8,6 +8,7 @@ import { LightCyclesMode } from './components/modes/LightCyclesMode/LightCyclesM
 import { PlinkoMode } from './components/modes/PlinkoMode/PlinkoMode';
 import { WallClimberMode } from './components/modes/WallClimberMode/WallClimberMode';
 import { BattleshipMode } from './components/modes/BattleshipMode/BattleshipMode';
+import { WheelMode } from './components/modes/WheelMode/WheelMode';
 import type { GameMode, ModeWinnerExtras } from './components/modes/types';
 import './App.css';
 
@@ -29,6 +30,7 @@ const MODES: { value: GameMode; label: string }[] = [
   { value: 'plinko', label: '🎯 Plinko' },
   { value: 'wall-climber', label: '🧗 Wall Climber' },
   { value: 'battleship', label: '🚢 Battleship' },
+  { value: 'wheel', label: '🎡 Wheel' },
 ];
 
 function loadFromStorage<T>(key: string, defaultValue: T): T {
@@ -248,6 +250,8 @@ function App() {
         return <WallClimberMode {...modeProps} />;
       case 'battleship':
         return <BattleshipMode {...modeProps} />;
+      case 'wheel':
+        return <WheelMode {...modeProps} />;
     }
   };
 
