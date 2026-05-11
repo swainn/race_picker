@@ -2,14 +2,10 @@ import { useEffect, useState } from 'react';
 import type { Entry } from './types';
 import { FinalStandingsDialog } from './components/FinalStandingsDialog';
 import { ManagementDialog } from './components/ManagementDialog';
-import { RacingMode } from './components/modes/RacingMode/RacingMode';
-import { BattleBotsMode } from './components/modes/BattleBotsMode/BattleBotsMode';
-import { LightCyclesMode } from './components/modes/LightCyclesMode/LightCyclesMode';
-import { PlinkoMode } from './components/modes/PlinkoMode/PlinkoMode';
-import { WallClimberMode } from './components/modes/WallClimberMode/WallClimberMode';
-import { BattleshipMode } from './components/modes/BattleshipMode/BattleshipMode';
-import { WheelMode } from './components/modes/WheelMode/WheelMode';
+import { SettingsModal } from './components/shared/SettingsModal/SettingsModal';
+import { MODE_LIST, MODE_REGISTRY } from './components/modes/registry';
 import type { GameMode, ModeWinnerExtras } from './components/modes/types';
+import { loadFromStorage } from './utils/storage';
 import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
@@ -21,26 +17,6 @@ interface Group {
   name: string;
   entries: Entry[];
   timestamp: number;
-}
-
-const MODES: { value: GameMode; label: string }[] = [
-  { value: 'racing', label: '🏁 Racing' },
-  { value: 'battle-bots', label: '⚔️ Battle Bots' },
-  { value: 'light-cycles', label: '🏍️ Light Cycles' },
-  { value: 'plinko', label: '🎯 Plinko' },
-  { value: 'wall-climber', label: '🧗 Wall Climber' },
-  { value: 'battleship', label: '🚢 Battleship' },
-  { value: 'wheel', label: '🎡 Wheel' },
-];
-
-function loadFromStorage<T>(key: string, defaultValue: T): T {
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : defaultValue;
-  } catch (e) {
-    console.error(`Failed to load ${key}`, e);
-    return defaultValue;
-  }
 }
 
 function normalizeEntry(entry: Entry): Entry {
@@ -80,6 +56,7 @@ function App() {
     }))
   );
   const [showManagementModal, setShowManagementModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [gameMode, setGameMode] = useState<GameMode>(() =>
     loadFromStorage<GameMode>(MODE_STORAGE_KEY, 'racing')
@@ -236,24 +213,9 @@ function App() {
     onResetRace: resetRace,
   };
 
-  const renderMode = () => {
-    switch (gameMode) {
-      case 'racing':
-        return <RacingMode {...modeProps} />;
-      case 'battle-bots':
-        return <BattleBotsMode {...modeProps} />;
-      case 'light-cycles':
-        return <LightCyclesMode {...modeProps} />;
-      case 'plinko':
-        return <PlinkoMode {...modeProps} />;
-      case 'wall-climber':
-        return <WallClimberMode {...modeProps} />;
-      case 'battleship':
-        return <BattleshipMode {...modeProps} />;
-      case 'wheel':
-        return <WheelMode {...modeProps} />;
-    }
-  };
+  const activeModeEntry = MODE_REGISTRY[gameMode];
+  const ActiveMode = activeModeEntry.View;
+  const ActiveSettings = activeModeEntry.Settings;
 
   return (
     <div className="app">
@@ -271,13 +233,23 @@ function App() {
                 value={gameMode}
                 onChange={(e) => handleModeChange(e.target.value as GameMode)}
               >
-                {MODES.map((m) => (
+                {MODE_LIST.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.label}
                   </option>
                 ))}
               </select>
             </div>
+            {ActiveSettings && (
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(true)}
+                className="header-settings-button"
+                aria-label="Mode settings"
+              >
+                🎛 Settings
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowManagementModal(true)}
@@ -293,29 +265,29 @@ function App() {
       <div className="app-container">
         <div className="main-content">
           <div key={`${gameMode}-${resetKey}`} style={{ width: '100%' }}>
-            {renderMode()}
+            <ActiveMode {...modeProps} />
           </div>
-
-          {winner && !showRace && (
-            <div className="winner-info">
-              <p>
-                Last winner: <strong>{winner}</strong>
-              </p>
-              <p>
-                Racing: {activeEntries.length} / {entries.length}
-              </p>
-            </div>
-          )}
 
           {showFinalStandings && (
             <FinalStandingsDialog
               entries={entries}
               winOrder={winOrder}
+              reverseOrder={activeModeEntry.survivalOrder}
               onClose={() => setShowFinalStandings(false)}
             />
           )}
         </div>
       </div>
+
+      {ActiveSettings && (
+        <SettingsModal
+          show={showSettingsModal}
+          title={`${activeModeEntry.label} Settings`}
+          onClose={() => setShowSettingsModal(false)}
+        >
+          <ActiveSettings />
+        </SettingsModal>
+      )}
 
       {showManagementModal && (
         <ManagementDialog

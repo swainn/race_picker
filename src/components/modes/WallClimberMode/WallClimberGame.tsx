@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
+import { generateColor } from '../../../utils/colors';
+import { getPreferredEntryImage } from '../../../utils/entryImages';
+import { shuffle } from '../../../utils/array';
+import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
+import { wallClimberTheme } from '../themes';
 import './WallClimberGame.css';
 
 const VEHICLE_MODES = ['car', 'boat', 'plane', 'balloon', 'rocket', 'duck', 'snail', 'cat', 'dog'] as const;
@@ -108,21 +113,12 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
     return () => cancelAnimationFrame(frameId);
   }, []);
 
-  const shuffleArray = <T,>(array: T[]) => {
-    const result = [...array];
-    for (let i = result.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [result[i], result[j]] = [result[j], result[i]];
-    }
-    return result;
-  };
-
   const assignMixedModes = (count: number): VehicleMode[] => {
     const assignments: VehicleMode[] = [];
-    let pool = shuffleArray(VEHICLE_MODES);
+    let pool = shuffle(VEHICLE_MODES);
     for (let i = 0; i < count; i++) {
       if (pool.length === 0) {
-        pool = shuffleArray(VEHICLE_MODES);
+        pool = shuffle(VEHICLE_MODES);
       }
       assignments.push(pool.pop() as VehicleMode);
     }
@@ -146,7 +142,7 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
         entry,
         y: START_LINE,
         speed: 0,
-        color: generateColor(index, Math.max(displayEntries.length, 2)),
+        color: generateColor(index),
         finished: false,
         previousSpeed: 0,
         spinAngle: 0,
@@ -199,7 +195,7 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
           entry,
           y: START_LINE,
           speed: 0,
-          color: generateColor(index, Math.max(displayEntries.length, 2)),
+          color: generateColor(index),
           finished: false,
           previousSpeed: 0,
           spinAngle: 0,
@@ -1464,35 +1460,24 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
     <div className="racing-game">
       <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
 
-      {currentWinner && !isRacing && (
-        <div className="winner-display">
-          <div className="winner-banner">
-            <h2>🏆 WINNER 🏆</h2>
-            <p className="winner-name">{currentWinner}</p>
-            {entries.length === 0 ? (
-              <button onClick={onShowFinalStandings} className="final-standings-btn">
-                🏆 Final Standings
-              </button>
-            ) : (
-              <button onClick={onRaceComplete} className="next-race-btn">
-                ▶ Next Race
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <WinnerDialog
+        theme={wallClimberTheme}
+        show={!!currentWinner && !isRacing}
+        isFinals={entries.length === 0}
+        winner={(() => {
+          const winnerEntry = allEntries.find((e) => e.name === currentWinner);
+          return {
+            name: currentWinner ?? '',
+            imageDataUrl: winnerEntry ? getPreferredEntryImage(winnerEntry) : undefined,
+          };
+        })()}
+        headline="🧗 WINNER 🧗"
+        finalsHeadline="🏆 CLIMB CHAMPION 🏆"
+        nextLabel="▶ Next Climb"
+        onNext={onRaceComplete}
+        onShowFinalStandings={() => onShowFinalStandings?.()}
+      />
     </div>
   );
 };
 
-function generateColor(index: number, _total: number): string {
-  const colors = [
-    '#FF6B6B', '#4ECDC4', '#FFE66D', '#95E1D3',
-    '#F38181', '#AA96DA', '#FCBAD3', '#A8D8EA',
-    '#FF8B94', '#D4A5A5', '#9BC995', '#C7CEEA',
-    '#FFB4A2', '#E5989B', '#B5838D', '#6D6875',
-    '#FF1744', '#00B0FF', '#76FF03', '#FFD600',
-    '#F50057', '#651FFF',
-  ];
-  return colors[index % colors.length];
-}

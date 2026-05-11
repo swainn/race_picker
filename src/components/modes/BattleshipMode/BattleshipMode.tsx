@@ -15,7 +15,7 @@ import {
   type RoundState,
   type ShotResult,
 } from './battleshipTargeting';
-import { BattleshipGrid, type Visibility } from './BattleshipGrid';
+import { BattleshipGrid } from './BattleshipGrid';
 import {
   CANNON_CORNERS,
   cannonAnchorPx,
@@ -24,15 +24,29 @@ import {
   type CannonCorner,
   type Projectile,
 } from './battleshipCannons';
+import { useBattleshipSettings } from './battleshipSettingsStore';
+import { getPreferredEntryImage } from '../../../utils/entryImages';
+import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
+import { battleshipTheme } from '../themes';
 import './BattleshipMode.css';
 
-const SETTINGS_KEY = 'gamified_picker_battleship_settings';
 const SHOT_INTERVAL_MS = 500;
 const BANNER_DURATION_MS = 1500;
 
-const CANNON_TRAVEL_MS = 220;
-const BROADSIDE_PROJECTILE_GAP_MS = 100;
-const DEPTH_CHARGE_TRAVEL_MS = 450;
+const CANNON_TRAVEL_MS = 380;
+const BROADSIDE_PROJECTILE_GAP_MS = 130;
+const DEPTH_CHARGE_TRAVEL_MS = 520;
+
+/** Arc peak height as a fraction of horizontal travel distance.
+ *  Cannon and broadside use a low arc (direct-fire feel); depth charge keeps
+ *  a high mortar lob. */
+const CANNON_PEAK_RATIO = 0.12;
+const BROADSIDE_PEAK_RATIO = 0.12;
+const DEPTH_CHARGE_PEAK_RATIO = 0.32;
+
+/** How long an impacted projectile stays in the queue so the BattleshipGrid
+ *  can render its explosion/splash animation. */
+const IMPACT_ANIM_MS = 800;
 
 const MAX_GRID = 640;
 const MIN_CELL = 24;
@@ -40,49 +54,9 @@ function cellPxFor(gridSize: number): number {
   return Math.max(MIN_CELL, Math.floor(MAX_GRID / gridSize));
 }
 
-type PersistentLayout = 'off' | 'on';
-
-interface Settings {
-  shipSizes: ShipSizesMode;
-  visibility: Visibility;
-  persistentLayout: PersistentLayout;
-}
-
-const DEFAULT_SETTINGS: Settings = {
-  shipSizes: 'uniform',
-  visibility: 'ghosted',
-  persistentLayout: 'off',
-};
-
-function loadSettings(): Settings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<Settings>;
-    return {
-      shipSizes: parsed.shipSizes === 'random' ? 'random' : 'uniform',
-      visibility:
-        parsed.visibility === 'hidden' || parsed.visibility === 'visible'
-          ? parsed.visibility
-          : 'ghosted',
-      persistentLayout: parsed.persistentLayout === 'on' ? 'on' : 'off',
-    };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
-
-function saveSettings(s: Settings) {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-  } catch {
-    /* ignore quota/serialization errors */
-  }
-}
-
 function buildRound(
   entries: ModeViewProps['entries'],
-  settings: Settings
+  settings: { shipSizes: ShipSizesMode }
 ): RoundState {
   const { ships, gridSize } = placeShipsWithRetry(
     entries,
@@ -107,7 +81,7 @@ function buildRound(
 function buildPersistentRound(
   allEntries: ModeViewProps['allEntries'],
   eliminatedIds: number[],
-  settings: Settings
+  settings: { shipSizes: ShipSizesMode }
 ): RoundState {
   const { ships, gridSize } = placeShipsWithRetry(
     allEntries,
@@ -217,12 +191,16 @@ export function BattleshipMode(props: ModeViewProps) {
     allEntries,
     eliminatedIds,
     isRacing,
+    currentWinner,
     onWinner,
+    onRaceComplete,
     onStartRace,
     onResetRace,
   } = props;
 
-  const [settings, setSettings] = useState<Settings>(() => loadSettings());
+  const settings = useBattleshipSettings();
+  const settingsKey = `${settings.shipSizes}|${settings.visibility}|${settings.persistentLayout}`;
+  const lastSettingsKeyRef = useRef(settingsKey);
   const [frameKey, setFrameKey] = useState(0);
   const [banner, setBanner] = useState<
     { kind: 'sunk' | 'final'; name: string } | null
@@ -370,15 +348,16 @@ export function BattleshipMode(props: ModeViewProps) {
         }
       }
 
+      // Always drop projectiles whose impact animation has fully decayed,
+      // even on frames where nothing new landed.
+      const stillNeeded = projectilesRef.current.filter(
+        (p) => !p.impacted || now - (p.fireTime + p.travelMs) < IMPACT_ANIM_MS
+      );
+      if (stillNeeded.length !== projectilesRef.current.length) {
+        projectilesRef.current = stillNeeded;
+      }
+
       if (landedAny) {
-        // Drop fully-impacted projectiles whose tail has decayed (after a
-        // short grace period the visuals are no longer needed).
-        const stillNeeded = projectilesRef.current.filter(
-          (p) => !p.impacted || now - (p.fireTime + p.travelMs) < 50
-        );
-        if (stillNeeded.length !== projectilesRef.current.length) {
-          projectilesRef.current = stillNeeded;
-        }
         // If a ship was sunk this frame, refresh the legend & start banner.
         if (landedSinkEntryId !== null) {
           const state = stateRef.current;
@@ -485,7 +464,7 @@ export function BattleshipMode(props: ModeViewProps) {
         targetCell: Cell,
         offsetMs: number,
         travelMs: number,
-        arcing: boolean,
+        peakRatio: number,
         cellHits: Cell[],
         cellMisses: Cell[],
         sinksEntryId: number | null
@@ -499,7 +478,8 @@ export function BattleshipMode(props: ModeViewProps) {
           toCell: targetCell,
           fireTime: now + offsetMs,
           travelMs,
-          arcing,
+          arcing: true,
+          peakRatio,
           type,
           hitsRevealOnImpact: cellHits,
           missesRevealOnImpact: cellMisses,
@@ -515,7 +495,7 @@ export function BattleshipMode(props: ModeViewProps) {
           center,
           0,
           CANNON_TRAVEL_MS,
-          false,
+          CANNON_PEAK_RATIO,
           hits,
           misses,
           firstSunkEntryId
@@ -535,7 +515,7 @@ export function BattleshipMode(props: ModeViewProps) {
             c,
             i * BROADSIDE_PROJECTILE_GAP_MS,
             CANNON_TRAVEL_MS,
-            false,
+            BROADSIDE_PEAK_RATIO,
             cellHits,
             cellMisses,
             isLast ? firstSunkEntryId : null
@@ -548,7 +528,7 @@ export function BattleshipMode(props: ModeViewProps) {
           center,
           0,
           DEPTH_CHARGE_TRAVEL_MS,
-          true,
+          DEPTH_CHARGE_PEAK_RATIO,
           hits,
           misses,
           firstSunkEntryId
@@ -616,14 +596,14 @@ export function BattleshipMode(props: ModeViewProps) {
     onWinner(survivor);
   };
 
-  const updateSettings = (next: Partial<Settings>) => {
-    setSettings((prev) => {
-      const merged = { ...prev, ...next };
-      saveSettings(merged);
-      return merged;
-    });
-    setRoundSeed((s) => s + 1);
-  };
+  // When settings change (via the global settings modal), reseed the round so
+  // the new ship-sizes / visibility take effect on the next layout.
+  useEffect(() => {
+    if (lastSettingsKeyRef.current !== settingsKey) {
+      lastSettingsKeyRef.current = settingsKey;
+      setRoundSeed((s) => s + 1);
+    }
+  }, [settingsKey]);
 
   // Reference unused helpers/types so the compiler doesn't complain about
   // imports that exist solely for the rendering path inside the grid.
@@ -657,90 +637,6 @@ export function BattleshipMode(props: ModeViewProps) {
         )}
       </div>
 
-      <div className="battleship-settings">
-        <fieldset>
-          <legend>Ship sizes:</legend>
-          <label>
-            <input
-              type="radio"
-              name="bs-ship-sizes"
-              value="uniform"
-              checked={settings.shipSizes === 'uniform'}
-              onChange={() => updateSettings({ shipSizes: 'uniform' })}
-            />
-            Uniform (3)
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="bs-ship-sizes"
-              value="random"
-              checked={settings.shipSizes === 'random'}
-              onChange={() => updateSettings({ shipSizes: 'random' })}
-            />
-            Random (2–5)
-          </label>
-        </fieldset>
-
-        <fieldset>
-          <legend>Ship visibility:</legend>
-          <label>
-            <input
-              type="radio"
-              name="bs-visibility"
-              value="hidden"
-              checked={settings.visibility === 'hidden'}
-              onChange={() => updateSettings({ visibility: 'hidden' })}
-            />
-            Hidden
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="bs-visibility"
-              value="ghosted"
-              checked={settings.visibility === 'ghosted'}
-              onChange={() => updateSettings({ visibility: 'ghosted' })}
-            />
-            Ghosted
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="bs-visibility"
-              value="visible"
-              checked={settings.visibility === 'visible'}
-              onChange={() => updateSettings({ visibility: 'visible' })}
-            />
-            Visible
-          </label>
-        </fieldset>
-
-        <fieldset>
-          <legend>Persistent layout:</legend>
-          <label>
-            <input
-              type="radio"
-              name="bs-persistent"
-              value="off"
-              checked={settings.persistentLayout === 'off'}
-              onChange={() => updateSettings({ persistentLayout: 'off' })}
-            />
-            Off
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="bs-persistent"
-              value="on"
-              checked={settings.persistentLayout === 'on'}
-              onChange={() => updateSettings({ persistentLayout: 'on' })}
-            />
-            On
-          </label>
-        </fieldset>
-      </div>
-
       {!isCrowned &&
       (entries.length < 1 ||
         (entries.length === 1 && allEntries.length < 2)) ? (
@@ -751,6 +647,7 @@ export function BattleshipMode(props: ModeViewProps) {
         <BattleshipGrid
           stateRef={stateRef}
           ships={shipsForLegend}
+          gridSize={stateRef.current?.gridSize ?? 10}
           visibility={settings.visibility}
           banner={banner}
           crownedEntryId={crownedEntryId}
@@ -761,6 +658,34 @@ export function BattleshipMode(props: ModeViewProps) {
           frameKey={frameKey}
         />
       )}
+
+      {(() => {
+        const winnerEntry = currentWinner
+          ? allEntries.find((e) => e.name === currentWinner)
+          : null;
+        // After the second-to-last ship sinks the WinnerDialog appears with
+        // the just-sunk ship; the natural next step is to crown the survivor
+        // rather than route through App's auto-pick (which would eliminate
+        // the survivor without setting crownedEntryId, and the placeholder
+        // would briefly replace the grid).
+        const continueCrowns = isFinalRoundPending;
+        return (
+          <WinnerDialog
+            theme={battleshipTheme}
+            show={!!currentWinner && !!winnerEntry}
+            isFinals={isCrowned && winnerEntry?.id === crownedEntryId}
+            winner={{
+              name: winnerEntry?.name ?? '',
+              imageDataUrl: winnerEntry ? getPreferredEntryImage(winnerEntry) : undefined,
+            }}
+            headline="🚢 SHIP DOWN 🚢"
+            finalsHeadline="🏆 FLEET ADMIRAL 🏆"
+            nextLabel={continueCrowns ? '🏆 Crown Champion' : '▶ Continue'}
+            onNext={continueCrowns ? crownChampion : onRaceComplete}
+            onShowFinalStandings={() => props.onShowFinalStandings?.()}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -4,6 +4,7 @@
   align-items: center;
   gap: 16px;
   width: 100%;
+  position: relative;
 }
 
 .crown-champion-button {

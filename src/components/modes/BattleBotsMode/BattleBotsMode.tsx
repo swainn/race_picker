@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Entry } from '../../../types';
 import type { ModeViewProps } from '../types';
+import { getEntryImages, getPreferredEntryImage } from '../../../utils/entryImages';
 import { BattleArena } from './BattleArena';
 
 interface KillerInfo {
@@ -16,19 +17,6 @@ interface WinnerDisplay {
   isLastPlayer?: boolean;
 }
 
-function getEntryImages(entry: Entry): string[] {
-  if (Array.isArray(entry.imageDataUrls) && entry.imageDataUrls.length > 0) {
-    return entry.imageDataUrls.filter(
-      (value): value is string => typeof value === 'string' && value.length > 0
-    );
-  }
-  return entry.imageDataUrl ? [entry.imageDataUrl] : [];
-}
-
-function getPreferredEntryImage(entry: Entry): string | undefined {
-  return getEntryImages(entry)[0];
-}
-
 export function BattleBotsMode(props: ModeViewProps) {
   const {
     entries,
@@ -36,6 +24,7 @@ export function BattleBotsMode(props: ModeViewProps) {
     eliminatedIds,
     winOrder,
     isRacing,
+    currentWinner,
     onWinner,
     onRaceComplete,
     onShowFinalStandings,
@@ -81,6 +70,30 @@ export function BattleBotsMode(props: ModeViewProps) {
       setWinnerDisplay(null);
     }
   }, [isRacing]);
+
+  /* When App auto-picks the last survivor it bypasses our own handleWinner,
+     so winnerDisplay stays null. Synthesize a minimal display from the
+     parent-provided currentWinner + the matching entry so the WinnerDialog
+     still shows for the final winner. */
+  useEffect(() => {
+    if (!currentWinner) return;
+    if (winnerDisplay && winnerDisplay.name === currentWinner) return;
+    const entry = allEntries.find((e) => e.name === currentWinner);
+    if (!entry) return;
+    setWinnerDisplay({
+      name: entry.name,
+      imageDataUrl: getPreferredEntryImage(entry),
+      allImages: getEntryImages(entry).length > 0 ? getEntryImages(entry) : undefined,
+      isLastPlayer: true,
+    });
+  }, [currentWinner, winnerDisplay, allEntries]);
+
+  /* Clear local winner display when parent clears currentWinner. */
+  useEffect(() => {
+    if (currentWinner === null) {
+      setWinnerDisplay(null);
+    }
+  }, [currentWinner]);
 
   // BattleArena's onWinner signature: (winner, selectedImageDataUrl?, killerInfo?)
   const handleWinner = (

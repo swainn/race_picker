@@ -1,6 +1,38 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
+import { generateColor } from '../../../utils/colors';
+import { getPreferredEntryImage } from '../../../utils/entryImages';
+import { shuffle } from '../../../utils/array';
+import { useReplayRecorder } from '../../../hooks/useReplayRecorder';
+import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
+import { racingTheme } from '../themes';
 import './RacingGame.css';
+
+function placementOrdinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return 'th';
+  switch (n % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+}
+
+function placementHeadline(place: number): string {
+  if (place === 1) return '🏆 RACE CHAMPION 🏆';
+  const medal = place === 2 ? '🥈' : place === 3 ? '🥉' : '🏁';
+  return `${medal} ${place}${placementOrdinal(place)} Place`;
+}
+
+interface ReplayRacerFrame {
+  x: number;
+  laneIndex: number;
+  vehicleMode: VehicleMode;
+  spinAngle?: number;
+  finished: boolean;
+}
+type ReplayFrame = ReplayRacerFrame[];
 
 const VEHICLE_MODES = ['car', 'boat', 'plane', 'balloon', 'rocket', 'duck', 'snail', 'turtle', 'cat', 'dog'] as const;
 type VehicleMode = (typeof VEHICLE_MODES)[number];
@@ -49,6 +81,21 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
   const [particles, setParticles] = useState<Particle[]>([]);
   const [tickerTime, setTickerTime] = useState(0);
   const animationRef = useRef<number | undefined>(undefined);
+  const replay = useReplayRecorder<ReplayFrame>({
+    maxFrames: 600,
+    playbackSpeed: 0.7,
+    loop: true,
+    loopEndPauseMs: 700,
+  });
+
+  // Wipe the frame buffer at the start of each race so replay always reflects
+  // the most recent run.
+  useEffect(() => {
+    if (isRacing) {
+      replay.clear();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRacing]);
 
   const FINISH_LINE = 700;
   const LABEL_PADDING = 24;
@@ -64,21 +111,12 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     return () => cancelAnimationFrame(frameId);
   }, []);
 
-  const shuffleArray = <T,>(array: T[]) => {
-    const result = [...array];
-    for (let i = result.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [result[i], result[j]] = [result[j], result[i]];
-    }
-    return result;
-  };
-
   const assignMixedModes = (count: number): VehicleMode[] => {
     const assignments: VehicleMode[] = [];
-    let pool = shuffleArray(VEHICLE_MODES);
+    let pool = shuffle(VEHICLE_MODES);
     for (let i = 0; i < count; i++) {
       if (pool.length === 0) {
-        pool = shuffleArray(VEHICLE_MODES);
+        pool = shuffle(VEHICLE_MODES);
       }
       assignments.push(pool.pop() as VehicleMode);
     }
@@ -102,7 +140,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         entry,
         x: 50,
         speed: 0,
-        color: generateColor(index, Math.max(displayEntries.length, 2)),
+        color: generateColor(index),
         finished: false,
         previousSpeed: 0,
         spinAngle: 0,
@@ -126,7 +164,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           entry,
           x: 50,
           speed: 0,
-          color: generateColor(index, Math.max(displayEntries.length, 2)),
+          color: generateColor(index),
           finished: false,
           previousSpeed: 0,
           spinAngle: 0,
@@ -278,12 +316,23 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           };
         });
 
+        // Record a replay frame snapshot of the racers' visible state.
+        replay.record(
+          updated.map((r) => ({
+            x: r.x,
+            laneIndex: r.laneIndex,
+            vehicleMode: r.vehicleMode,
+            spinAngle: r.spinAngle,
+            finished: r.finished,
+          }))
+        );
+
         // Check if anyone finished - use distance as tiebreaker
         if (!finished) {
           const finishers = updated.filter((r) => r.finished);
           if (finishers.length > 0) {
             // Pick the one who traveled the farthest (tiebreaker for same-frame finishes)
-            const firstFinisher = finishers.reduce((prev, current) => 
+            const firstFinisher = finishers.reduce((prev, current) =>
               (current.totalDistance || 0) > (prev.totalDistance || 0) ? current : prev
             );
             finished = true;
@@ -385,8 +434,30 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     ctx.fillText('FINISH', 0, 0);
     ctx.restore();
 
-    // Draw racers
-    racers.forEach((racer) => {
+    // Draw racers — swap to replay frame data when playback is active so the
+    // final moments of the race can be re-watched after the WinnerDialog
+    // auto-minimizes.
+    const replayFrame = replay.isReplaying
+      ? replay.getCurrentFrame(performance.now())
+      : null;
+    const renderRacers: Array<{
+      racer: Racer;
+      x: number;
+      spinAngle?: number;
+    }> = racers.map((racer, idx) => {
+      const frame = replayFrame?.[idx];
+      if (frame) {
+        return {
+          racer: { ...racer, vehicleMode: frame.vehicleMode },
+          x: frame.x,
+          spinAngle: frame.spinAngle,
+        };
+      }
+      return { racer, x: racer.x, spinAngle: racer.spinAngle };
+    });
+
+    renderRacers.forEach(({ racer: baseRacer, x: racerX, spinAngle }) => {
+      const racer = { ...baseRacer, x: racerX, spinAngle };
       const trackHeight = (canvas.height - 60) / numLanes;
       const laneY = trackTop + racer.laneIndex * trackHeight + trackHeight / 2;
 
@@ -1133,37 +1204,41 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
 
   return (
     <div className="racing-game">
-      <canvas ref={canvasRef} width={840} height={600} className="game-canvas" />
+      <div className="racing-canvas-host">
+        <canvas ref={canvasRef} width={840} height={600} className="game-canvas" />
+      </div>
 
-      {currentWinner && !isRacing && (
-        <div className="winner-display">
-          <div className="winner-banner">
-            <h2>🏆 WINNER 🏆</h2>
-            <p className="winner-name">{currentWinner}</p>
-            {entries.length === 0 ? (
-              <button onClick={onShowFinalStandings} className="final-standings-btn">
-                🏆 Final Standings
-              </button>
-            ) : (
-              <button onClick={onRaceComplete} className="next-race-btn">
-                ▶ Next Race
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {(() => {
+        // Racing: the *first* winner is the overall champion (winOrder=1);
+        // subsequent races decide 2nd, 3rd, etc. The Final Standings button
+        // only makes sense after the last race.
+        const place = winOrder.size; // latest winner's placement
+        const isChampion = !!currentWinner && place === 1;
+        const isLastRace = entries.length === 0;
+        const headlineForPlace = placementHeadline(place);
+        return (
+          <WinnerDialog
+            theme={racingTheme}
+            show={!!currentWinner && !isRacing}
+            isFinals={isLastRace}
+            goldTreatment={isChampion}
+            winner={(() => {
+              const winnerEntry = allEntries.find((e) => e.name === currentWinner);
+              return {
+                name: currentWinner ?? '',
+                imageDataUrl: winnerEntry ? getPreferredEntryImage(winnerEntry) : undefined,
+              };
+            })()}
+            headline={headlineForPlace}
+            finalsHeadline={headlineForPlace}
+            nextLabel="▶ Next Race"
+            onNext={onRaceComplete}
+            onShowFinalStandings={() => onShowFinalStandings?.()}
+            onReplayStart={() => replay.start(0.75)}
+          />
+        );
+      })()}
     </div>
   );
 };
 
-function generateColor(index: number, _total: number): string {
-  const colors = [
-    '#FF6B6B', '#4ECDC4', '#FFE66D', '#95E1D3',
-    '#F38181', '#AA96DA', '#FCBAD3', '#A8D8EA',
-    '#FF8B94', '#D4A5A5', '#9BC995', '#C7CEEA',
-    '#FFB4A2', '#E5989B', '#B5838D', '#6D6875',
-    '#FF1744', '#00B0FF', '#76FF03', '#FFD600',
-    '#F50057', '#651FFF',
-  ];
-  return colors[index % colors.length];
-}

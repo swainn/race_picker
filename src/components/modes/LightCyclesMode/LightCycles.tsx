@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
+import { getEntryImages, pickRandomEntryImage } from '../../../utils/entryImages';
+import { shuffle } from '../../../utils/array';
+import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
+import { lightCyclesTheme } from '../themes';
 import './LightCycles.css';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -226,27 +230,6 @@ function oppositeDir(dir: Direction): Direction {
 function perpendicularDirs(dir: Direction): Direction[] {
   if (dir === 'up' || dir === 'down') return ['left', 'right'];
   return ['up', 'down'];
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const out = [...arr];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
-
-function pickEntryImage(entry: Entry): string | undefined {
-  const urls = entry.imageDataUrls && entry.imageDataUrls.length > 0
-    ? entry.imageDataUrls
-    : (entry.imageDataUrl ? [entry.imageDataUrl] : []);
-  if (urls.length === 0) return undefined;
-  return urls[Math.floor(Math.random() * urls.length)];
-}
-
-function getEntryImages(entry: Entry): string[] {
-  return entry.imageDataUrls ?? (entry.imageDataUrl ? [entry.imageDataUrl] : []);
 }
 
 // Distribute spawn positions evenly around the arena perimeter, all facing inward.
@@ -852,9 +835,7 @@ export const LightCycles: React.FC<Props> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [phase, setPhase] = useState<'idle' | 'reveal' | 'countdown' | 'racing' | 'finished'>('idle');
-  const [winnerMinimized, setWinnerMinimized] = useState(false);
   const [replayActive, setReplayActive] = useState(false);
-  const autoMinimizeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cyclesRef = useRef<Cycle[]>([]);
   const discsRef = useRef<Disc[]>([]);
   const pickupsRef = useRef<PowerUpPickup[]>([]);
@@ -872,21 +853,11 @@ export const LightCycles: React.FC<Props> = ({
   const phaseRef = useRef(phase);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
-  // Auto-minimize banner + replay 3s after a new winner appears
+  // Replay clears whenever there's a new winner; <WinnerDialog> triggers
+  // setReplayActive(true) via onReplayStart when it auto-minimizes.
   useEffect(() => {
     if (!currentWinner) return;
-    setWinnerMinimized(false);
     setReplayActive(false);
-    if (autoMinimizeRef.current) clearTimeout(autoMinimizeRef.current);
-    autoMinimizeRef.current = setTimeout(() => {
-      setWinnerMinimized(true);
-      if (replayDataRef.current && replayDataRef.current.frames.length > 0) {
-        setReplayActive(true);
-      }
-    }, 3000);
-    return () => {
-      if (autoMinimizeRef.current) clearTimeout(autoMinimizeRef.current);
-    };
   }, [currentWinner]);
 
   // Preload images
@@ -1225,7 +1196,6 @@ export const LightCycles: React.FC<Props> = ({
     if (!isRacing && !currentWinner) {
       setPhase('idle');
       setReplayActive(false);
-      setWinnerMinimized(false);
       replayDataRef.current = null;
     }
   }, [isRacing, currentWinner]);
@@ -1272,71 +1242,41 @@ export const LightCycles: React.FC<Props> = ({
     return () => cancelAnimationFrame(raf);
   }, [phase, replayActive]);
 
+  const isFinals = currentWinnerIsLastPlayer ?? entries.length === 0;
+
   return (
     <div className="light-cycles">
       <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="lc-canvas" />
 
-      {currentWinner && !isRacing && !winnerMinimized && (
-        <div className="lc-winner-display">
-          <div className={`lc-winner-banner ${currentWinnerIsLastPlayer ? 'lc-winner-banner-last' : ''}`}>
-            <button
-              type="button"
-              className="lc-winner-minimize-btn"
-              onClick={() => setWinnerMinimized(true)}
-              aria-label="Minimize"
-            >
-              −
-            </button>
-            <h2>{currentWinnerIsLastPlayer ? '🏆 GRID CHAMPION 🏆' : 'DEREZZED'}</h2>
-            {currentWinnerImages && currentWinnerImages.length > 0 ? (
-              <div className="lc-winner-images-gallery">
-                {currentWinnerImages.map((image, idx) => (
-                  <div key={idx} className="lc-winner-avatar-small" aria-hidden="true">
-                    <img src={image} alt="" className="lc-winner-avatar-image-small" />
-                  </div>
-                ))}
-              </div>
-            ) : currentWinnerImage ? (
-              <div className="lc-winner-avatar" aria-hidden="true">
-                <img src={currentWinnerImage} alt="" className="lc-winner-avatar-image" />
-              </div>
-            ) : null}
-            <p className="lc-winner-name">{currentWinner}</p>
-            {currentWinnerKillerInfo && (
-              <p className="lc-killer-info">
-                {currentWinnerKillerInfo.weapon === 'Wall'
-                  ? <>Crashed into the grid wall</>
-                  : <>Derezzed by <strong>{currentWinnerKillerInfo.name}</strong> · {currentWinnerKillerInfo.weapon}</>}
-              </p>
-            )}
-            {entries.length === 0 ? (
-              <button onClick={onShowFinalStandings} className="lc-final-btn">
-                🏆 Final Standings
-              </button>
+      <WinnerDialog
+        theme={lightCyclesTheme}
+        show={!!currentWinner && !isRacing}
+        isFinals={isFinals}
+        winner={{
+          name: currentWinner ?? '',
+          imageDataUrl: currentWinnerImage,
+          allImages: currentWinnerImages,
+        }}
+        headline="DEREZZED"
+        finalsHeadline="🏆 GRID CHAMPION 🏆"
+        nextLabel="▶ Next Run"
+        detailsNode={
+          currentWinnerKillerInfo ? (
+            currentWinnerKillerInfo.weapon === 'Wall' ? (
+              <>Crashed into the grid wall</>
             ) : (
-              <button onClick={onRaceComplete} className="lc-next-btn">
-                ▶ Next Run
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-      {currentWinner && !isRacing && winnerMinimized && (
-        <div className="lc-winner-minimized" onClick={() => setWinnerMinimized(false)}>
-          <span className="lc-winner-minimized-text">
-            {currentWinnerIsLastPlayer ? '🏆' : '✕'} {currentWinner}
-          </span>
-          {entries.length === 0 ? (
-            <button onClick={(e) => { e.stopPropagation(); onShowFinalStandings?.(); }} className="lc-winner-minimized-action">
-              🏆 Standings
-            </button>
-          ) : (
-            <button onClick={(e) => { e.stopPropagation(); onRaceComplete(); }} className="lc-winner-minimized-action">
-              ▶ Next
-            </button>
-          )}
-        </div>
-      )}
+              <>Derezzed by <strong>{currentWinnerKillerInfo.name}</strong> · {currentWinnerKillerInfo.weapon}</>
+            )
+          ) : undefined
+        }
+        onNext={onRaceComplete}
+        onShowFinalStandings={() => onShowFinalStandings?.()}
+        onReplayStart={() => {
+          if (replayDataRef.current && replayDataRef.current.frames.length > 0) {
+            setReplayActive(true);
+          }
+        }}
+      />
     </div>
   );
 };
@@ -1351,7 +1291,7 @@ function buildCyclesFromEntries(entries: Entry[]): Cycle[] {
     const personality = PERSONALITIES[Math.floor(Math.random() * PERSONALITIES.length)];
     return {
       entry,
-      selectedImageDataUrl: pickEntryImage(entry),
+      selectedImageDataUrl: pickRandomEntryImage(entry),
       alive: true,
       deathTime: null,
       x: pos.x,

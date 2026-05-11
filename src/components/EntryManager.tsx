@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Entry } from '../types';
+import { getEntryImages } from '../utils/entryImages';
 import './EntryManager.css';
 
 interface Props {
@@ -12,8 +13,6 @@ interface Props {
 export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, eliminatedIds, winOrder }) => {
   const [input, setInput] = useState('');
   const fileInputsRef = useRef<Record<number, HTMLInputElement | null>>({});
-
-  const getEntryImages = (entry: Entry) => entry.imageDataUrls ?? (entry.imageDataUrl ? [entry.imageDataUrl] : []);
 
   const addEntry = () => {
     if (input.trim() && entries.length < 20) {

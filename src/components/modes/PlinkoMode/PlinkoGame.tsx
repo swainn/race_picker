@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
+import { generateColor } from '../../../utils/colors';
+import { getEntryImages, pickRandomEntryImage } from '../../../utils/entryImages';
+import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
+import { plinkoTheme } from '../themes';
 import './PlinkoGame.css';
 
 interface Player {
@@ -191,13 +195,13 @@ export const PlinkoGame: React.FC<Props> = ({
       const originalIndex = entries.findIndex(e => e.id === entry.id);
       return {
         entry,
-        selectedImageDataUrl: pickRaceImage(entry),
+        selectedImageDataUrl: pickRandomEntryImage(entry),
         radius: PLAYER_RADIUS,
         x: LEFT_MARGIN + spacing * (index + 1),
         y: 50,
         vx: 0,
         vy: 0,
-        color: generateColor(originalIndex, entries.length),
+        color: generateColor(originalIndex),
         finished: false,
         rotation: 0,
         isOnFire: false,
@@ -319,13 +323,13 @@ export const PlinkoGame: React.FC<Props> = ({
         const originalIndex = entries.findIndex(e => e.id === entry.id);
         return {
           entry,
-          selectedImageDataUrl: pickRaceImage(entry),
+          selectedImageDataUrl: pickRandomEntryImage(entry),
           radius: PLAYER_RADIUS,
           x: LEFT_MARGIN + spacing * (index + 1),
           y: 50,
           vx: 0,
           vy: 0,
-          color: generateColor(originalIndex, entries.length),
+          color: generateColor(originalIndex),
           finished: false,
           rotation: 0,
           isOnFire: fireBallIndices.has(index),
@@ -1417,91 +1421,33 @@ export const PlinkoGame: React.FC<Props> = ({
     <div className="racing-game">
       <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
 
-      {currentWinner && !isRacing && (
-        <div className="winner-display">
-          <div className="winner-banner">
-            <h2>🏆 WINNER 🏆</h2>
-            {currentWinnerImages && currentWinnerImages.length > 0 ? (
-              <div className="winner-images-gallery">
-                {currentWinnerImages.map((image, idx) => (
-                  <div
-                    key={idx}
-                    className={`winner-avatar-small ${primaryWinnerEffect ? `effect-${primaryWinnerEffect}` : ''}`}
-                    aria-hidden="true"
-                  >
-                    <div className="winner-avatar-image-wrap-small">
-                      <img src={image} alt="" className="winner-avatar-image-small" />
-                    </div>
-                    {primaryWinnerEffect ? (
-                      <span
-                        className={`winner-effect-ring ${primaryWinnerEffect}`}
-                      />
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : currentWinnerImage ? (
-              <div
-                className={`winner-avatar ${primaryWinnerEffect ? `effect-${primaryWinnerEffect}` : ''}`}
-                aria-hidden="true"
-              >
-                <div className="winner-avatar-image-wrap">
-                  <img src={currentWinnerImage} alt="" className="winner-avatar-image" />
-                </div>
-                {primaryWinnerEffect ? (
-                  <span
-                    className={`winner-effect-ring ${primaryWinnerEffect}`}
-                  />
-                ) : null}
-              </div>
-            ) : null}
-            <p className="winner-name">{currentWinner}</p>
-            {primaryWinnerEffect && primaryWinnerEffectLabel && (
-              <div className="winner-effect-pill-row" aria-label="Winner round effect">
-                <span className={`winner-effect-pill ${primaryWinnerEffect}`}>{primaryWinnerEffectLabel}</span>
-              </div>
-            )}
-            {entries.length === 0 ? (
-              <button onClick={onShowFinalStandings} className="final-standings-btn">
-                🏆 Final Standings
-              </button>
-            ) : (
-              <button onClick={onRaceComplete} className="next-race-btn">
-                ▶ Next Drop
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <WinnerDialog
+        theme={plinkoTheme}
+        show={!!currentWinner && !isRacing}
+        isFinals={entries.length === 0}
+        winner={{
+          name: currentWinner ?? '',
+          imageDataUrl: currentWinnerImage,
+          allImages: currentWinnerImages,
+        }}
+        headline="🎯 WINNER 🎯"
+        finalsHeadline="🏆 PLINKO CHAMPION 🏆"
+        nextLabel="▶ Next Drop"
+        detailsNode={
+          primaryWinnerEffect && primaryWinnerEffectLabel ? (
+            <div className="winner-effect-pill-row" aria-label="Winner round effect">
+              <span className={`winner-effect-pill ${primaryWinnerEffect}`}>{primaryWinnerEffectLabel}</span>
+            </div>
+          ) : undefined
+        }
+        onNext={onRaceComplete}
+        onShowFinalStandings={() => onShowFinalStandings?.()}
+      />
     </div>
   );
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function generateColor(index: number, _total: number): string {
-  const colors = [
-    '#FF6B6B', '#4ECDC4', '#FFE66D', '#95E1D3',
-    '#F38181', '#AA96DA', '#FCBAD3', '#A8D8EA',
-    '#FF8B94', '#D4A5A5', '#9BC995', '#C7CEEA',
-    '#FFB4A2', '#E5989B', '#B5838D', '#6D6875',
-    '#FF1744', '#00B0FF', '#76FF03', '#FFD600',
-    '#F50057', '#651FFF',
-  ];
-  return colors[index % colors.length];
-}
-
-function getEntryImages(entry: Entry): string[] {
-  return entry.imageDataUrls ?? (entry.imageDataUrl ? [entry.imageDataUrl] : []);
-}
-
-function pickRaceImage(entry: Entry): string | undefined {
-  const images = getEntryImages(entry);
-  if (images.length === 0) {
-    return undefined;
-  }
-
-  return images[Math.floor(Math.random() * images.length)];
-}
 
 function getPrimaryWinnerEffect(effects?: WinnerEffects): 'fire' | 'ice' | 'green' | 'lightning' | null {
   if (!effects) {
