@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Ship } from './battleshipPlacement';
 import { cellKey } from './battleshipPlacement';
-import type { RoundState, ShotResult } from './battleshipTargeting';
+import type { RoundState, ShotResult, ShotType } from './battleshipTargeting';
 import {
   ARC_PROJECTILE_RADIUS,
   CANNON_BARREL_LEN,
@@ -26,6 +26,8 @@ interface Props {
   stateRef: React.MutableRefObject<RoundState | null>;
   /** Snapshot of ships for the legend (avoids reading stateRef during render). */
   ships: Ship[];
+  /** Grid size of the current round. Used by the label overlay. */
+  gridSize: number;
   visibility: Visibility;
   banner: { kind: 'sunk' | 'final'; name: string } | null;
   /**
@@ -47,8 +49,56 @@ interface Props {
 const MAX_GRID = 640;
 const MIN_CELL = 24;
 
-function cellPx(gridSize: number): number {
+const IMPACT_ANIM_MS = 800;
+const SPLASH_ANIM_MS = 600;
+const ANNOTATION_ANIM_MS = 1000;
+
+function cellPxFor(gridSize: number): number {
   return Math.max(MIN_CELL, Math.floor(MAX_GRID / gridSize));
+}
+
+interface ShipBounds {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  w: number;
+  h: number;
+  cx: number;
+  cy: number;
+  isHorizontal: boolean;
+}
+
+function shipBounds(ship: Ship, cell: number): ShipBounds {
+  const ox = CANNON_PAD;
+  const oy = CANNON_PAD;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const c of ship.cells) {
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y > maxY) maxY = c.y;
+  }
+  const x0 = ox + minX * cell + 3;
+  const y0 = oy + minY * cell + 3;
+  const x1 = ox + (maxX + 1) * cell - 3;
+  const y1 = oy + (maxY + 1) * cell - 3;
+  const w = x1 - x0;
+  const h = y1 - y0;
+  return {
+    x0,
+    y0,
+    x1,
+    y1,
+    w,
+    h,
+    cx: (x0 + x1) / 2,
+    cy: (y0 + y1) / 2,
+    isHorizontal: w >= h,
+  };
 }
 
 function drawGrid(
@@ -74,27 +124,48 @@ function drawGrid(
   }
 }
 
-function drawShipBody(
+function roundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function drawShipOutline(
   ctx: CanvasRenderingContext2D,
   ship: Ship,
   cell: number,
-  alpha: number,
-  fillColor: string
+  fillAlpha: number
 ) {
-  const ox = CANNON_PAD;
-  const oy = CANNON_PAD;
+  const b = shipBounds(ship, cell);
+  const radius = Math.min(b.w, b.h) * 0.35;
   ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = fillColor;
-  for (const c of ship.cells) {
-    ctx.fillRect(ox + c.x * cell + 2, oy + c.y * cell + 2, cell - 4, cell - 4);
-  }
-  ctx.globalAlpha = Math.min(1, alpha + 0.3);
+  ctx.globalAlpha = fillAlpha;
+  ctx.fillStyle = ship.color;
+  roundedRectPath(ctx, b.x0, b.y0, b.w, b.h, radius);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
   ctx.strokeStyle = ship.color;
   ctx.lineWidth = 2;
-  for (const c of ship.cells) {
-    ctx.strokeRect(ox + c.x * cell + 2, oy + c.y * cell + 2, cell - 4, cell - 4);
-  }
+  roundedRectPath(ctx, b.x0, b.y0, b.w, b.h, radius);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -112,27 +183,28 @@ function drawShips(
   const ox = CANNON_PAD;
   const oy = CANNON_PAD;
   for (const ship of ships) {
-    const sunkVisible = ship.sunk && shipFullyCommitted(ship, committedHits);
-    if (sunkVisible) {
-      drawShipBody(ctx, ship, cell, 0.85, ship.color);
+    const fullySunk = ship.sunk && shipFullyCommitted(ship, committedHits);
+    if (fullySunk) {
+      // Sunken footprint: dim colored outline + X marks on each cell.
+      drawShipOutline(ctx, ship, cell, 0.45);
       ctx.save();
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 3;
       for (const c of ship.cells) {
         ctx.beginPath();
-        ctx.moveTo(ox + c.x * cell + 4, oy + c.y * cell + 4);
-        ctx.lineTo(ox + (c.x + 1) * cell - 4, oy + (c.y + 1) * cell - 4);
-        ctx.moveTo(ox + (c.x + 1) * cell - 4, oy + c.y * cell + 4);
-        ctx.lineTo(ox + c.x * cell + 4, oy + (c.y + 1) * cell - 4);
+        ctx.moveTo(ox + c.x * cell + 6, oy + c.y * cell + 6);
+        ctx.lineTo(ox + (c.x + 1) * cell - 6, oy + (c.y + 1) * cell - 6);
+        ctx.moveTo(ox + (c.x + 1) * cell - 6, oy + c.y * cell + 6);
+        ctx.lineTo(ox + c.x * cell + 6, oy + (c.y + 1) * cell - 6);
         ctx.stroke();
       }
       ctx.restore();
       continue;
     }
     if (visibility === 'visible') {
-      drawShipBody(ctx, ship, cell, 0.9, ship.color);
+      drawShipOutline(ctx, ship, cell, 0.55);
     } else if (visibility === 'ghosted') {
-      drawShipBody(ctx, ship, cell, 0.25, ship.color);
+      drawShipOutline(ctx, ship, cell, 0.18);
     }
   }
 }
@@ -144,13 +216,17 @@ function drawShots(
   cell: number,
   visibility: Visibility,
   committedHits: Set<string>,
-  committedMisses: Set<string>
+  committedMisses: Set<string>,
+  freshHitCells: Set<string>,
+  freshMissCells: Set<string>
 ) {
   const ox = CANNON_PAD;
   const oy = CANNON_PAD;
   for (const shot of shots) {
     for (const c of shot.misses) {
-      if (!committedMisses.has(cellKey(c))) continue;
+      const k = cellKey(c);
+      if (!committedMisses.has(k)) continue;
+      if (freshMissCells.has(k)) continue; // fresh ones are drawn by impact effect
       ctx.save();
       ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
       ctx.beginPath();
@@ -165,7 +241,9 @@ function drawShots(
       ctx.restore();
     }
     for (const c of shot.hits) {
-      if (!committedHits.has(cellKey(c))) continue;
+      const k = cellKey(c);
+      if (!committedHits.has(k)) continue;
+      if (freshHitCells.has(k)) continue; // fresh ones are drawn by impact effect
       if (visibility === 'hidden') {
         const ship = ships.find((s) =>
           s.cells.some((sc) => sc.x === c.x && sc.y === c.y)
@@ -258,32 +336,10 @@ function drawCrownedShip(
   cell: number,
   now: number
 ) {
-  const ox = CANNON_PAD;
-  const oy = CANNON_PAD;
-
-  // Compute the ship's bounding rectangle in pixel space (ships are rows or
-  // columns of cells, so the bounding box is a tight fit).
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const c of ship.cells) {
-    if (c.x < minX) minX = c.x;
-    if (c.y < minY) minY = c.y;
-    if (c.x > maxX) maxX = c.x;
-    if (c.y > maxY) maxY = c.y;
-  }
-  const x0 = ox + minX * cell + 2;
-  const y0 = oy + minY * cell + 2;
-  const x1 = ox + (maxX + 1) * cell - 2;
-  const y1 = oy + (maxY + 1) * cell - 2;
-  const w = x1 - x0;
-  const h = y1 - y0;
-
-  // Pulse: 0..1 over ~1.4s.
+  const b = shipBounds(ship, cell);
+  const { x0, y0, x1, y1, w, h, isHorizontal } = b;
   const pulse = (Math.sin((now / 1400) * Math.PI * 2) + 1) / 2;
 
-  // Layer 1: gold body fill.
   ctx.save();
   const bodyGrad = ctx.createLinearGradient(x0, y0, x0, y1);
   bodyGrad.addColorStop(0, '#ffe27a');
@@ -293,7 +349,6 @@ function drawCrownedShip(
   ctx.fillRect(x0, y0, w, h);
   ctx.restore();
 
-  // Layer 2: outer halo glow (uses canvas shadowBlur for a soft bloom).
   ctx.save();
   ctx.shadowColor = `rgba(255, 215, 60, ${0.85 + pulse * 0.15})`;
   ctx.shadowBlur = 28 + pulse * 18;
@@ -302,15 +357,12 @@ function drawCrownedShip(
   ctx.strokeRect(x0 - 1, y0 - 1, w + 2, h + 2);
   ctx.restore();
 
-  // Layer 3: animated shimmer band sweeping across the ship.
   ctx.save();
   ctx.beginPath();
   ctx.rect(x0, y0, w, h);
   ctx.clip();
-  const isHorizontal = w >= h;
   const longAxis = isHorizontal ? w : h;
   const shimmerLen = Math.max(longAxis * 0.35, 24);
-  // 0..(longAxis + shimmerLen*2) over ~1.6s, repeating.
   const phase = (now / 1600) % 1;
   const start = -shimmerLen + phase * (longAxis + shimmerLen * 2);
   if (isHorizontal) {
@@ -330,14 +382,12 @@ function drawCrownedShip(
   }
   ctx.restore();
 
-  // Layer 4: bright outer outline on top of everything.
   ctx.save();
   ctx.strokeStyle = `rgba(255, 215, 50, ${0.85 + pulse * 0.15})`;
   ctx.lineWidth = 2;
   ctx.strokeRect(x0, y0, w, h);
   ctx.restore();
 
-  // Layer 5: small twinkle sparks at each corner of the ship.
   const corners: Array<[number, number]> = [
     [x0, y0],
     [x1, y0],
@@ -346,7 +396,6 @@ function drawCrownedShip(
   ];
   for (let i = 0; i < corners.length; i++) {
     const [cx, cy] = corners[i];
-    // Each corner has its own offset phase so they twinkle independently.
     const sparklePhase = ((now / 800) + i * 0.25) % 1;
     const sparkleAlpha = Math.sin(sparklePhase * Math.PI);
     if (sparkleAlpha <= 0) continue;
@@ -393,7 +442,6 @@ function drawTracerProjectile(
   velocityUnit: { x: number; y: number },
   tailLen: number
 ) {
-  // Tail gradient: hot-yellow at projectile end, fading to transparent.
   ctx.save();
   const tailEnd = {
     x: pos.x - velocityUnit.x * tailLen,
@@ -412,7 +460,6 @@ function drawTracerProjectile(
   ctx.stroke();
   ctx.restore();
 
-  // Glow halo around the projectile head.
   ctx.save();
   const halo = ctx.createRadialGradient(pos.x, pos.y, 1, pos.x, pos.y, 12);
   halo.addColorStop(0, 'rgba(255, 240, 180, 0.85)');
@@ -423,7 +470,6 @@ function drawTracerProjectile(
   ctx.fill();
   ctx.restore();
 
-  // White-hot core.
   ctx.save();
   ctx.fillStyle = '#fff8d4';
   ctx.beginPath();
@@ -443,7 +489,6 @@ function drawProjectiles(
     if (p.impacted) continue;
     const pos = projectilePosition(p, now);
 
-    // Muzzle flash for the brief window after fire.
     const sinceFire = now - p.fireTime;
     if (sinceFire >= 0 && sinceFire < MUZZLE_FLASH_MS) {
       const anchor = cannonAnchorPx(p.corner, canvasW, canvasH);
@@ -472,50 +517,31 @@ function drawProjectiles(
       ctx.restore();
     }
 
-    // Direction unit vector (chord). For arcing projectiles this is just the
-    // chord, used only for tail orientation; we approximate by sampling a
-    // recent position along the arc.
+    // Velocity unit (chord-sampled along the arc so the tail trails correctly).
     let velocityUnit = { x: 0, y: 0 };
-    if (p.arcing) {
-      const earlier = projectilePosition(
-        p,
-        Math.max(p.fireTime, now - 30)
-      );
-      const dx = pos.x - earlier.x;
-      const dy = pos.y - earlier.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len > 0) velocityUnit = { x: dx / len, y: dy / len };
-    } else {
-      const dx = p.toPx.x - p.fromPx.x;
-      const dy = p.toPx.y - p.fromPx.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len > 0) velocityUnit = { x: dx / len, y: dy / len };
+    const earlier = projectilePosition(p, Math.max(p.fireTime, now - 30));
+    const dx = pos.x - earlier.x;
+    const dy = pos.y - earlier.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0) velocityUnit = { x: dx / len, y: dy / len };
+
+    // Smoke puffs along the path: emit one every ~25 ms of flight.
+    const PUFF_INTERVAL_MS = 25;
+    const PUFF_LIFE_MS = 700;
+    const tNow = Math.min(1, (now - p.fireTime) / p.travelMs);
+    const flightSoFarMs = tNow * p.travelMs;
+    const puffCount = Math.floor(flightSoFarMs / PUFF_INTERVAL_MS);
+    for (let i = 0; i <= puffCount; i++) {
+      const emitMs = i * PUFF_INTERVAL_MS;
+      const ageMs = flightSoFarMs - emitMs;
+      if (ageMs > PUFF_LIFE_MS) continue;
+      const sample = projectilePosition(p, p.fireTime + emitMs);
+      drawSmokePuff(ctx, sample.x, sample.y, ageMs, PUFF_LIFE_MS);
     }
 
-    if (p.arcing) {
-      // Smoke puffs along the path: emit one every ~25 ms of flight.
-      const PUFF_INTERVAL_MS = 25;
-      const PUFF_LIFE_MS = 700;
-      const tNow = Math.min(1, (now - p.fireTime) / p.travelMs);
-      const flightSoFarMs = tNow * p.travelMs;
-      const puffCount = Math.floor(flightSoFarMs / PUFF_INTERVAL_MS);
-      for (let i = 0; i <= puffCount; i++) {
-        const emitMs = i * PUFF_INTERVAL_MS;
-        const ageMs = flightSoFarMs - emitMs;
-        if (ageMs > PUFF_LIFE_MS) continue;
-        const sample = projectilePosition(p, p.fireTime + emitMs);
-        drawSmokePuff(ctx, sample.x, sample.y, ageMs, PUFF_LIFE_MS);
-      }
-      // Larger glow + cream-white shell for the arcing round.
+    if (p.type === 'depthCharge') {
       ctx.save();
-      const halo = ctx.createRadialGradient(
-        pos.x,
-        pos.y,
-        1,
-        pos.x,
-        pos.y,
-        16
-      );
+      const halo = ctx.createRadialGradient(pos.x, pos.y, 1, pos.x, pos.y, 16);
       halo.addColorStop(0, 'rgba(255, 240, 180, 0.9)');
       halo.addColorStop(1, 'rgba(255, 200, 80, 0)');
       ctx.fillStyle = halo;
@@ -523,7 +549,6 @@ function drawProjectiles(
       ctx.arc(pos.x, pos.y, 16, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-
       ctx.save();
       ctx.fillStyle = '#fff4c2';
       ctx.beginPath();
@@ -539,9 +564,239 @@ function drawProjectiles(
   }
 }
 
+function drawHitExplosion(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  ageMs: number,
+  cell: number
+) {
+  const t = Math.min(1, ageMs / IMPACT_ANIM_MS);
+  const baseRadius = cell * 0.32;
+
+  // Shockwave ring (fast expand, fade out)
+  const ringRadius = baseRadius + t * cell * 1.4;
+  const ringAlpha = (1 - t) * 0.65;
+  ctx.save();
+  ctx.globalAlpha = ringAlpha;
+  ctx.strokeStyle = 'rgba(255, 200, 100, 1)';
+  ctx.lineWidth = 3 * (1 - t) + 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // Fireball (peaks early, then fades)
+  const fireballT = Math.min(1, ageMs / 350);
+  const fireballRadius = baseRadius * (0.6 + fireballT * 0.9);
+  const fireballAlpha = Math.max(0, 1 - t * 1.2);
+  ctx.save();
+  ctx.globalAlpha = fireballAlpha;
+  const grad = ctx.createRadialGradient(cx, cy, 1, cx, cy, fireballRadius);
+  grad.addColorStop(0, 'rgba(255, 255, 220, 1)');
+  grad.addColorStop(0.35, 'rgba(255, 180, 60, 0.95)');
+  grad.addColorStop(0.7, 'rgba(220, 70, 30, 0.7)');
+  grad.addColorStop(1, 'rgba(120, 30, 10, 0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, fireballRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Debris flecks (8 directions, fly outward)
+  const debrisLen = baseRadius + t * cell * 0.9;
+  const debrisAlpha = Math.max(0, 1 - t * 1.5);
+  ctx.save();
+  ctx.globalAlpha = debrisAlpha;
+  ctx.strokeStyle = '#2a2a2a';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const x = cx + Math.cos(a) * debrisLen;
+    const y = cy + Math.sin(a) * debrisLen;
+    const x0 = cx + Math.cos(a) * (debrisLen - 4);
+    const y0 = cy + Math.sin(a) * (debrisLen - 4);
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Rising smoke plume (kicks in later)
+  if (ageMs > 200) {
+    const smokeT = (ageMs - 200) / (IMPACT_ANIM_MS - 200);
+    const smokeY = cy - smokeT * cell * 0.6;
+    const smokeAlpha = (1 - smokeT) * 0.5;
+    ctx.save();
+    ctx.globalAlpha = smokeAlpha;
+    const sg = ctx.createRadialGradient(cx, smokeY, 1, cx, smokeY, cell * 0.35);
+    sg.addColorStop(0, 'rgba(80, 80, 80, 0.9)');
+    sg.addColorStop(1, 'rgba(60, 60, 60, 0)');
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.arc(cx, smokeY, cell * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawWaterSplash(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  ageMs: number,
+  cell: number
+) {
+  const t = Math.min(1, ageMs / SPLASH_ANIM_MS);
+
+  // Central column (peaks at t=0.3, fades)
+  const columnT = Math.min(1, ageMs / 180);
+  const columnHeight = cell * 0.55 * columnT * (1 - t * 0.5);
+  const columnAlpha = (1 - t) * 0.8;
+  ctx.save();
+  ctx.globalAlpha = columnAlpha;
+  const colGrad = ctx.createLinearGradient(cx, cy, cx, cy - columnHeight);
+  colGrad.addColorStop(0, 'rgba(220, 240, 255, 0.9)');
+  colGrad.addColorStop(1, 'rgba(220, 240, 255, 0)');
+  ctx.fillStyle = colGrad;
+  ctx.fillRect(cx - cell * 0.06, cy - columnHeight, cell * 0.12, columnHeight);
+  ctx.restore();
+
+  // Outward droplet burst (8 droplets)
+  const dropletDist = cell * 0.15 + t * cell * 0.55;
+  const dropletAlpha = (1 - t) * 0.85;
+  ctx.save();
+  ctx.globalAlpha = dropletAlpha;
+  ctx.fillStyle = 'rgba(230, 245, 255, 1)';
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const dx = Math.cos(a) * dropletDist;
+    const dy = Math.sin(a) * dropletDist - t * cell * 0.2;
+    const r = 2.5 * (1 - t * 0.4);
+    if (r <= 0) continue;
+    ctx.beginPath();
+    ctx.arc(cx + dx, cy + dy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Expanding ripple ring at water level
+  const ringRadius = cell * 0.15 + t * cell * 0.6;
+  const ringAlpha = (1 - t) * 0.7;
+  ctx.save();
+  ctx.globalAlpha = ringAlpha;
+  ctx.strokeStyle = 'rgba(220, 240, 255, 1)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // Inner foam patch
+  const foamAlpha = (1 - t) * 0.4;
+  ctx.save();
+  ctx.globalAlpha = foamAlpha;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, cell * 0.16 * (1 - t * 0.4), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+const SHOT_TYPE_LABEL: Record<ShotType, string> = {
+  cannon: '🎯 Cannon',
+  broadside: '⚓ Broadside',
+  depthCharge: '💣 Depth Charge',
+};
+
+function drawShotAnnotation(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  ageMs: number,
+  text: string
+) {
+  const t = Math.min(1, ageMs / ANNOTATION_ANIM_MS);
+  if (t >= 1) return;
+  // Rise upward then settle, fade out
+  const riseT = Math.min(1, ageMs / 250);
+  const offsetY = -16 - riseT * 18;
+  const alpha = 1 - t;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const metrics = ctx.measureText(text);
+  const padX = 8;
+  const padY = 4;
+  const w = metrics.width + padX * 2;
+  const h = 18;
+  const x = cx - w / 2;
+  const y = cy + offsetY - h / 2;
+  // Pill background
+  roundedRectPath(ctx, x, y, w, h, h / 2);
+  ctx.fillStyle = 'rgba(15, 25, 45, 0.88)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(201, 162, 39, 0.85)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // Text
+  ctx.fillStyle = '#ffe27a';
+  ctx.fillText(text, cx, cy + offsetY);
+  ctx.restore();
+  // Restore default text alignment
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
+  void padY;
+}
+
+function drawImpactEffects(
+  ctx: CanvasRenderingContext2D,
+  projectiles: Projectile[],
+  cell: number,
+  now: number,
+  freshHitCells: Set<string>,
+  freshMissCells: Set<string>
+) {
+  const ox = CANNON_PAD;
+  const oy = CANNON_PAD;
+  for (const p of projectiles) {
+    if (!p.impacted) continue;
+    const ageMs = now - (p.fireTime + p.travelMs);
+    if (ageMs < 0) continue;
+
+    // Per-cell hit/miss effects
+    for (const h of p.hitsRevealOnImpact) {
+      if (ageMs > IMPACT_ANIM_MS) continue;
+      const cx = ox + h.x * cell + cell / 2;
+      const cy = oy + h.y * cell + cell / 2;
+      drawHitExplosion(ctx, cx, cy, ageMs, cell);
+      freshHitCells.add(cellKey(h));
+    }
+    for (const m of p.missesRevealOnImpact) {
+      if (ageMs > SPLASH_ANIM_MS) continue;
+      const cx = ox + m.x * cell + cell / 2;
+      const cy = oy + m.y * cell + cell / 2;
+      drawWaterSplash(ctx, cx, cy, ageMs, cell);
+      freshMissCells.add(cellKey(m));
+    }
+
+    // Shot-type annotation, one per projectile, above the target cell
+    if (ageMs < ANNOTATION_ANIM_MS) {
+      const cx = ox + p.toCell.x * cell + cell / 2;
+      const cy = oy + p.toCell.y * cell + cell / 2;
+      drawShotAnnotation(ctx, cx, cy, ageMs, SHOT_TYPE_LABEL[p.type]);
+    }
+  }
+}
+
 export function BattleshipGrid({
   stateRef,
   ships,
+  gridSize,
   visibility,
   banner,
   crownedEntryId,
@@ -554,56 +809,76 @@ export function BattleshipGrid({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // Single-frame draw helper used by both rAF loop and frameKey effect.
+  const cell = cellPxFor(gridSize);
+  const dim = gridSize * cell + CANNON_PAD * 2;
+
   const drawAll = (now: number) => {
     const canvas = canvasRef.current;
     const state = stateRef.current;
     if (!canvas || !state) return;
-    const cell = cellPx(state.gridSize);
-    const dim = state.gridSize * cell + CANNON_PAD * 2;
-    if (canvas.width !== dim) canvas.width = dim;
-    if (canvas.height !== dim) canvas.height = dim;
+    const cellLocal = cellPxFor(state.gridSize);
+    const dimLocal = state.gridSize * cellLocal + CANNON_PAD * 2;
+    if (canvas.width !== dimLocal) canvas.width = dimLocal;
+    if (canvas.height !== dimLocal) canvas.height = dimLocal;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Background outside the grid (so cannons sit on a slightly darker frame).
     ctx.fillStyle = '#06192e';
-    ctx.fillRect(0, 0, dim, dim);
+    ctx.fillRect(0, 0, dimLocal, dimLocal);
 
-    drawGrid(ctx, state.gridSize, cell);
-    drawShips(ctx, state.ships, cell, visibility, committedHitsRef.current);
+    drawGrid(ctx, state.gridSize, cellLocal);
+    drawShips(ctx, state.ships, cellLocal, visibility, committedHitsRef.current);
+
+    // Track which cells are currently mid-impact-animation so drawShots can
+    // skip drawing their static markers (the impact effect owns the visuals
+    // for its duration).
+    const freshHitCells = new Set<string>();
+    const freshMissCells = new Set<string>();
+    drawImpactEffects(
+      ctx,
+      projectilesRef.current,
+      cellLocal,
+      now,
+      freshHitCells,
+      freshMissCells
+    );
+
     drawShots(
       ctx,
       state.shots,
       state.ships,
-      cell,
+      cellLocal,
       visibility,
       committedHitsRef.current,
-      committedMissesRef.current
+      committedMissesRef.current,
+      freshHitCells,
+      freshMissCells
     );
-    drawCannons(ctx, dim, dim, cannonAnglesRef.current);
-    drawProjectiles(ctx, projectilesRef.current, dim, dim, now);
+    drawCannons(ctx, dimLocal, dimLocal, cannonAnglesRef.current);
+    drawProjectiles(ctx, projectilesRef.current, dimLocal, dimLocal, now);
 
-    // Crowned-champion gold-shine — draw on top so the glow reads clearly.
     if (crownedEntryId !== null) {
       const crownedShip = state.ships.find(
         (s) => s.entryId === crownedEntryId
       );
       if (crownedShip) {
-        drawCrownedShip(ctx, crownedShip, cell, now);
+        drawCrownedShip(ctx, crownedShip, cellLocal, now);
       }
     }
   };
 
-  // Drive an rAF loop while there are in-flight projectiles. The loop
-  // re-schedules itself, doing a fresh draw each frame; once the queue is
-  // empty it stops. frameKey bumps re-trigger via the effect below.
   useEffect(() => {
     let cancelled = false;
 
-    const shouldKeepAnimating = () =>
-      projectilesRef.current.some((p) => !p.impacted) ||
-      crownedEntryId !== null;
+    const shouldKeepAnimating = () => {
+      const now = performance.now();
+      if (crownedEntryId !== null) return true;
+      for (const p of projectilesRef.current) {
+        if (!p.impacted) return true;
+        if (now - (p.fireTime + p.travelMs) < IMPACT_ANIM_MS) return true;
+      }
+      return false;
+    };
 
     const tick = () => {
       if (cancelled) return;
@@ -631,10 +906,34 @@ export function BattleshipGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frameKey, visibility, crownedEntryId]);
 
+  // Ship labels — HTML overlay; stay visible even after the ship is sunk so
+  // the grid keeps showing which participant occupied which position.
+  const labelShips = ships;
+
   return (
     <div className="battleship-grid-wrap">
       <div className="battleship-canvas-host">
         <canvas ref={canvasRef} className="battleship-canvas" />
+        <div className="battleship-labels-overlay">
+          {labelShips.map((ship) => {
+            const b = shipBounds(ship, cell);
+            const leftPct = (b.cx / dim) * 100;
+            const topPct = ((b.y0 - 6) / dim) * 100;
+            return (
+              <div
+                key={ship.id}
+                className="battleship-ship-label"
+                style={{ left: `${leftPct}%`, top: `${topPct}%` }}
+              >
+                <span
+                  className="battleship-ship-label-swatch"
+                  style={{ background: ship.color }}
+                />
+                <span className="battleship-ship-label-name">{ship.entryName}</span>
+              </div>
+            );
+          })}
+        </div>
         {banner && banner.kind === 'sunk' && (
           <div className="battleship-banner">💥 {banner.name} sunk! 💥</div>
         )}
@@ -643,20 +942,6 @@ export function BattleshipGrid({
             🏆 {banner.name} — Champion! 🏆
           </div>
         )}
-      </div>
-      <div className="battleship-legend">
-        {ships.map((s: Ship) => (
-          <span
-            key={s.id}
-            className={`battleship-legend-chip${s.sunk ? ' sunk' : ''}`}
-          >
-            <span
-              className="battleship-legend-swatch"
-              style={{ background: s.color }}
-            />
-            {s.entryName}
-          </span>
-        ))}
       </div>
     </div>
   );

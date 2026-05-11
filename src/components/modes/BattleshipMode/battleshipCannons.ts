@@ -34,6 +34,10 @@ export interface Projectile {
   fireTime: number;
   travelMs: number;
   arcing: boolean;
+  /** Arc peak height as a fraction of horizontal travel distance. Defaults to 0.3
+   *  when undefined (used by depth charges). Lower values keep cannon and
+   *  broadside shots in a flatter, more direct-fire trajectory. */
+  peakRatio?: number;
   type: ShotType;
   hitsRevealOnImpact: Cell[];
   missesRevealOnImpact: Cell[];
@@ -110,11 +114,12 @@ export function projectilePosition(
     return { x, y };
   }
 
-  // Parabolic lift: peak height ~30% of horizontal travel distance.
+  // Parabolic lift: peak height = peakRatio * horizontal travel distance.
   const dx = p.toPx.x - p.fromPx.x;
   const dy = p.toPx.y - p.fromPx.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
-  const peak = dist * 0.3;
+  const peakRatio = p.peakRatio ?? 0.3;
+  const peak = dist * peakRatio;
   const lift = -4 * peak * t * (1 - t); // 0 at endpoints, -peak at t=0.5
   return { x, y: y + lift };
 }

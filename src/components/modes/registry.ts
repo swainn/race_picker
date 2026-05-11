@@ -18,6 +18,7 @@ import { PlinkoMode } from './PlinkoMode/PlinkoMode';
 import { WallClimberMode } from './WallClimberMode/WallClimberMode';
 import { WallClimberSettings } from './WallClimberMode/WallClimberSettings';
 import { BattleshipMode } from './BattleshipMode/BattleshipMode';
+import { BattleshipSettings } from './BattleshipMode/BattleshipSettings';
 import { WheelMode } from './WheelMode/WheelMode';
 import { WheelSettings } from './WheelMode/WheelSettings';
 
@@ -37,7 +38,7 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   'light-cycles': { View: LightCyclesMode, theme: lightCyclesTheme, label: '🏍️ Light Cycles', survivalOrder: true },
   plinko:         { View: PlinkoMode,      theme: plinkoTheme,      label: '🎯 Plinko' },
   'wall-climber': { View: WallClimberMode, Settings: WallClimberSettings, theme: wallClimberTheme, label: '🧗 Wall Climber' },
-  battleship:     { View: BattleshipMode,  theme: battleshipTheme,  label: '🚢 Battleship' },
+  battleship:     { View: BattleshipMode,  Settings: BattleshipSettings, theme: battleshipTheme,  label: '🚢 Battleship', survivalOrder: true },
   wheel:          { View: WheelMode,       Settings: WheelSettings,      theme: wheelTheme,       label: '🎡 Wheel' },
 };
 
