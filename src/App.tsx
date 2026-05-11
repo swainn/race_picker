@@ -158,6 +158,13 @@ function App() {
     setGameMode(next);
   };
 
+  const pickRandomMode = () => {
+    const others = MODE_LIST.filter((m) => m.value !== gameMode);
+    if (others.length === 0) return;
+    const next = others[Math.floor(Math.random() * others.length)].value;
+    handleModeChange(next);
+  };
+
   const saveGroup = () => {
     if (entries.length === 0) {
       alert('Cannot save an empty group!');
@@ -239,6 +246,15 @@ function App() {
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={pickRandomMode}
+                className="mode-random-button"
+                aria-label="Pick a random mode"
+                title="Pick a random mode"
+              >
+                🎲
+              </button>
             </div>
             {ActiveSettings && (
               <button
