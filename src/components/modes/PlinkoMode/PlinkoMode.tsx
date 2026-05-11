@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Entry } from '../../../types';
 import type { ModeViewProps } from '../types';
+import { getEntryImages, getPreferredEntryImage } from '../../../utils/entryImages';
 import { PlinkoGame } from './PlinkoGame';
 
 interface WinnerEffects {
@@ -15,14 +16,6 @@ interface WinnerDisplay {
   imageDataUrl?: string;
   allImages?: string[];
   effects?: WinnerEffects;
-}
-
-function getEntryImages(entry: Entry): string[] {
-  return entry.imageDataUrls ?? (entry.imageDataUrl ? [entry.imageDataUrl] : []);
-}
-
-function getPreferredEntryImage(entry: Entry): string | undefined {
-  return getEntryImages(entry)[0];
 }
 
 export function PlinkoMode(props: ModeViewProps) {

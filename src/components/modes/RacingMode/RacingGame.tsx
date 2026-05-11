@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
+import { generateColor } from '../../../utils/colors';
+import { getPreferredEntryImage } from '../../../utils/entryImages';
+import { shuffle } from '../../../utils/array';
+import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
+import { racingTheme } from '../themes';
 import './RacingGame.css';
 
 const VEHICLE_MODES = ['car', 'boat', 'plane', 'balloon', 'rocket', 'duck', 'snail', 'turtle', 'cat', 'dog'] as const;
@@ -64,21 +69,12 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     return () => cancelAnimationFrame(frameId);
   }, []);
 
-  const shuffleArray = <T,>(array: T[]) => {
-    const result = [...array];
-    for (let i = result.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [result[i], result[j]] = [result[j], result[i]];
-    }
-    return result;
-  };
-
   const assignMixedModes = (count: number): VehicleMode[] => {
     const assignments: VehicleMode[] = [];
-    let pool = shuffleArray(VEHICLE_MODES);
+    let pool = shuffle(VEHICLE_MODES);
     for (let i = 0; i < count; i++) {
       if (pool.length === 0) {
-        pool = shuffleArray(VEHICLE_MODES);
+        pool = shuffle(VEHICLE_MODES);
       }
       assignments.push(pool.pop() as VehicleMode);
     }
@@ -102,7 +98,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         entry,
         x: 50,
         speed: 0,
-        color: generateColor(index, Math.max(displayEntries.length, 2)),
+        color: generateColor(index),
         finished: false,
         previousSpeed: 0,
         spinAngle: 0,
@@ -126,7 +122,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
           entry,
           x: 50,
           speed: 0,
-          color: generateColor(index, Math.max(displayEntries.length, 2)),
+          color: generateColor(index),
           finished: false,
           previousSpeed: 0,
           spinAngle: 0,
@@ -1135,35 +1131,24 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     <div className="racing-game">
       <canvas ref={canvasRef} width={840} height={600} className="game-canvas" />
 
-      {currentWinner && !isRacing && (
-        <div className="winner-display">
-          <div className="winner-banner">
-            <h2>🏆 WINNER 🏆</h2>
-            <p className="winner-name">{currentWinner}</p>
-            {entries.length === 0 ? (
-              <button onClick={onShowFinalStandings} className="final-standings-btn">
-                🏆 Final Standings
-              </button>
-            ) : (
-              <button onClick={onRaceComplete} className="next-race-btn">
-                ▶ Next Race
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <WinnerDialog
+        theme={racingTheme}
+        show={!!currentWinner && !isRacing}
+        isFinals={entries.length === 0}
+        winner={(() => {
+          const winnerEntry = allEntries.find((e) => e.name === currentWinner);
+          return {
+            name: currentWinner ?? '',
+            imageDataUrl: winnerEntry ? getPreferredEntryImage(winnerEntry) : undefined,
+          };
+        })()}
+        headline="🏁 WINNER 🏁"
+        finalsHeadline="🏆 RACE CHAMPION 🏆"
+        nextLabel="▶ Next Race"
+        onNext={onRaceComplete}
+        onShowFinalStandings={() => onShowFinalStandings?.()}
+      />
     </div>
   );
 };
 
-function generateColor(index: number, _total: number): string {
-  const colors = [
-    '#FF6B6B', '#4ECDC4', '#FFE66D', '#95E1D3',
-    '#F38181', '#AA96DA', '#FCBAD3', '#A8D8EA',
-    '#FF8B94', '#D4A5A5', '#9BC995', '#C7CEEA',
-    '#FFB4A2', '#E5989B', '#B5838D', '#6D6875',
-    '#FF1744', '#00B0FF', '#76FF03', '#FFD600',
-    '#F50057', '#651FFF',
-  ];
-  return colors[index % colors.length];
-}

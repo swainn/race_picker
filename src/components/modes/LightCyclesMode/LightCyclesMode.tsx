@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Entry } from '../../../types';
 import type { ModeViewProps } from '../types';
+import { getEntryImages, getPreferredEntryImage } from '../../../utils/entryImages';
 import { LightCycles } from './LightCycles';
 
 interface KillerInfo {
@@ -14,14 +15,6 @@ interface WinnerDisplay {
   allImages?: string[];
   killerInfo?: KillerInfo;
   isLastPlayer?: boolean;
-}
-
-function getEntryImages(entry: Entry): string[] {
-  return entry.imageDataUrls ?? (entry.imageDataUrl ? [entry.imageDataUrl] : []);
-}
-
-function getPreferredEntryImage(entry: Entry): string | undefined {
-  return getEntryImages(entry)[0];
 }
 
 export function LightCyclesMode(props: ModeViewProps) {

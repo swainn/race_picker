@@ -50,7 +50,8 @@
   opacity: 0.9;
 }
 
-.header-management-button {
+.header-management-button,
+.header-settings-button {
   padding: 10px 16px;
   background-color: rgba(255, 255, 255, 0.15);
   color: #fff;
@@ -63,7 +64,8 @@
   white-space: nowrap;
 }
 
-.header-management-button:hover {
+.header-management-button:hover,
+.header-settings-button:hover {
   background-color: rgba(255, 255, 255, 0.25);
   border-color: rgba(255, 255, 255, 0.5);
   transform: scale(1.03);

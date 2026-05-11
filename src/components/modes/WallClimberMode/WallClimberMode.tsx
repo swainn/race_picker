@@ -1,35 +1,10 @@
-import { useState } from 'react';
 import type { ModeViewProps } from '../types';
 import { WallClimberGame } from './WallClimberGame';
+import { useWallClimberSubMode } from './wallClimberSettingsStore';
 import './WallClimberMode.css';
 
-type ClimberMode =
-  | 'car'
-  | 'boat'
-  | 'plane'
-  | 'balloon'
-  | 'rocket'
-  | 'duck'
-  | 'snail'
-  | 'cat'
-  | 'dog';
-type WallClimberSubMode = ClimberMode | 'mixed';
-
-const SUB_MODES: { value: WallClimberSubMode; label: string }[] = [
-  { value: 'car', label: '🚗 Cars' },
-  { value: 'boat', label: '⛵ Boats' },
-  { value: 'plane', label: '✈️ Planes' },
-  { value: 'balloon', label: '🎈 Balloons' },
-  { value: 'rocket', label: '🚀 Rockets' },
-  { value: 'duck', label: '🦆 Ducks' },
-  { value: 'snail', label: '🐌 Snails' },
-  { value: 'cat', label: '🐱 Cats' },
-  { value: 'dog', label: '🐶 Dogs' },
-  { value: 'mixed', label: '🎲 Mixed' },
-];
-
 export function WallClimberMode(props: ModeViewProps) {
-  const [subMode, setSubMode] = useState<WallClimberSubMode>('car');
+  const [subMode] = useWallClimberSubMode();
   const {
     entries,
     allEntries,
@@ -71,21 +46,6 @@ export function WallClimberMode(props: ModeViewProps) {
         currentWinner={currentWinner}
         mode={subMode}
       />
-
-      <div className="mode-toggle" role="radiogroup" aria-label="Wall-climber sub-mode">
-        {SUB_MODES.map((m) => (
-          <label key={m.value} className="mode-option">
-            <input
-              type="radio"
-              name="wallClimberSubMode"
-              value={m.value}
-              checked={subMode === m.value}
-              onChange={() => setSubMode(m.value)}
-            />
-            <span>{m.label}</span>
-          </label>
-        ))}
-      </div>
     </div>
   );
 }

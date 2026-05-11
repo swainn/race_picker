@@ -5,12 +5,19 @@ interface Props {
   entries: Entry[];
   winOrder: Map<number, number>;
   onClose: () => void;
+  /** When true, the highest winOrder is ranked 1st (survival modes — last
+   *  alive wins). Default false sorts the lowest winOrder first
+   *  (sequential-pick modes — first across the line wins). */
+  reverseOrder?: boolean;
 }
 
-export function FinalStandingsDialog({ entries, winOrder, onClose }: Props) {
+export function FinalStandingsDialog({ entries, winOrder, onClose, reverseOrder }: Props) {
   const standings = entries
     .filter((e) => winOrder.has(e.id))
-    .sort((a, b) => (winOrder.get(a.id) || 0) - (winOrder.get(b.id) || 0));
+    .sort((a, b) => {
+      const diff = (winOrder.get(a.id) || 0) - (winOrder.get(b.id) || 0);
+      return reverseOrder ? -diff : diff;
+    });
 
   const getOrdinal = (n: number) => {
     const s = ['th', 'st', 'nd', 'rd'];

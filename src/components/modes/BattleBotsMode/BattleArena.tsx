@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
+import { generateColor } from '../../../utils/colors';
+import { getEntryImages, pickRandomEntryImage } from '../../../utils/entryImages';
+import { shuffle } from '../../../utils/array';
+import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
+import { battleBotsTheme } from '../themes';
 import './BattleArena.css';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -440,28 +445,6 @@ const WEAPON_LABELS: Record<AttackType, string> = {
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
 
-function getEntryImages(entry: Entry): string[] {
-  return entry.imageDataUrls ?? (entry.imageDataUrl ? [entry.imageDataUrl] : []);
-}
-
-function pickRaceImage(entry: Entry): string | undefined {
-  const images = getEntryImages(entry);
-  if (images.length === 0) return undefined;
-  return images[Math.floor(Math.random() * images.length)];
-}
-
-function generateColor(index: number): string {
-  const colors = [
-    '#FF6B6B', '#4ECDC4', '#FFE66D', '#95E1D3',
-    '#F38181', '#AA96DA', '#FCBAD3', '#A8D8EA',
-    '#FF8B94', '#D4A5A5', '#9BC995', '#C7CEEA',
-    '#FFB4A2', '#E5989B', '#B5838D', '#6D6875',
-    '#FF1744', '#00B0FF', '#76FF03', '#FFD600',
-    '#F50057', '#651FFF',
-  ];
-  return colors[index % colors.length];
-}
-
 function rollDamage(attack: AttackDef): number {
   const [min, max] = attack.damage;
   return min + Math.random() * (max - min);
@@ -477,15 +460,6 @@ function angleBetween(x1: number, y1: number, x2: number, y2: number): number {
 
 function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const result = [...arr];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
 }
 
 // Place bots at even intervals along the rectangular perimeter of the arena
@@ -1122,9 +1096,7 @@ export const BattleArena: React.FC<Props> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [raceState, setRaceState] = useState<'ready' | 'reveal' | 'racing' | 'finished'>('ready');
-  const [winnerMinimized, setWinnerMinimized] = useState(false);
   const [replayActive, setReplayActive] = useState(false);
-  const autoMinimizeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const botsRef = useRef<Bot[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const effectsRef = useRef<Effect[]>([]);
@@ -1140,20 +1112,13 @@ export const BattleArena: React.FC<Props> = ({
   const revealStartRef = useRef<number>(0);
   const frameHistoryRef = useRef<FrameSnapshot[]>([]);
   const replayDataRef = useRef<{ frames: FrameSnapshot[]; targetX: number; targetY: number; winnerBot: Bot | null; killerInfo?: { name: string; weapon: string } } | null>(null);
-  // Reset minimized state when a new winner appears, auto-minimize after 3s and start replay
+  // Reset replay flag whenever a new winner appears; <WinnerDialog> triggers
+  // setReplayActive(true) via onReplayStart when it auto-minimizes.
   const prevWinnerRef = useRef(currentWinner);
   if (currentWinner !== prevWinnerRef.current) {
     prevWinnerRef.current = currentWinner;
     if (currentWinner) {
-      setWinnerMinimized(false);
       setReplayActive(false);
-      if (autoMinimizeRef.current) clearTimeout(autoMinimizeRef.current);
-      autoMinimizeRef.current = setTimeout(() => {
-        setWinnerMinimized(true);
-        if (replayDataRef.current && replayDataRef.current.frames.length > 0) {
-          setReplayActive(true);
-        }
-      }, 3000);
     }
   }
   const spikeEventsRef = useRef<Array<{ closeAt: number; obstacle: Obstacle }>>([]);
@@ -1189,7 +1154,7 @@ export const BattleArena: React.FC<Props> = ({
       const originalIndex = entries.findIndex(e => e.id === entry.id);
       return {
         entry,
-        selectedImageDataUrl: pickRaceImage(entry),
+        selectedImageDataUrl: pickRandomEntryImage(entry),
         x: pos.x,
         y: pos.y,
         vx: 0,
@@ -1235,7 +1200,7 @@ export const BattleArena: React.FC<Props> = ({
       const originalIndex = entries.findIndex(e => e.id === entry.id);
       return {
         entry,
-        selectedImageDataUrl: pickRaceImage(entry),
+        selectedImageDataUrl: pickRandomEntryImage(entry),
         x: pos.x,
         y: pos.y,
         vx: 0,
@@ -2429,68 +2394,38 @@ export const BattleArena: React.FC<Props> = ({
     <div className="racing-game">
       <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
 
-      {currentWinner && !isRacing && !winnerMinimized && (
-        <div className="winner-display">
-          <div className="winner-banner">
-            <button
-              type="button"
-              className="winner-minimize-btn"
-              onClick={() => setWinnerMinimized(true)}
-              aria-label="Minimize"
-            >
-              −
-            </button>
-            <h2>{currentWinnerIsLastPlayer ? '🏆 WINNER 🏆' : 'ELIMINATED'}</h2>
-            {currentWinnerImages && currentWinnerImages.length > 0 ? (
-              <div className="winner-images-gallery">
-                {currentWinnerImages.map((image, idx) => (
-                  <div key={idx} className="winner-avatar-small" aria-hidden="true">
-                    <img src={image} alt="" className="winner-avatar-image-small" />
-                  </div>
-                ))}
-              </div>
-            ) : currentWinnerImage ? (
-              <div className="winner-avatar" aria-hidden="true">
-                <img src={currentWinnerImage} alt="" className="winner-avatar-image" />
-              </div>
-            ) : null}
-            <p className="winner-name">{currentWinner}</p>
-            {currentWinnerKillerInfo && (
-              <p className="killer-info">
-                {currentWinnerKillerInfo.weapon === 'lava'
-                  ? <>Eliminated by <strong>🌋 {currentWinnerKillerInfo.name}</strong></>
-                  : <>Eliminated by <strong>{currentWinnerKillerInfo.name}</strong> with {WEAPON_LABELS[currentWinnerKillerInfo.weapon as AttackType] ?? currentWinnerKillerInfo.weapon}</>
-                }
-              </p>
-            )}
-            {entries.length === 0 ? (
-              <button onClick={onShowFinalStandings} className="final-standings-btn">
-                🏆 Final Standings
-              </button>
+      <WinnerDialog
+        theme={battleBotsTheme}
+        show={!!currentWinner && !isRacing}
+        isFinals={currentWinnerIsLastPlayer ?? entries.length === 0}
+        winner={{
+          name: currentWinner ?? '',
+          imageDataUrl: currentWinnerImage,
+          allImages: currentWinnerImages,
+        }}
+        headline="ELIMINATED"
+        finalsHeadline="🏆 ARENA CHAMPION 🏆"
+        nextLabel="⚔️ Next Battle"
+        detailsNode={
+          currentWinnerKillerInfo ? (
+            currentWinnerKillerInfo.weapon === 'lava' ? (
+              <>Eliminated by <strong>🌋 {currentWinnerKillerInfo.name}</strong></>
             ) : (
-              <button onClick={onRaceComplete} className="next-race-btn">
-                ⚔️ Next Battle
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-      {currentWinner && !isRacing && winnerMinimized && (
-        <div className="winner-minimized" onClick={() => setWinnerMinimized(false)}>
-          <span className="winner-minimized-text">
-            {currentWinnerIsLastPlayer ? '🏆' : '💀'} {currentWinner}
-          </span>
-          {entries.length === 0 ? (
-            <button onClick={(e) => { e.stopPropagation(); onShowFinalStandings?.(); }} className="winner-minimized-action">
-              🏆 Standings
-            </button>
-          ) : (
-            <button onClick={(e) => { e.stopPropagation(); onRaceComplete(); }} className="winner-minimized-action">
-              ⚔️ Next
-            </button>
-          )}
-        </div>
-      )}
+              <>
+                Eliminated by <strong>{currentWinnerKillerInfo.name}</strong> with{' '}
+                {WEAPON_LABELS[currentWinnerKillerInfo.weapon as AttackType] ?? currentWinnerKillerInfo.weapon}
+              </>
+            )
+          ) : undefined
+        }
+        onNext={onRaceComplete}
+        onShowFinalStandings={() => onShowFinalStandings?.()}
+        onReplayStart={() => {
+          if (replayDataRef.current && replayDataRef.current.frames.length > 0) {
+            setReplayActive(true);
+          }
+        }}
+      />
     </div>
   );
 };
