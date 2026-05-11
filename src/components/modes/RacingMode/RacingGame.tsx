@@ -8,6 +8,23 @@ import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import { racingTheme } from '../themes';
 import './RacingGame.css';
 
+function placementOrdinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return 'th';
+  switch (n % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+}
+
+function placementHeadline(place: number): string {
+  if (place === 1) return '🏆 RACE CHAMPION 🏆';
+  const medal = place === 2 ? '🥈' : place === 3 ? '🥉' : '🏁';
+  return `${medal} ${place}${placementOrdinal(place)} Place`;
+}
+
 interface ReplayRacerFrame {
   x: number;
   laneIndex: number;
@@ -1191,24 +1208,36 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
         <canvas ref={canvasRef} width={840} height={600} className="game-canvas" />
       </div>
 
-      <WinnerDialog
-        theme={racingTheme}
-        show={!!currentWinner && !isRacing}
-        isFinals={entries.length === 0}
-        winner={(() => {
-          const winnerEntry = allEntries.find((e) => e.name === currentWinner);
-          return {
-            name: currentWinner ?? '',
-            imageDataUrl: winnerEntry ? getPreferredEntryImage(winnerEntry) : undefined,
-          };
-        })()}
-        headline="🏁 WINNER 🏁"
-        finalsHeadline="🏆 RACE CHAMPION 🏆"
-        nextLabel="▶ Next Race"
-        onNext={onRaceComplete}
-        onShowFinalStandings={() => onShowFinalStandings?.()}
-        onReplayStart={() => replay.start(0.75)}
-      />
+      {(() => {
+        // Racing: the *first* winner is the overall champion (winOrder=1);
+        // subsequent races decide 2nd, 3rd, etc. The Final Standings button
+        // only makes sense after the last race.
+        const place = winOrder.size; // latest winner's placement
+        const isChampion = !!currentWinner && place === 1;
+        const isLastRace = entries.length === 0;
+        const headlineForPlace = placementHeadline(place);
+        return (
+          <WinnerDialog
+            theme={racingTheme}
+            show={!!currentWinner && !isRacing}
+            isFinals={isLastRace}
+            goldTreatment={isChampion}
+            winner={(() => {
+              const winnerEntry = allEntries.find((e) => e.name === currentWinner);
+              return {
+                name: currentWinner ?? '',
+                imageDataUrl: winnerEntry ? getPreferredEntryImage(winnerEntry) : undefined,
+              };
+            })()}
+            headline={headlineForPlace}
+            finalsHeadline={headlineForPlace}
+            nextLabel="▶ Next Race"
+            onNext={onRaceComplete}
+            onShowFinalStandings={() => onShowFinalStandings?.()}
+            onReplayStart={() => replay.start(0.75)}
+          />
+        );
+      })()}
     </div>
   );
 };

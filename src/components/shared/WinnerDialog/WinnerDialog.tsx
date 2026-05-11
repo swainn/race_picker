@@ -10,6 +10,7 @@ export function WinnerDialog(props: WinnerDialogProps) {
     theme,
     show,
     isFinals,
+    goldTreatment,
     winner,
     headline,
     finalsHeadline,
@@ -32,6 +33,8 @@ export function WinnerDialog(props: WinnerDialogProps) {
   });
 
   if (phase === 'hidden') return null;
+
+  const gold = goldTreatment ?? isFinals;
 
   const themeStyle: CSSProperties = {
     '--wd-accent': theme.accent,
@@ -62,6 +65,7 @@ export function WinnerDialog(props: WinnerDialogProps) {
       <div
         className="winner-dialog winner-dialog--minimized"
         data-finals={isFinals}
+        data-gold={gold}
         data-button-style={buttonStyle}
         style={themeStyle}
         onClick={expand}
@@ -69,7 +73,7 @@ export function WinnerDialog(props: WinnerDialogProps) {
         tabIndex={0}
       >
         <span className="winner-dialog__pill-text">
-          {isFinals ? '🏆' : '✓'} {winner.name}
+          {gold ? '🏆' : '✓'} {winner.name}
         </span>
         <button
           type="button"
@@ -89,6 +93,7 @@ export function WinnerDialog(props: WinnerDialogProps) {
     <div
       className="winner-dialog winner-dialog--expanded"
       data-finals={isFinals}
+      data-gold={gold}
       style={themeStyle}
     >
       <div className="winner-dialog__banner">

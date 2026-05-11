@@ -17,7 +17,16 @@ export interface WinnerEffects {
 export interface WinnerDialogProps {
   theme: WinnerTheme;
   show: boolean;
+  /** When true, the dialog's primary action is "show final standings" instead
+   *  of "next". Defaults to also enabling the gold celebration treatment
+   *  unless `goldTreatment` is set explicitly. */
   isFinals: boolean;
+  /** Force the gold "champion" treatment independent of isFinals. Useful for
+   *  modes (e.g. Racing) where the champion is the *first* winner but the
+   *  Final Standings button only makes sense after the last race. When
+   *  undefined, defaults to isFinals so survival modes keep their existing
+   *  behavior. */
+  goldTreatment?: boolean;
   winner: WinnerInfo;
   /** Headline above the avatar in the expanded state. */
   headline: string;
