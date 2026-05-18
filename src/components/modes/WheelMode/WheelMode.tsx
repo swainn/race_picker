@@ -17,6 +17,7 @@ interface WinnerSnapshot {
 export function WheelMode(props: ModeViewProps) {
   const {
     entries,
+    allEntries,
     eliminatedIds,
     isRacing,
     currentWinner,
@@ -42,6 +43,21 @@ export function WheelMode(props: ModeViewProps) {
       setWinnerSnapshot(null);
     }
   }, [currentWinner]);
+
+  // When only one entry remains, App auto-declares them the winner without
+  // routing through this mode's handleWinner — so seed the snapshot from
+  // currentWinner so the (finals) dialog and standings button still appear.
+  useEffect(() => {
+    if (currentWinner && !winnerSnapshot) {
+      const found = allEntries.find((e) => e.name === currentWinner);
+      if (found) {
+        setWinnerSnapshot({
+          name: found.name,
+          image: getPreferredEntryImage(found),
+        });
+      }
+    }
+  }, [currentWinner, winnerSnapshot, allEntries]);
 
   // Easter egg: Ctrl+. opens, Esc closes.
   useEffect(() => {
@@ -101,12 +117,13 @@ export function WheelMode(props: ModeViewProps) {
         theme={wheelTheme}
         show={!!winnerSnapshot}
         isFinals={entries.length === 0}
+        goldTreatment={false}
         winner={{
           name: winnerSnapshot?.name ?? '',
           imageDataUrl: winnerSnapshot?.image,
         }}
         headline="🎉 WINNER 🎉"
-        finalsHeadline="🏆 LAST STANDING 🏆"
+        finalsHeadline="🎉 WINNER 🎉"
         nextLabel="▶ Spin Again"
         onNext={handleSpinAgain}
         onShowFinalStandings={() => onShowFinalStandings?.()}

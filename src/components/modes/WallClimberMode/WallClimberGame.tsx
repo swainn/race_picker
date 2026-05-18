@@ -1458,7 +1458,9 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
 
   return (
     <div className="racing-game">
-      <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
+      <div className="wall-climber-canvas-host">
+        <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
+      </div>
 
       <WinnerDialog
         theme={wallClimberTheme}
