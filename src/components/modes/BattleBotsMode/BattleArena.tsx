@@ -2392,7 +2392,9 @@ export const BattleArena: React.FC<Props> = ({
 
   return (
     <div className="racing-game">
-      <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
+      <div className="battle-bots-canvas-host">
+        <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
+      </div>
 
       <WinnerDialog
         theme={battleBotsTheme}

@@ -1419,7 +1419,9 @@ export const PlinkoGame: React.FC<Props> = ({
 
   return (
     <div className="racing-game">
-      <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
+      <div className="plinko-canvas-host">
+        <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="game-canvas" />
+      </div>
 
       <WinnerDialog
         theme={plinkoTheme}

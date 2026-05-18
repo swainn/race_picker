@@ -4,6 +4,26 @@
   align-items: center;
   gap: 20px;
   width: 100%;
+  position: relative;
+}
+
+.plinko-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 400 / 600;
+  /* Largest 400:600 box that fits both viewport axes minus chrome. */
+  width: min(
+    100%,
+    calc((100svh - 240px) * (400 / 600)),
+    calc(100vw - 64px)
+  );
+  max-width: 600px;
+}
+
+.plinko-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  image-rendering: auto;
 }
 
 .game-canvas {
