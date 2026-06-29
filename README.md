@@ -1,19 +1,20 @@
 # 🎮 Aquaveo Picker
 
-A gamified random-selection tool with six game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, or battleship grid — all sharing the same participant list.
+A gamified random-selection tool with seven game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, a battleship grid, or a spinning wheel — all sharing the same participant list.
 
 ## Game Modes
 
-Pick a mode from the dropdown at the top of the page:
+Pick a mode from the dropdown at the top of the page (use the 🎲 button next to it to jump to a random mode):
 
-- **🏁 Racing** — Vehicle race across the bottom of the canvas with 11 sub-modes (cars, boats, planes, balloons, rockets, ducks, snails, turtles, cats, dogs, mixed)
-- **⚔️ Battle Bots** — Combat-arena elimination with weapons, hazards, takedowns, and instant replays
-- **🏍️ Light Cycles** — Tron-inspired light-cycle elimination with AI personalities and power-ups
+- **🏁 Racing** — Vehicle race across the canvas with 11 sub-modes (cars, boats, planes, balloons, rockets, ducks, snails, turtles, cats, dogs, mixed)
+- **⚔️ Battle Bots** — Combat-arena elimination with weapons, hazards, takedowns, and instant replays. Last bot standing wins.
+- **🏍️ Light Cycles** — Tron-inspired light-cycle elimination with AI personalities and power-ups. Last cycle standing wins.
 - **🎯 Plinko** — Plinko ball drop with elemental effects on winners (fire, ice, green, lightning)
-- **🧗 Wall Climber** — Vertical wall-climbing race with 9 climber sub-modes
-- **🚢 Battleship** — Each participant gets a ship on an auto-sized grid; rapid-fire cannon, broadside, and depth-charge shots hunt and target ships until the first one is sunk (configurable ship sizes and visibility)
+- **🧗 Wall Climber** — Vertical wall-climbing race with 10 sub-modes (cars, boats, planes, balloons, rockets, ducks, snails, cats, dogs, mixed)
+- **🚢 Battleship** — Each participant gets a ship on an auto-sized grid; rapid-fire cannon, broadside, and depth-charge shots hunt and target ships until the first one is sunk (configurable ship sizes and visibility). Last ship afloat wins.
+- **🎡 Wheel** — Classic spin-the-wheel picker; each spin selects and removes a name, with a running leaderboard and selectable tick sounds
 
-All modes share the same participant list and saved groups. Switching modes mid-race prompts a confirmation and resets the current race.
+All modes share the same participant list and saved groups. Modes with a 🎛 Settings button (Racing, Wall Climber, Battleship, Wheel) expose extra per-mode options. Switching modes mid-race prompts a confirmation and resets the current race.
 
 ## Screenshots
 
@@ -28,7 +29,7 @@ All modes share the same participant list and saved groups. Switching modes mid-
 
 ## About
 
-Aquaveo Race Picker is a web application that gamifies random selection. Instead of simply picking names from a list, participants are displayed as racing cars on a track, competing in dynamic races where the winner of each race is eliminated from the pool. This continues until all participants have been ranked, creating an engaging and fun way to determine winners or process selections.
+Aquaveo Picker is a web application that gamifies random selection. Instead of simply picking names from a list, participants compete in one of several animated game modes where the winner of each round is eliminated (or, in survival modes, the last one standing wins). This continues until all participants have been ranked, creating an engaging and fun way to determine winners or process selections.
 
 ## Features
 
@@ -100,17 +101,17 @@ Aquaveo Race Picker is a web application that gamifies random selection. Instead
 
 ## Technology Stack
 
-- **React 18** with TypeScript
-- **Vite** for fast build and HMR
-- **HTML5 Canvas** for race animations (60fps)
+- **React 19** with TypeScript (strict)
+- **Vite 7** for fast build and HMR
+- **HTML5 Canvas** for race animations (60fps via `requestAnimationFrame`)
 - **CSS3** with gradients and animations
-- **localStorage** for data persistence
+- **localStorage** for data persistence (no backend)
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js 16+
-- npm or yarn
+- Node.js 20.19+ or 22.12+ (required by Vite 7)
+- npm
 
 ### Installation
 
@@ -134,17 +135,26 @@ npm run build
 
 ## Architecture
 
-- **App.tsx** — Top-level state (participants, groups, current mode, basic race state) and the mode dropdown
-- **components/EntryManager.tsx** — Participant list with image upload
-- **components/FinalStandingsDialog.tsx** — Shared standings dialog used by all modes
+- **App.tsx** — Owns all mode-agnostic state (participants, groups, current mode, `eliminatedIds`, `winOrder`, current winner) and the mode dropdown. The active mode is rendered with a `key` of `${gameMode}-${resetKey}`, so switching mode or resetting fully remounts the mode component.
+- **components/EntryManager.tsx** — Participant list with per-entry image upload (max 20 participants)
+- **components/ManagementDialog.tsx** — Modal wrapping the participant manager and saved-group controls
+- **components/FinalStandingsDialog.tsx** — Shared standings dialog used by all modes (reverses order for survival modes)
 - **components/modes/&lt;ModeName&gt;/** — Each game is a self-contained mode under its own folder:
   - `RacingMode/` — vehicle race + 11 sub-mode toggle
   - `BattleBotsMode/` — combat arena (takedowns, replays, hazards)
   - `LightCyclesMode/` — Tron-style light cycles (AI personalities, power-ups)
   - `PlinkoMode/` — ball drop with elemental winner effects
-  - `WallClimberMode/` — wall-climb race + 9 climber sub-modes
+  - `WallClimberMode/` — wall-climb race + 10 sub-mode toggle
   - `BattleshipMode/` — grid-based battleship picker (cannon/broadside/depth-charge shots, hunt+target AI, configurable ship sizes and visibility)
+  - `WheelMode/` — spin-the-wheel picker with leaderboard and selectable sounds
 - **components/modes/types.ts** — `ModeViewProps` contract every mode implements
+- **components/modes/registry.ts** — `MODE_REGISTRY` wires each mode's view, optional settings panel, winner theme, label, and `survivalOrder` flag in one place
+- **components/modes/themes.ts** — Per-mode `WinnerTheme` color/typography tokens
+- **components/shared/** — `WinnerDialog` (themed winner card) and `SettingsModal` reused across modes
+- **hooks/** — `useWinnerLifecycle` (winner-dialog expand/auto-minimize) and `useReplayRecorder` (generic ring-buffer replay for canvas modes)
+- **utils/** — `colors`, `array` (shuffle), `storage` (safe localStorage helpers), `entryImages` (image-field accessors)
+
+Each mode keeps its own persisted settings in a `*SettingsStore.ts` module (a singleton backed by `useSyncExternalStore`), rather than lifting that state into `App`.
 
 ## Future Enhancements
 
