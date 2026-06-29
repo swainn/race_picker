@@ -1,0 +1,41 @@
+.kung-fu-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.kung-fu-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  position: relative;
+}
+
+.kung-fu-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 400 / 600;
+  width: min(
+    100%,
+    calc((100svh - 240px) * (400 / 600)),
+    calc(100vw - 64px)
+  );
+  max-width: 600px;
+}
+
+.kung-fu-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  image-rendering: auto;
+}
+
+.kung-fu-canvas-host .game-canvas {
+  border: 3px solid #2b2540;
+  background-color: #16213e;
+  border-radius: 8px;
+  display: block;
+}

@@ -74,6 +74,17 @@ export const battleshipTheme: WinnerTheme = {
   buttonStyle: 'solid',
 };
 
+export const kungFuTheme: WinnerTheme = {
+  accent: '#E8B23A',
+  accentSoft: 'rgba(232, 178, 58, 0.55)',
+  bgGradient: 'linear-gradient(135deg,#3a1d12 0%,#1a0f08 100%)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#F4C95D',
+  buttonStyle: 'solid',
+};
+
 export const wheelTheme: WinnerTheme = {
   accent: '#2d3436',
   accentSoft: 'rgba(45, 52, 54, 0.45)',

@@ -7,7 +7,8 @@ export type GameMode =
   | 'plinko'
   | 'wall-climber'
   | 'battleship'
-  | 'wheel';
+  | 'wheel'
+  | 'kung-fu';
 
 /** Per-mode metadata that gets stashed on a winner record. */
 export interface ModeWinnerExtras {
