@@ -34,12 +34,14 @@ export function WheelMode(props: ModeViewProps) {
 
   useEffect(() => {
     if (eliminatedIds.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
       setWinnerSnapshot(null);
     }
   }, [eliminatedIds.length]);
 
   useEffect(() => {
     if (currentWinner === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
       setWinnerSnapshot(null);
     }
   }, [currentWinner]);
@@ -51,6 +53,7 @@ export function WheelMode(props: ModeViewProps) {
     if (currentWinner && !winnerSnapshot) {
       const found = allEntries.find((e) => e.name === currentWinner);
       if (found) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
         setWinnerSnapshot({
           name: found.name,
           image: getPreferredEntryImage(found),

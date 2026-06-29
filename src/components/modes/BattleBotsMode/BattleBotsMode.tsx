@@ -80,6 +80,7 @@ export function BattleBotsMode(props: ModeViewProps) {
     if (winnerDisplay && winnerDisplay.name === currentWinner) return;
     const entry = allEntries.find((e) => e.name === currentWinner);
     if (!entry) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
     setWinnerDisplay({
       name: entry.name,
       imageDataUrl: getPreferredEntryImage(entry),
@@ -91,6 +92,7 @@ export function BattleBotsMode(props: ModeViewProps) {
   /* Clear local winner display when parent clears currentWinner. */
   useEffect(() => {
     if (currentWinner === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
       setWinnerDisplay(null);
     }
   }, [currentWinner]);

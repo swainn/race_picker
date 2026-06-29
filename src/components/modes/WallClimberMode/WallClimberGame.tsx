@@ -71,6 +71,431 @@ interface Props {
   mode: RacingMode;
 }
 
+function drawClimber(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x - 4, y - 6, 8, 12, 3);
+  ctx.fill();
+
+  // Head
+  ctx.fillStyle = '#FFD9B3';
+  ctx.beginPath();
+  ctx.arc(x, y - 10, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Arms reaching
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 3, y - 3);
+  ctx.lineTo(x - 8, y - 8);
+  ctx.moveTo(x + 3, y - 3);
+  ctx.lineTo(x + 8, y - 8);
+  ctx.stroke();
+
+  // Legs
+  ctx.beginPath();
+  ctx.moveTo(x - 2, y + 6);
+  ctx.lineTo(x - 6, y + 12);
+  ctx.moveTo(x + 2, y + 6);
+  ctx.lineTo(x + 6, y + 12);
+  ctx.stroke();
+
+  // Harness line removed
+}
+
+function drawMonkey(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 2, 6, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(x, y - 6, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Face
+  ctx.fillStyle = '#F2C19C';
+  ctx.beginPath();
+  ctx.ellipse(x, y - 5, 4, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ears
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x - 6, y - 6, 2.5, 0, Math.PI * 2);
+  ctx.arc(x + 6, y - 6, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tail curl
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x + 6, y + 6, 5, 0.3, Math.PI * 1.4);
+  ctx.stroke();
+}
+
+function drawLizard(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 2, 10, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head
+  ctx.beginPath();
+  ctx.ellipse(x + 9, y, 4, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tail
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 8, y + 2);
+  ctx.quadraticCurveTo(x - 14, y + 6, x - 10, y + 12);
+  ctx.stroke();
+
+  // Legs
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x - 2, y + 4);
+  ctx.lineTo(x - 6, y + 8);
+  ctx.moveTo(x + 2, y + 4);
+  ctx.lineTo(x + 6, y + 8);
+  ctx.stroke();
+}
+
+function drawBalloon(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  const balloonRadiusX = 10;
+  const balloonRadiusY = 13;
+  const basketWidth = 8;
+  const basketHeight = 6;
+
+  // Balloon envelope
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y - 6, balloonRadiusX, balloonRadiusY, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Balloon highlight
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.beginPath();
+  ctx.ellipse(x - 3, y - 9, balloonRadiusX / 3, balloonRadiusY / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Basket
+  ctx.fillStyle = '#8B5A2B';
+  ctx.fillRect(x - basketWidth / 2, y + 8, basketWidth, basketHeight);
+
+  // Basket outline
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - basketWidth / 2, y + 8, basketWidth, basketHeight);
+
+  // Ropes
+  ctx.strokeStyle = '#d2b48c';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x - 5, y + 2);
+  ctx.lineTo(x - basketWidth / 2, y + 8);
+  ctx.moveTo(x + 5, y + 2);
+  ctx.lineTo(x + basketWidth / 2, y + 8);
+  ctx.stroke();
+
+  // Envelope outline
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(x, y - 6, balloonRadiusX, balloonRadiusY, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawRocket(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  const rocketWidth = 10;
+  const rocketHeight = 24;
+  const finSize = 5;
+
+  // Rocket body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x - rocketWidth / 2, y - rocketHeight / 2, rocketWidth, rocketHeight, 4);
+  ctx.fill();
+
+  // Nose cone
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(x, y - rocketHeight / 2 - 6);
+  ctx.lineTo(x - rocketWidth / 2, y - rocketHeight / 2 + 2);
+  ctx.lineTo(x + rocketWidth / 2, y - rocketHeight / 2 + 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Window
+  ctx.fillStyle = '#4af';
+  ctx.beginPath();
+  ctx.arc(x, y - 2, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Side fins
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x - rocketWidth / 2, y + rocketHeight / 4);
+  ctx.lineTo(x - rocketWidth / 2 - finSize, y + rocketHeight / 2 - 2);
+  ctx.lineTo(x - rocketWidth / 2, y + rocketHeight / 2 - 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(x + rocketWidth / 2, y + rocketHeight / 4);
+  ctx.lineTo(x + rocketWidth / 2 + finSize, y + rocketHeight / 2 - 2);
+  ctx.lineTo(x + rocketWidth / 2, y + rocketHeight / 2 - 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Flame exhaust
+  ctx.fillStyle = '#FF6B00';
+  ctx.beginPath();
+  ctx.moveTo(x - 3, y + rocketHeight / 2);
+  ctx.lineTo(x, y + rocketHeight / 2 + 8);
+  ctx.lineTo(x + 3, y + rocketHeight / 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Outline
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(x - rocketWidth / 2, y - rocketHeight / 2, rocketWidth, rocketHeight, 4);
+  ctx.stroke();
+}
+
+function drawDuck(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  const duckWidth = 20;
+  const duckHeight = 12;
+
+  ctx.save();
+  ctx.translate(x, 0);
+  ctx.scale(-1, 1);
+  ctx.translate(-x, 0);
+
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y, duckWidth / 2, duckHeight / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Wing highlight
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x + 3, y + 1, 5, 0, Math.PI * 1.2);
+  ctx.stroke();
+
+  // Outline
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(x, y, duckWidth / 2, duckHeight / 2, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Head
+  ctx.fillStyle = '#FFD54F';
+  ctx.beginPath();
+  ctx.arc(x - 8, y - 4, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Beak
+  ctx.fillStyle = '#F57C00';
+  ctx.beginPath();
+  ctx.moveTo(x - 13, y - 4);
+  ctx.lineTo(x - 18, y - 2);
+  ctx.lineTo(x - 13, y);
+  ctx.closePath();
+  ctx.fill();
+
+  // Eye
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(x - 8, y - 5, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawSnail(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  const bodyWidth = 24;
+  const bodyHeight = 8;
+
+  // Foot/body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x - bodyWidth / 2, y + 1, bodyWidth, bodyHeight, 4);
+  ctx.fill();
+
+  // Head (front)
+  ctx.beginPath();
+  ctx.ellipse(x + bodyWidth / 2 - 2, y + 1, 4, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body outline
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.roundRect(x - bodyWidth / 2, y + 1, bodyWidth, bodyHeight, 4);
+  ctx.stroke();
+
+  // Shell (bigger, distinct)
+  ctx.fillStyle = '#F4E7C5';
+  ctx.beginPath();
+  ctx.arc(x - 6, y - 2, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shell outline
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(x - 6, y - 2, 7, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Shell spiral
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(x - 6, y - 2, 4.5, 0.4, Math.PI * 1.9);
+  ctx.stroke();
+
+  // Antennae (stalks)
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + bodyWidth / 2 - 3, y - 1);
+  ctx.lineTo(x + bodyWidth / 2 + 3, y - 7);
+  ctx.moveTo(x + bodyWidth / 2 - 5, y - 1);
+  ctx.lineTo(x + bodyWidth / 2 + 1, y - 7);
+  ctx.stroke();
+
+  // Eyes
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(x + bodyWidth / 2 + 3, y - 7, 1, 0, Math.PI * 2);
+  ctx.arc(x + bodyWidth / 2 + 1, y - 7, 1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+
+function drawCat(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  const bodyWidth = 18;
+  const bodyHeight = 10;
+
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(x + 10, y - 2, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ears
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x + 7, y - 8);
+  ctx.lineTo(x + 9, y - 12);
+  ctx.lineTo(x + 11, y - 8);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(x + 11, y - 8);
+  ctx.lineTo(x + 13, y - 12);
+  ctx.lineTo(x + 15, y - 8);
+  ctx.closePath();
+  ctx.fill();
+
+  // Tail
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 10, y + 2);
+  ctx.quadraticCurveTo(x - 16, y - 2, x - 12, y - 8);
+  ctx.stroke();
+
+  // Eyes
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(x + 8.5, y - 3, 1, 0, Math.PI * 2);
+  ctx.arc(x + 12, y - 3, 1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Outline
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawDog(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  const bodyWidth = 20;
+  const bodyHeight = 10;
+
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(x + 11, y - 1, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ear
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+  ctx.beginPath();
+  ctx.ellipse(x + 9, y - 6, 3, 4, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Snout
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x + 16, y, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Nose
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(x + 18, y, 1.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tail
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 10, y + 2);
+  ctx.quadraticCurveTo(x - 16, y + 4, x - 14, y + 10);
+  ctx.stroke();
+
+  // Eyes
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(x + 10, y - 2, 1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Outline
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
 export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds, winOrder, onWinner, onRaceComplete, onShowFinalStandings, isRacing, currentWinner, mode }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [racers, setRacers] = useState<Racer[]>([]);
@@ -79,7 +504,7 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
   const obstaclesRef = useRef<Obstacle[]>([]);
   const [birds, setBirds] = useState<Bird[]>([]);
   const birdsRef = useRef<Bird[]>([]);
-  const [particles, setParticles] = useState<Particle[]>([]);
+  const [particles] = useState<Particle[]>([]);
   const [tickerTime, setTickerTime] = useState(0);
   const animationRef = useRef<number | undefined>(undefined);
   const wallPatternRef = useRef<CanvasPattern | null>(null);
@@ -160,11 +585,13 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
       };
     });
 
+     
     setRacers(newRacers);
     setObstacles([]);
     obstaclesRef.current = [];
     setBirds([]);
     birdsRef.current = [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- canvas/init effect: listed deps are intentional; adding the rest would restart the loop
   }, [entries, raceState, allEntries, mode]);
 
   // Start race when isRacing becomes true
@@ -173,6 +600,7 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
       // Randomly decide obstacles for this race: 25% chance each for obstacles only, birds only, both, or none
       const rand = Math.random();
       if (rand < 0.25) {
+         
         setHasObstacles(true);
         setHasBirds(false);
       } else if (rand < 0.5) {
@@ -221,6 +649,7 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
     } else if (!isRacing && raceState === 'racing') {
       setRaceState('ready');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- canvas/init effect: listed deps are intentional; adding the rest would restart the loop
   }, [isRacing, entries, allEntries, mode]);
 
   // Start race
@@ -518,6 +947,7 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- canvas/init effect: listed deps are intentional; adding the rest would restart the loop
   }, [raceState, racers.length, onWinner, allEntries.length]);
 
   // Draw canvas
@@ -727,7 +1157,7 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
       secondaryMap.set(value, existing);
     });
 
-    secondaryMap.forEach((indexes, value) => {
+    secondaryMap.forEach((indexes) => {
       if (indexes.length > 1) {
         indexes.forEach((idx) => {
           initialsByIndex.set(idx, initialsFor(racers[idx].entry.name, 2));
@@ -822,639 +1252,14 @@ export const WallClimberGame: React.FC<Props> = ({ entries, allEntries, eliminat
       }
     });
 
-    // Static lane nameplates with placement
-    const getOrdinal = (n: number) => {
-      const s = ['th', 'st', 'nd', 'rd'];
-      const v = n % 100;
-      return n + (s[(v - 20) % 10] || s[v] || s[0]);
-    };
-
     // Labels removed for cleaner climbing wall
 
     // Particle effects removed
 
     return () => {};
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- canvas/init effect: listed deps are intentional; adding the rest would restart the loop
   }, [racers, obstacles, birds, particles, allEntries, eliminatedIds, winOrder, tickerTime]);
 
-  const drawClimber = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    // Body
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.roundRect(x - 4, y - 6, 8, 12, 3);
-    ctx.fill();
-
-    // Head
-    ctx.fillStyle = '#FFD9B3';
-    ctx.beginPath();
-    ctx.arc(x, y - 10, 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Arms reaching
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x - 3, y - 3);
-    ctx.lineTo(x - 8, y - 8);
-    ctx.moveTo(x + 3, y - 3);
-    ctx.lineTo(x + 8, y - 8);
-    ctx.stroke();
-
-    // Legs
-    ctx.beginPath();
-    ctx.moveTo(x - 2, y + 6);
-    ctx.lineTo(x - 6, y + 12);
-    ctx.moveTo(x + 2, y + 6);
-    ctx.lineTo(x + 6, y + 12);
-    ctx.stroke();
-
-    // Harness line removed
-  };
-
-  const drawMonkey = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    // Body
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 2, 6, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Head
-    ctx.beginPath();
-    ctx.arc(x, y - 6, 6, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Face
-    ctx.fillStyle = '#F2C19C';
-    ctx.beginPath();
-    ctx.ellipse(x, y - 5, 4, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Ears
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x - 6, y - 6, 2.5, 0, Math.PI * 2);
-    ctx.arc(x + 6, y - 6, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Tail curl
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x + 6, y + 6, 5, 0.3, Math.PI * 1.4);
-    ctx.stroke();
-  };
-
-  const drawLizard = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    // Body
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 2, 10, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Head
-    ctx.beginPath();
-    ctx.ellipse(x + 9, y, 4, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Tail
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x - 8, y + 2);
-    ctx.quadraticCurveTo(x - 14, y + 6, x - 10, y + 12);
-    ctx.stroke();
-
-    // Legs
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x - 2, y + 4);
-    ctx.lineTo(x - 6, y + 8);
-    ctx.moveTo(x + 2, y + 4);
-    ctx.lineTo(x + 6, y + 8);
-    ctx.stroke();
-  };
-
-  const drawBoat = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const boatWidth = 22;  // horizontal width (length)
-    const boatHeight = 7;  // vertical height (reduced from 14)
-    
-    // Draw boat hull with flat back, flat top, and curved nose
-    // Drawing with bow on left so it points right after the flip
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    
-    // Start at back-top corner (right when facing forward after flip) - 90 degree corner
-    ctx.moveTo(x + boatWidth / 2, y - boatHeight / 2);
-    
-    // Top edge to nose with sharp 90 degree corner at top-left
-    ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2);
-    
-    // Sharp downward line from top-left corner
-    ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2 + 1.5);
-    
-    // Curved nose (front/bow) - left side before flip
-    ctx.quadraticCurveTo(
-      x - boatWidth / 2 - 2, y, // control point
-      x - boatWidth / 2 + 4, y + boatHeight / 2
-    );
-    
-    // Bottom flat section from nose to stern
-    ctx.lineTo(x + boatWidth / 2, y + boatHeight / 2);
-    
-    // Flat back (stern) - right side before flip, close the path
-    ctx.closePath();
-    ctx.fill();
-
-    // Draw deck (lighter section in the middle)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.beginPath();
-    ctx.moveTo(x + boatWidth / 2 - 4, y - boatHeight / 2 + 1.5);
-    ctx.lineTo(x - boatWidth / 2 + 6, y - boatHeight / 2 + 1.5);
-    ctx.quadraticCurveTo(
-      x - boatWidth / 2 + 2, y,
-      x - boatWidth / 2 + 6, y + boatHeight / 2 - 1.5
-    );
-    ctx.lineTo(x + boatWidth / 2 - 4, y + boatHeight / 2 - 1.5);
-    ctx.closePath();
-    ctx.fill();
-
-    // Draw sail mast (vertical line)
-    ctx.strokeStyle = '#8B4513';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x + 2, y - boatHeight / 2);
-    ctx.lineTo(x + 2, y - boatHeight / 2 - 12);
-    ctx.stroke();
-
-    // Draw sail (triangular) - flipped on vertical axis
-    ctx.fillStyle = '#fff';
-    ctx.strokeStyle = '#ddd';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x + 2, y - boatHeight / 2 - 12); // top of mast
-    ctx.lineTo(x + 2, y - boatHeight / 2); // bottom of mast
-    ctx.lineTo(x + 8, y - boatHeight / 2 - 6); // sail point (flipped)
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Draw boat outline with proper shape
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    
-    // Start at back-top corner
-    ctx.moveTo(x + boatWidth / 2, y - boatHeight / 2);
-    
-    // Top edge to nose with sharp corner
-    ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2);
-    
-    // Sharp downward line from top-left corner
-    ctx.lineTo(x - boatWidth / 2 + 4, y - boatHeight / 2 + 1.5);
-    
-    ctx.quadraticCurveTo(
-      x - boatWidth / 2 - 2, y,
-      x - boatWidth / 2 + 4, y + boatHeight / 2
-    );
-    
-    // Bottom edge back to stern
-    ctx.lineTo(x + boatWidth / 2, y + boatHeight / 2);
-    
-    // Flat back
-    ctx.closePath();
-    ctx.stroke();
-
-    // Draw water splash at back (stern wake) - moved to back of boat
-    ctx.strokeStyle = '#4af';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x + boatWidth / 2 - 1, y - 3);
-    ctx.lineTo(x + boatWidth / 2 + 2, y - 4);
-    ctx.moveTo(x + boatWidth / 2 - 1, y + 3);
-    ctx.lineTo(x + boatWidth / 2 + 2, y + 4);
-    ctx.stroke();
-  };
-
-  const drawPlane = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const planeWidth = 24;  // horizontal width (length)
-    const planeHeight = 20;  // vertical height (wingspan)
-    
-    // Draw main fuselage (body)
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    // Pointed nose at front (right)
-    ctx.moveTo(x + planeWidth / 2, y);
-    // Top of fuselage
-    ctx.lineTo(x + planeWidth / 2 - 6, y - 3);
-    ctx.lineTo(x - planeWidth / 2, y - 3);
-    // Tail
-    ctx.lineTo(x - planeWidth / 2 - 2, y - 3);
-    ctx.lineTo(x - planeWidth / 2, y);
-    // Bottom of tail
-    ctx.lineTo(x - planeWidth / 2 - 2, y + 3);
-    // Bottom of fuselage
-    ctx.lineTo(x - planeWidth / 2, y + 3);
-    ctx.lineTo(x + planeWidth / 2 - 6, y + 3);
-    ctx.closePath();
-    ctx.fill();
-
-    // Draw wings (horizontal across)
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    // Top wing
-    ctx.moveTo(x - 2, y - 3);
-    ctx.lineTo(x + 4, y - 3);
-    ctx.lineTo(x + 4, y - planeHeight / 2);
-    ctx.lineTo(x + 2, y - planeHeight / 2);
-    ctx.lineTo(x - 2, y - planeHeight / 2 + 2);
-    ctx.closePath();
-    ctx.fill();
-    
-    // Bottom wing
-    ctx.beginPath();
-    ctx.moveTo(x - 2, y + 3);
-    ctx.lineTo(x + 4, y + 3);
-    ctx.lineTo(x + 4, y + planeHeight / 2);
-    ctx.lineTo(x + 2, y + planeHeight / 2);
-    ctx.lineTo(x - 2, y + planeHeight / 2 - 2);
-    ctx.closePath();
-    ctx.fill();
-
-    // Draw cockpit window
-    ctx.fillStyle = '#4af';
-    ctx.beginPath();
-    ctx.arc(x + planeWidth / 2 - 8, y, 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Draw fuselage outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x + planeWidth / 2, y);
-    ctx.lineTo(x + planeWidth / 2 - 6, y - 3);
-    ctx.lineTo(x - planeWidth / 2, y - 3);
-    ctx.lineTo(x - planeWidth / 2 - 2, y - 3);
-    ctx.lineTo(x - planeWidth / 2, y);
-    ctx.lineTo(x - planeWidth / 2 - 2, y + 3);
-    ctx.lineTo(x - planeWidth / 2, y + 3);
-    ctx.lineTo(x + planeWidth / 2 - 6, y + 3);
-    ctx.closePath();
-    ctx.stroke();
-
-    // Draw wing outlines
-    ctx.beginPath();
-    ctx.moveTo(x - 2, y - 3);
-    ctx.lineTo(x + 4, y - 3);
-    ctx.lineTo(x + 4, y - planeHeight / 2);
-    ctx.lineTo(x + 2, y - planeHeight / 2);
-    ctx.lineTo(x - 2, y - planeHeight / 2 + 2);
-    ctx.closePath();
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.moveTo(x - 2, y + 3);
-    ctx.lineTo(x + 4, y + 3);
-    ctx.lineTo(x + 4, y + planeHeight / 2);
-    ctx.lineTo(x + 2, y + planeHeight / 2);
-    ctx.lineTo(x - 2, y + planeHeight / 2 - 2);
-    ctx.closePath();
-    ctx.stroke();
-
-    // Draw jet stream / contrails at back
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x - planeWidth / 2 - 2, y);
-    ctx.lineTo(x - planeWidth / 2 - 8, y);
-    ctx.stroke();
-  };
-
-  const drawBalloon = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const balloonRadiusX = 10;
-    const balloonRadiusY = 13;
-    const basketWidth = 8;
-    const basketHeight = 6;
-
-    // Balloon envelope
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, y - 6, balloonRadiusX, balloonRadiusY, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Balloon highlight
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.beginPath();
-    ctx.ellipse(x - 3, y - 9, balloonRadiusX / 3, balloonRadiusY / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Basket
-    ctx.fillStyle = '#8B5A2B';
-    ctx.fillRect(x - basketWidth / 2, y + 8, basketWidth, basketHeight);
-
-    // Basket outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x - basketWidth / 2, y + 8, basketWidth, basketHeight);
-
-    // Ropes
-    ctx.strokeStyle = '#d2b48c';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x - 5, y + 2);
-    ctx.lineTo(x - basketWidth / 2, y + 8);
-    ctx.moveTo(x + 5, y + 2);
-    ctx.lineTo(x + basketWidth / 2, y + 8);
-    ctx.stroke();
-
-    // Envelope outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(x, y - 6, balloonRadiusX, balloonRadiusY, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  };
-
-  const drawRocket = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const rocketWidth = 10;
-    const rocketHeight = 24;
-    const finSize = 5;
-
-    // Rocket body
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.roundRect(x - rocketWidth / 2, y - rocketHeight / 2, rocketWidth, rocketHeight, 4);
-    ctx.fill();
-
-    // Nose cone
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.moveTo(x, y - rocketHeight / 2 - 6);
-    ctx.lineTo(x - rocketWidth / 2, y - rocketHeight / 2 + 2);
-    ctx.lineTo(x + rocketWidth / 2, y - rocketHeight / 2 + 2);
-    ctx.closePath();
-    ctx.fill();
-
-    // Window
-    ctx.fillStyle = '#4af';
-    ctx.beginPath();
-    ctx.arc(x, y - 2, 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Side fins
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(x - rocketWidth / 2, y + rocketHeight / 4);
-    ctx.lineTo(x - rocketWidth / 2 - finSize, y + rocketHeight / 2 - 2);
-    ctx.lineTo(x - rocketWidth / 2, y + rocketHeight / 2 - 2);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(x + rocketWidth / 2, y + rocketHeight / 4);
-    ctx.lineTo(x + rocketWidth / 2 + finSize, y + rocketHeight / 2 - 2);
-    ctx.lineTo(x + rocketWidth / 2, y + rocketHeight / 2 - 2);
-    ctx.closePath();
-    ctx.fill();
-
-    // Flame exhaust
-    ctx.fillStyle = '#FF6B00';
-    ctx.beginPath();
-    ctx.moveTo(x - 3, y + rocketHeight / 2);
-    ctx.lineTo(x, y + rocketHeight / 2 + 8);
-    ctx.lineTo(x + 3, y + rocketHeight / 2);
-    ctx.closePath();
-    ctx.fill();
-
-    // Outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(x - rocketWidth / 2, y - rocketHeight / 2, rocketWidth, rocketHeight, 4);
-    ctx.stroke();
-  };
-
-  const drawDuck = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const duckWidth = 20;
-    const duckHeight = 12;
-
-    ctx.save();
-    ctx.translate(x, 0);
-    ctx.scale(-1, 1);
-    ctx.translate(-x, 0);
-
-    // Body
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, y, duckWidth / 2, duckHeight / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Wing highlight
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(x + 3, y + 1, 5, 0, Math.PI * 1.2);
-    ctx.stroke();
-
-    // Outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(x, y, duckWidth / 2, duckHeight / 2, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Head
-    ctx.fillStyle = '#FFD54F';
-    ctx.beginPath();
-    ctx.arc(x - 8, y - 4, 5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Beak
-    ctx.fillStyle = '#F57C00';
-    ctx.beginPath();
-    ctx.moveTo(x - 13, y - 4);
-    ctx.lineTo(x - 18, y - 2);
-    ctx.lineTo(x - 13, y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Eye
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(x - 8, y - 5, 1.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  };
-
-  const drawSnail = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const bodyWidth = 24;
-    const bodyHeight = 8;
-
-    // Foot/body
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.roundRect(x - bodyWidth / 2, y + 1, bodyWidth, bodyHeight, 4);
-    ctx.fill();
-
-    // Head (front)
-    ctx.beginPath();
-    ctx.ellipse(x + bodyWidth / 2 - 2, y + 1, 4, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Body outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.roundRect(x - bodyWidth / 2, y + 1, bodyWidth, bodyHeight, 4);
-    ctx.stroke();
-
-    // Shell (bigger, distinct)
-    ctx.fillStyle = '#F4E7C5';
-    ctx.beginPath();
-    ctx.arc(x - 6, y - 2, 7, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Shell outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(x - 6, y - 2, 7, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Shell spiral
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(x - 6, y - 2, 4.5, 0.4, Math.PI * 1.9);
-    ctx.stroke();
-
-    // Antennae (stalks)
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x + bodyWidth / 2 - 3, y - 1);
-    ctx.lineTo(x + bodyWidth / 2 + 3, y - 7);
-    ctx.moveTo(x + bodyWidth / 2 - 5, y - 1);
-    ctx.lineTo(x + bodyWidth / 2 + 1, y - 7);
-    ctx.stroke();
-
-    // Eyes
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(x + bodyWidth / 2 + 3, y - 7, 1, 0, Math.PI * 2);
-    ctx.arc(x + bodyWidth / 2 + 1, y - 7, 1, 0, Math.PI * 2);
-    ctx.fill();
-  };
-
-
-  const drawCat = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const bodyWidth = 18;
-    const bodyHeight = 10;
-
-    // Body
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Head
-    ctx.beginPath();
-    ctx.arc(x + 10, y - 2, 5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Ears
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(x + 7, y - 8);
-    ctx.lineTo(x + 9, y - 12);
-    ctx.lineTo(x + 11, y - 8);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(x + 11, y - 8);
-    ctx.lineTo(x + 13, y - 12);
-    ctx.lineTo(x + 15, y - 8);
-    ctx.closePath();
-    ctx.fill();
-
-    // Tail
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x - 10, y + 2);
-    ctx.quadraticCurveTo(x - 16, y - 2, x - 12, y - 8);
-    ctx.stroke();
-
-    // Eyes
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(x + 8.5, y - 3, 1, 0, Math.PI * 2);
-    ctx.arc(x + 12, y - 3, 1, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  };
-
-  const drawDog = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {
-    const bodyWidth = 20;
-    const bodyHeight = 10;
-
-    // Body
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Head
-    ctx.beginPath();
-    ctx.arc(x + 11, y - 1, 5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Ear
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.beginPath();
-    ctx.ellipse(x + 9, y - 6, 3, 4, 0.3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Snout
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(x + 16, y, 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Nose
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(x + 18, y, 1.2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Tail
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x - 10, y + 2);
-    ctx.quadraticCurveTo(x - 16, y + 4, x - 14, y + 10);
-    ctx.stroke();
-
-    // Eyes
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.arc(x + 10, y - 2, 1, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Outline
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 2, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  };
 
   return (
     <div className="racing-game">

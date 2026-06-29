@@ -177,6 +177,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     } else if (!isRacing && raceState === 'racing') {
       setRaceState('ready');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- canvas/init effect: listed deps are intentional; adding the rest would restart the loop
   }, [isRacing, entries, allEntries, mode]);
 
   // Start race
@@ -371,6 +372,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       clearInterval(particleInterval);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- canvas/init effect: listed deps are intentional; adding the rest would restart the loop
   }, [raceState, racers.length, onWinner, allEntries.length]);
 
   // Draw canvas
@@ -585,6 +587,7 @@ export const RacingGame: React.FC<Props> = ({ entries, allEntries, eliminatedIds
     });
 
     return () => {};
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- canvas/init effect: listed deps are intentional; adding the rest would restart the loop
   }, [racers, particles, allEntries, eliminatedIds, winOrder, tickerTime]);
 
   const drawCar = (ctx: CanvasRenderingContext2D, x: number, y: number, color: string) => {

@@ -171,7 +171,7 @@ export const PlinkoGame: React.FC<Props> = ({
       }
     }
     
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setPegs(generatedPegs);
   }, []);
 
@@ -218,7 +218,7 @@ export const PlinkoGame: React.FC<Props> = ({
       };
     });
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     setPlayers(newPlayers);
   }, [entries, raceState]);
 
@@ -345,12 +345,13 @@ export const PlinkoGame: React.FC<Props> = ({
           resumeVy: 0
         };
       });
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+       
       setPlayers(resetPlayers);
       setRaceState('racing');
     } else if (!isRacing && raceState === 'racing') {
       setRaceState('ready');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- canvas/init effect: listed deps are intentional; adding the rest would restart the loop
   }, [isRacing, entries]);
 
   // Game loop
@@ -1084,6 +1085,7 @@ export const PlinkoGame: React.FC<Props> = ({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- canvas/init effect: listed deps are intentional; adding the rest would restart the loop
   }, [raceState, players.length, pegs, onWinner]);
 
   // Draw canvas
@@ -1449,7 +1451,6 @@ export const PlinkoGame: React.FC<Props> = ({
   );
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 
 function getPrimaryWinnerEffect(effects?: WinnerEffects): 'fire' | 'ice' | 'green' | 'lightning' | null {
   if (!effects) {

@@ -1115,7 +1115,9 @@ export const BattleArena: React.FC<Props> = ({
   // Reset replay flag whenever a new winner appears; <WinnerDialog> triggers
   // setReplayActive(true) via onReplayStart when it auto-minimizes.
   const prevWinnerRef = useRef(currentWinner);
+  // eslint-disable-next-line react-hooks/refs -- React 'adjust state during render' pattern: reset replay when a new winner appears
   if (currentWinner !== prevWinnerRef.current) {
+    // eslint-disable-next-line react-hooks/refs -- React 'adjust state during render' pattern: reset replay when a new winner appears
     prevWinnerRef.current = currentWinner;
     if (currentWinner) {
       setReplayActive(false);

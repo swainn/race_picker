@@ -857,6 +857,7 @@ export const LightCycles: React.FC<Props> = ({
   // setReplayActive(true) via onReplayStart when it auto-minimizes.
   useEffect(() => {
     if (!currentWinner) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
     setReplayActive(false);
   }, [currentWinner]);
 
@@ -899,6 +900,7 @@ export const LightCycles: React.FC<Props> = ({
     nextPickupAtRef.current = Date.now() + 600 + Math.random() * 800;
 
     phaseStartRef.current = Date.now();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
     setPhase('reveal');
   }, [isRacing, entries]);
 
@@ -1183,6 +1185,7 @@ export const LightCycles: React.FC<Props> = ({
   // When isRacing flips false (after onWinner), keep phase='finished' for replay/banner.
   useEffect(() => {
     if (!isRacing && phase === 'racing') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
       setPhase('finished');
     }
     if (!isRacing && phase === 'finished') {
@@ -1194,6 +1197,7 @@ export const LightCycles: React.FC<Props> = ({
   // Reset to idle when there's no winner shown and not racing (full state reset)
   useEffect(() => {
     if (!isRacing && !currentWinner) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
       setPhase('idle');
       setReplayActive(false);
       replayDataRef.current = null;

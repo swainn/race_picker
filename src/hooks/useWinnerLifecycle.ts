@@ -21,12 +21,15 @@ export function useWinnerLifecycle({
 }: UseWinnerLifecycleArgs): WinnerLifecycle {
   const [phase, setPhase] = useState<WinnerPhase>('hidden');
   const onMinimizeRef = useRef(onMinimize);
-  onMinimizeRef.current = onMinimize;
+  useEffect(() => {
+    onMinimizeRef.current = onMinimize;
+  }, [onMinimize]);
 
   const minimizedFiredRef = useRef(false);
 
   useEffect(() => {
     if (!show) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- local state synced from parent-driven prop transitions; cannot derive during render
       setPhase('hidden');
       minimizedFiredRef.current = false;
       return;
