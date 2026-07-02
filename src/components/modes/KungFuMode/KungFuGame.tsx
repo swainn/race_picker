@@ -138,12 +138,16 @@ export function KungFuGame({
   }, [settings.shrinkPlatform]);
 
   // ---- Initialization ---------------------------------------------------
+  // With shrink disabled the platform is always full size; with it enabled,
+  // each elimination also tightens the starting radius for the next round.
   const roundStartRadius = () =>
-    clamp(
-      KF.PLATFORM_R_START - eliminatedIds.length * KF.ROUND_SHRINK_STEP,
-      KF.PLATFORM_R_MIN + 30,
-      KF.PLATFORM_R_START
-    );
+    settings.shrinkPlatform
+      ? clamp(
+          KF.PLATFORM_R_START - eliminatedIds.length * KF.ROUND_SHRINK_STEP,
+          KF.PLATFORM_R_MIN + 30,
+          KF.PLATFORM_R_START
+        )
+      : KF.PLATFORM_R_START;
 
   const initFighters = () => {
     const n = entries.length;
