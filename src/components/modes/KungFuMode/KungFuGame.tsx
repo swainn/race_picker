@@ -16,6 +16,7 @@ import {
   type FighterView,
   type FxView,
 } from './kungFuFighter';
+import { useKungFuSettings } from './kungFuSettingsStore';
 import './KungFuGame.css';
 
 interface KillerInfo {
@@ -129,6 +130,13 @@ export function KungFuGame({
     playbackSpeed: 0.4,
   });
 
+  // Keep the latest "shrink platform" setting readable inside the game loop.
+  const settings = useKungFuSettings();
+  const shrinkRef = useRef(settings.shrinkPlatform);
+  useEffect(() => {
+    shrinkRef.current = settings.shrinkPlatform;
+  }, [settings.shrinkPlatform]);
+
   // ---- Initialization ---------------------------------------------------
   const roundStartRadius = () =>
     clamp(
@@ -139,12 +147,13 @@ export function KungFuGame({
 
   const initFighters = () => {
     const n = entries.length;
-    const ringR = roundStartRadius() * 0.55;
+    const ringRx = roundStartRadius() * 0.55;
+    const ringRy = ringRx * KF.PLATFORM_SQUASH;
     fightersRef.current = entries.map((entry, i) => {
       const colorIdx = allEntries.findIndex((e) => e.id === entry.id);
       const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
-      const x = KF.PLATFORM_CX + Math.cos(angle) * ringR;
-      const y = KF.PLATFORM_CY + Math.sin(angle) * ringR;
+      const x = KF.PLATFORM_CX + Math.cos(angle) * ringRx;
+      const y = KF.PLATFORM_CY + Math.sin(angle) * ringRy;
       const facing: 1 | -1 = KF.PLATFORM_CX >= x ? 1 : -1;
       return {
         id: entry.id,
@@ -191,14 +200,31 @@ export function KungFuGame({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on the isRacing/raceState transition only
   }, [isRacing, raceState]);
 
-  // ---- Static render while idle (ready) ---------------------------------
+  // ---- Static render while idle (ready): show the fighters on the pad ---
   useEffect(() => {
     if (raceState !== 'ready') return;
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
+    if (entries.length >= 1) initFighters();
+    else fightersRef.current = [];
+    const now = performance.now();
     drawBackground(ctx, KF.CANVAS_W, KF.CANVAS_H);
-    drawPlatform(ctx, KF.PLATFORM_CX, KF.PLATFORM_CY, KF.PLATFORM_R_START, 0);
-  }, [raceState]);
+    drawPlatform(ctx, KF.PLATFORM_CX, KF.PLATFORM_CY, platformRRef.current, 0);
+    for (const f of [...fightersRef.current].sort((a, b) => a.y - b.y)) drawFighter(ctx, f, now);
+    ctx.save();
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3;
+    for (const f of fightersRef.current) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.strokeText(f.entry.name, f.x, f.y - 26);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(f.entry.name, f.x, f.y - 26);
+    }
+    ctx.restore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- redraw the idle pad whenever the roster or state changes
+  }, [raceState, entries]);
 
   // ---- Reveal countdown -------------------------------------------------
   useEffect(() => {
@@ -378,7 +404,8 @@ export function KungFuGame({
         .filter((e) => winOrder.has(e.id))
         .sort((a, b) => (winOrder.get(a.id) ?? 0) - (winOrder.get(b.id) ?? 0));
       if (out.length === 0) return;
-      const y = KF.CANVAS_H - 16;
+      // Top of the canvas: the minimized winner pill sits at the bottom.
+      const y = 14;
       let x = 14;
       ctx.save();
       ctx.font = 'bold 10px system-ui, sans-serif';
@@ -431,19 +458,23 @@ export function KungFuGame({
 
       // Platform shrink schedule (forced collapse as a hard backstop).
       const elapsed = now - roundStartRef.current;
+      // Forced-collapse backstop always applies (prevents stalemates). The
+      // gradual shrink is opt-in via the mode setting.
+      let shrinking = 0;
       if (elapsed > KF.FORCED_END_MS) {
         platformRRef.current = Math.max(
           KF.PLATFORM_R_MIN * 0.6,
           platformRRef.current - KF.FORCED_COLLAPSE_SPEED * dt
         );
-      } else if (elapsed < KF.SHRINK_GRACE_MS) {
+        shrinking = 1;
+      } else if (!shrinkRef.current || elapsed < KF.SHRINK_GRACE_MS) {
         platformRRef.current = roundStartRadiusRef.current;
       } else {
         const t = clamp((elapsed - KF.SHRINK_GRACE_MS) / KF.SHRINK_DURATION_MS, 0, 1);
         platformRRef.current = lerp(roundStartRadiusRef.current, KF.PLATFORM_R_MIN, easeInOut(t));
+        shrinking = 1;
       }
       const platformR = platformRRef.current;
-      const shrinking = elapsed >= KF.SHRINK_GRACE_MS ? 1 : 0;
 
       // Decisions + steering + move begin.
       for (const f of fighters) {
@@ -459,6 +490,7 @@ export function KungFuGame({
             platformCx: KF.PLATFORM_CX,
             platformCy: KF.PLATFORM_CY,
             platformR,
+            squash: KF.PLATFORM_SQUASH,
             now,
           });
           f.targetId = intent.targetId;
@@ -529,8 +561,10 @@ export function KungFuGame({
         if ((f.state === 'knockback' || f.state === 'hitstun') && now >= f.stateUntil) {
           f.state = 'idle';
         }
-        const d = Math.hypot(f.x - KF.PLATFORM_CX, f.y - KF.PLATFORM_CY);
-        if (d > platformR) {
+        // Ring-out against the rendered ellipse (normalized distance > 1 = off).
+        const ndx = (f.x - KF.PLATFORM_CX) / platformR;
+        const ndy = (f.y - KF.PLATFORM_CY) / (platformR * KF.PLATFORM_SQUASH);
+        if (ndx * ndx + ndy * ndy > 1) {
           f.state = 'falling';
           f.stateUntil = now + KF.FALL_MS;
           f.fallScale = 1;
@@ -553,7 +587,9 @@ export function KungFuGame({
             break;
           }
         }
-        const offPlatform = Math.hypot(p.x - KF.PLATFORM_CX, p.y - KF.PLATFORM_CY) > platformR + 20;
+        const pndx = (p.x - KF.PLATFORM_CX) / platformR;
+        const pndy = (p.y - KF.PLATFORM_CY) / (platformR * KF.PLATFORM_SQUASH);
+        const offPlatform = pndx * pndx + pndy * pndy > 1.2;
         if (!consumed && p.traveled < KF.CHI_RANGE && !offPlatform) liveProjectiles.push(p);
       }
       projectilesRef.current = liveProjectiles;

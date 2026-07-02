@@ -9,7 +9,7 @@
  * Figure style is modeled on WallClimberGame's `drawClimber`: simple primitives,
  * body in the participant color, white limb strokes.
  */
-import type { MoveId } from './kungFuMoves';
+import { KF, type MoveId } from './kungFuMoves';
 
 export type FighterState =
   | 'idle'
@@ -67,7 +67,7 @@ export function drawPlatform(
   dangerPulse: number
 ): void {
   const sideDrop = r * 0.5;
-  const ry = r * 0.34; // vertical squash for the perspective ellipse
+  const ry = r * KF.PLATFORM_SQUASH; // vertical squash for the perspective ellipse
 
   // Pillar side: bottom ellipse + connecting band.
   ctx.fillStyle = '#241f33';
@@ -172,13 +172,22 @@ export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: 
     ctx.moveTo(cx, cy + 6);
     ctx.lineTo(cx + 12, cy + 9);
     ctx.stroke();
-  } else {
-    const stride = moving ? cycle * 4 : 3;
+  } else if (moving) {
+    // Walking: legs splay from the hip with a stride cycle.
+    const stride = cycle * 4;
     ctx.beginPath();
     ctx.moveTo(cx, cy + 6);
     ctx.lineTo(cx - 4 + stride, cy + 14);
     ctx.moveTo(cx, cy + 6);
     ctx.lineTo(cx + 4 + stride * 0.5, cy + 14);
+    ctx.stroke();
+  } else {
+    // Idle/ready: straight vertical legs on either side (capital-H stance).
+    ctx.beginPath();
+    ctx.moveTo(cx - 3, cy + 6);
+    ctx.lineTo(cx - 3, cy + 14);
+    ctx.moveTo(cx + 3, cy + 6);
+    ctx.lineTo(cx + 3, cy + 14);
     ctx.stroke();
   }
 

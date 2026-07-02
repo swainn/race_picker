@@ -71,6 +71,10 @@ export const KF = {
   PLATFORM_CY: 320,
   PLATFORM_R_START: 165,
   PLATFORM_R_MIN: 46,
+  /** Vertical squash of the platform ellipse (oblique "top of a pillar" look).
+   *  Shared by the renderer, fighter placement, and the ring-out test so the
+   *  visual oval and the knockout boundary stay aligned. */
+  PLATFORM_SQUASH: 0.34,
   FIGHTER_RADIUS: 13,
 
   // Physics.

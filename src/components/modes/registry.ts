@@ -23,6 +23,7 @@ import { BattleshipSettings } from './BattleshipMode/BattleshipSettings';
 import { WheelMode } from './WheelMode/WheelMode';
 import { WheelSettings } from './WheelMode/WheelSettings';
 import { KungFuMode } from './KungFuMode/KungFuMode';
+import { KungFuSettings } from './KungFuMode/KungFuSettings';
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -42,7 +43,7 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   'wall-climber': { View: WallClimberMode, Settings: WallClimberSettings, theme: wallClimberTheme, label: '🧗 Wall Climber' },
   battleship:     { View: BattleshipMode,  Settings: BattleshipSettings, theme: battleshipTheme,  label: '🚢 Battleship', survivalOrder: true },
   wheel:          { View: WheelMode,       Settings: WheelSettings,      theme: wheelTheme,       label: '🎡 Wheel' },
-  'kung-fu':      { View: KungFuMode,      theme: kungFuTheme,      label: '🥋 Kung Fu',      survivalOrder: true },
+  'kung-fu':      { View: KungFuMode,      Settings: KungFuSettings, theme: kungFuTheme, label: '🥋 Kung Fu', survivalOrder: true },
 };
 
 export const MODE_LIST: { value: GameMode; label: string }[] =

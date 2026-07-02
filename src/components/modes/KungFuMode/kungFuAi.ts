@@ -29,6 +29,8 @@ export interface AiContext {
   platformCx: number;
   platformCy: number;
   platformR: number;
+  /** Vertical squash of the platform ellipse (matches the rendered pad). */
+  squash: number;
   now: number;
 }
 
@@ -49,21 +51,26 @@ function ready(self: AiFighter, move: MoveId, now: number): boolean {
 }
 
 export function decideIntent(ctx: AiContext): AiIntent {
-  const { self, others, platformCx, platformCy, platformR, now } = ctx;
+  const { self, others, platformCx, platformCy, platformR, squash, now } = ctx;
 
   if (others.length === 0) return IDLE;
 
+  // Normalized distance from center on the platform ellipse: 1 = at the rim.
+  const ry = platformR * squash;
+  const normDist = (px: number, py: number) =>
+    Math.hypot((px - platformCx) / platformR, (py - platformCy) / ry);
+
   const sdx = self.x - platformCx;
   const sdy = self.y - platformCy;
-  const selfDist = Math.hypot(sdx, sdy) || 1;
+  const selfNd = normDist(self.x, self.y);
 
   // (1) Self-preservation overrides aggression near the rim.
-  if (selfDist > platformR * 0.8) {
-    const inward = -1;
+  if (selfNd > 0.8) {
+    const len = Math.hypot(sdx, sdy) || 1;
     return {
       targetId: null,
-      desiredVx: (sdx / selfDist) * KF.WALK_SPEED * inward,
-      desiredVy: (sdy / selfDist) * KF.WALK_SPEED * inward,
+      desiredVx: (-sdx / len) * KF.WALK_SPEED,
+      desiredVy: (-sdy / len) * KF.WALK_SPEED,
       move: null,
       block: false,
     };
@@ -74,7 +81,7 @@ export function decideIntent(ctx: AiContext): AiIntent {
   let bestScore = -Infinity;
   for (const o of others) {
     const dist = Math.hypot(o.x - self.x, o.y - self.y) || 1;
-    const edge = Math.hypot(o.x - platformCx, o.y - platformCy) / platformR;
+    const edge = normDist(o.x, o.y);
     const score = 90 / dist + edge * 1.6;
     if (score > bestScore) {
       bestScore = score;
@@ -115,7 +122,7 @@ export function decideIntent(ctx: AiContext): AiIntent {
   let move: MoveId | null = null;
   const canAct = self.currentMove === null && (self.state === 'idle' || self.state === 'approach');
   if (canAct && !block) {
-    const targetNearEdge = tCenterDist > platformR * 0.62;
+    const targetNearEdge = normDist(target.x, target.y) > 0.62;
     if (distToTarget >= 40 && distToTarget <= 90 && targetNearEdge && ready(self, 'flyingKick', now)) {
       move = 'flyingKick';
     } else if (distToTarget <= MOVES.kick.reach + KF.FIGHTER_RADIUS * 2) {
