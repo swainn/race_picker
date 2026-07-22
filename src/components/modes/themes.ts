@@ -85,6 +85,32 @@ export const kungFuTheme: WinnerTheme = {
   buttonStyle: 'solid',
 };
 
+export const invadersTheme: WinnerTheme = {
+  accent: '#54FF6B',
+  accentSoft: 'rgba(84, 255, 107, 0.55)',
+  bgGradient: 'linear-gradient(135deg,#0a0e28 0%,#04050f 100%)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#8CFF9E',
+  fontFamily: '"Courier New", monospace',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};
+
+export const defendersTheme: WinnerTheme = {
+  accent: '#3AD1FF',
+  accentSoft: 'rgba(58, 209, 255, 0.55)',
+  bgGradient: 'linear-gradient(135deg,#071a2e 0%,#04050f 100%)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#8FE6FF',
+  fontFamily: '"Courier New", monospace',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};
+
 export const wheelTheme: WinnerTheme = {
   accent: '#2d3436',
   accentSoft: 'rgba(45, 52, 54, 0.45)',

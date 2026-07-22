@@ -7,6 +7,8 @@ import {
   lightCyclesTheme,
   plinkoTheme,
   kungFuTheme,
+  invadersTheme,
+  defendersTheme,
   racingTheme,
   wallClimberTheme,
   wheelTheme,
@@ -24,6 +26,10 @@ import { WheelMode } from './WheelMode/WheelMode';
 import { WheelSettings } from './WheelMode/WheelSettings';
 import { KungFuMode } from './KungFuMode/KungFuMode';
 import { KungFuSettings } from './KungFuMode/KungFuSettings';
+import { InvadersMode } from './SpaceInvadersMode/InvadersMode';
+import { InvadersSettings } from './SpaceInvadersMode/InvadersSettings';
+import { DefendersMode } from './SpaceInvadersMode/DefendersMode';
+import { DefendersSettings } from './SpaceInvadersMode/DefendersSettings';
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -44,6 +50,8 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   battleship:     { View: BattleshipMode,  Settings: BattleshipSettings, theme: battleshipTheme,  label: '🚢 Battleship', survivalOrder: true },
   wheel:          { View: WheelMode,       Settings: WheelSettings,      theme: wheelTheme,       label: '🎡 Wheel' },
   'kung-fu':      { View: KungFuMode,      Settings: KungFuSettings, theme: kungFuTheme, label: '🥋 Kung Fu', survivalOrder: true },
+  'space-invaders':  { View: InvadersMode,  Settings: InvadersSettings,  theme: invadersTheme,  label: '👾 Space Invaders', survivalOrder: true },
+  'space-defenders': { View: DefendersMode, Settings: DefendersSettings, theme: defendersTheme, label: '🛡️ Space Defenders', survivalOrder: true },
 };
 
 export const MODE_LIST: { value: GameMode; label: string }[] =

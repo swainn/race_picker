@@ -8,7 +8,9 @@ export type GameMode =
   | 'wall-climber'
   | 'battleship'
   | 'wheel'
-  | 'kung-fu';
+  | 'kung-fu'
+  | 'space-invaders'
+  | 'space-defenders';
 
 /** Per-mode metadata that gets stashed on a winner record. */
 export interface ModeWinnerExtras {
