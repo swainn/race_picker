@@ -24,6 +24,22 @@ export function InvadersSettings() {
           />
           <span>Invaders shoot back (cosmetic)</span>
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={settings.powerUps}
+            onChange={(e) => updateSpaceSettings({ powerUps: e.target.checked })}
+          />
+          <span>Random powers &amp; protections (theatrical — the pick stays fair)</span>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={settings.sound}
+            onChange={(e) => updateSpaceSettings({ sound: e.target.checked })}
+          />
+          <span>Arcade sound effects</span>
+        </label>
       </fieldset>
     </>
   );

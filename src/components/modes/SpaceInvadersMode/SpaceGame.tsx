@@ -7,10 +7,12 @@ import type { WinnerTheme } from '../themes';
 import {
   SI,
   speedFactor,
+  marchTempo,
   layoutCombatants,
   layoutHorde,
   baseExtent,
   pickVictim,
+  assignPowers,
   type Variant,
   type Combatant,
   type Shot,
@@ -20,6 +22,7 @@ import {
 } from './invadersEngine';
 import { paintWorld } from './invadersDraw';
 import { useSpaceSettings } from './spaceSettingsStore';
+import * as audio from './spaceAudio';
 import './SpaceGame.css';
 
 interface WinnerDisplay {
@@ -48,8 +51,10 @@ interface Props {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const easeInOut = (t: number) => t * t * (3 - 2 * t);
+const cloakAlpha = () => 0.4 + 0.35 * (0.5 + 0.5 * Math.sin(Date.now() / 140));
 
 type RaceState = 'ready' | 'reveal' | 'fighting' | 'finished';
+type Phase = 'lock' | 'fire';
 
 export function SpaceGame({
   variant,
@@ -80,6 +85,9 @@ export function SpaceGame({
   const marchDXRef = useRef(0);
   const marchDYRef = useRef(0);
   const marchDirRef = useRef<1 | -1>(1);
+  const marchStepRef = useRef(0);
+  const lastMarchTickRef = useRef(0);
+  const starScrollRef = useRef(0);
 
   const victimIdRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef(0);
@@ -91,6 +99,19 @@ export function SpaceGame({
   const deathUntilRef = useRef(0);
   const replayVictimRef = useRef<{ id: number } | null>(null);
   const imgCacheRef = useRef<Map<number, HTMLImageElement>>(new Map());
+
+  // Target-lock drumroll state.
+  const phaseRef = useRef<Phase>('lock');
+  const reticleRef = useRef<{ x: number; y: number; locked: boolean } | null>(null);
+  const reticleTargetRef = useRef<number | null>(null);
+  const nextHopRef = useRef(0);
+  const lockStartRef = useRef(0);
+  const lockEndRef = useRef(0);
+  const fireStartRef = useRef(0);
+
+  // Bonus UFO.
+  const ufoRef = useRef<{ x: number; dir: 1 | -1; active: boolean }>({ x: 0, dir: 1, active: false });
+  const nextUfoCheckRef = useRef(0);
 
   const { record, clear, start, stop, getCurrentFrame } = useReplayRecorder<SpaceFrame>({
     maxFrames: 360,
@@ -104,14 +125,18 @@ export function SpaceGame({
   const suddenRef = useRef(settings.suddenDeath);
   const backfireRef = useRef(settings.invadersShootBack);
   const shieldsRef = useRef(settings.defenderShields);
+  const powerUpsRef = useRef(settings.powerUps);
   useEffect(() => {
     speedRef.current = settings.speed;
     suddenRef.current = settings.suddenDeath;
     backfireRef.current = settings.invadersShootBack;
     shieldsRef.current = settings.defenderShields;
+    powerUpsRef.current = settings.powerUps;
+    audio.setMuted(!settings.sound);
   }, [settings]);
 
-  // ---- Image preload ----------------------------------------------------
+  const hasImage = (id: number) => imgCacheRef.current.has(id);
+
   const ensureImages = () => {
     for (const entry of entries) {
       const url = getPreferredEntryImage(entry);
@@ -123,8 +148,6 @@ export function SpaceGame({
     }
   };
 
-  const hasImage = (id: number) => imgCacheRef.current.has(id);
-
   // ---- Build a paint/record snapshot from live refs ---------------------
   const snapshot = (): SpaceFrame => ({
     combatants: combatantsRef.current.map((c) => ({
@@ -135,6 +158,9 @@ export function SpaceGame({
       color: c.color,
       alive: c.alive,
       hasImage: hasImage(c.id),
+      power: c.power,
+      shielded: c.shieldUp,
+      alpha: c.power === 'cloak' ? cloakAlpha() : 1,
     })),
     shots: shotsRef.current.map((s) => ({ x: s.x, y: s.y, color: s.color, kind: s.kind })),
     fx: fxRef.current.map((f) => ({ ...f })),
@@ -143,21 +169,35 @@ export function SpaceGame({
       x: h.baseX + marchDXRef.current,
       y: h.baseY + marchDYRef.current,
     })),
+    starScroll: starScrollRef.current,
+    animFrame: marchStepRef.current % 2,
+    ufo: ufoRef.current.active ? { x: ufoRef.current.x, y: SI.UFO_Y } : null,
+    reticle: reticleRef.current,
   });
+
+  const aliveCombatants = () => combatantsRef.current.filter((c) => c.alive);
+  const victimNow = () =>
+    combatantsRef.current.find((c) => c.id === victimIdRef.current && c.alive);
 
   // ---- Round initialization ---------------------------------------------
   const initRound = () => {
     ensureImages();
     combatantsRef.current = layoutCombatants(variant, entries, allEntries);
+    // Powers are an Invaders-variant flourish (mobile aliens); Defenders stay classic.
+    assignPowers(combatantsRef.current, variant === 'invaders' && powerUpsRef.current);
     shotsRef.current = [];
     fxRef.current = [];
     marchDXRef.current = 0;
     marchDYRef.current = 0;
     marchDirRef.current = 1;
+    marchStepRef.current = 0;
     cannonXRef.current = SI.CANVAS_W / 2;
     lastFireRef.current = 0;
     lastBackfireRef.current = 0;
     pendingKillRef.current = null;
+    ufoRef.current = { x: 0, dir: 1, active: false };
+    reticleRef.current = null;
+    reticleTargetRef.current = null;
 
     if (variant === 'defenders') {
       hordeRef.current = layoutHorde();
@@ -176,6 +216,7 @@ export function SpaceGame({
     if (!isRacing) return;
     if (raceState === 'reveal' || raceState === 'fighting') return;
     if (entries.length < 2) return; // App auto-declares a lone survivor
+    audio.resumeAudio(); // the Start click is our autoplay-policy gesture
     initRound();
     clear();
     revealStartRef.current = Date.now();
@@ -203,11 +244,11 @@ export function SpaceGame({
     cannonXRef.current = SI.CANVAS_W / 2;
     shotsRef.current = [];
     fxRef.current = [];
+    reticleRef.current = null;
+    ufoRef.current = { x: 0, dir: 1, active: false };
     const paintIdle = () =>
       paintWorld(ctx, snapshot(), variant, imgCacheRef.current, shieldsRef.current);
     paintIdle();
-    // Photos may not have decoded by this one-shot paint — repaint each as it
-    // loads so the idle preview shows faces, not just fallback sprites.
     for (const [, im] of imgCacheRef.current) {
       if (!im.complete) im.addEventListener('load', paintIdle, { once: true });
     }
@@ -240,9 +281,21 @@ export function SpaceGame({
       ctx.restore();
 
       if (elapsed >= SI.REVEAL_MS) {
-        roundStartRef.current = Date.now();
-        lastFrameTimeRef.current = Date.now();
-        lastFireRef.current = Date.now();
+        const t = Date.now();
+        roundStartRef.current = t;
+        lastFrameTimeRef.current = t;
+        lastFireRef.current = t;
+        lastMarchTickRef.current = t;
+        nextUfoCheckRef.current = t + 1500;
+        // Enter the target-lock drumroll.
+        phaseRef.current = 'lock';
+        lockStartRef.current = t;
+        const sf = speedFactor(speedRef.current);
+        const lockDur = (SI.LOCK_MS / sf) / (suddenRef.current ? 1.7 : 1);
+        lockEndRef.current = t + lockDur;
+        nextHopRef.current = t;
+        const alive = aliveCombatants();
+        reticleTargetRef.current = alive.length ? alive[0].id : victimIdRef.current;
         setRaceState('fighting');
         return;
       }
@@ -269,164 +322,28 @@ export function SpaceGame({
       Math.abs(shot.x - victim.x) < SI.HIT_TOL_X &&
       Math.abs(shot.y - victim.y) < SI.SPRITE * 0.5 + 6;
 
-    const loop = () => {
-      const now = Date.now();
-      const dt = Math.min((now - lastFrameTimeRef.current) / 1000, 0.05);
-      lastFrameTimeRef.current = now;
-      const sf = speedFactor(speedRef.current);
-      const sudden = suddenRef.current;
-      const elapsed = now - roundStartRef.current;
-
-      // March the moving group (invaders: participants; defenders: horde).
-      const ext = marchExtentRef.current;
-      marchDXRef.current += marchDirRef.current * SI.MARCH_VX * sf * dt;
-      if (sudden) marchDYRef.current += SI.DESCENT_VY * sf * dt * 6;
-      if (ext.max + marchDXRef.current > SI.CANVAS_W - SI.MARGIN) {
-        marchDirRef.current = -1;
-        marchDYRef.current += SI.MARCH_STEP;
-      } else if (ext.min + marchDXRef.current < SI.MARGIN) {
-        marchDirRef.current = 1;
-        marchDYRef.current += SI.MARCH_STEP;
-      }
-
-      // Apply the offset to whichever group marches.
+    const fireFatalShot = (victim: Combatant, sf: number) => {
       if (variant === 'invaders') {
-        for (const c of combatantsRef.current) {
-          c.x = c.baseX + marchDXRef.current;
-          c.y = c.baseY + marchDYRef.current;
+        shotsRef.current.push({
+          x: cannonXRef.current, y: SI.CANNON_Y - 20,
+          vx: 0, vy: -SI.SHOT_SPEED * sf, color: '#8dffb0', kind: 'laser', live: true,
+        });
+      } else {
+        let src: { x: number; y: number } = { x: victim.x, y: SI.HORDE_TOP_Y };
+        let best = Infinity;
+        for (const h of hordeRef.current) {
+          const hx = h.baseX + marchDXRef.current;
+          const hy = h.baseY + marchDYRef.current;
+          const d = Math.abs(hx - victim.x);
+          if (d < best) { best = d; src = { x: hx, y: hy }; }
         }
+        shotsRef.current.push({
+          x: src.x, y: src.y + 16,
+          vx: clamp((victim.x - src.x) * 0.8, -70, 70), vy: SI.BOMB_SPEED * sf,
+          color: '#ff5a6a', kind: 'bomb', live: true,
+        });
       }
-      // (Defenders participants stay put at their base positions.)
-
-      const victim = combatantsRef.current.find(
-        (c) => c.id === victimIdRef.current && c.alive
-      );
-
-      // ---- Threat fires at the victim (while no kill is pending) ----------
-      if (victim && !pendingKillRef.current) {
-        const interval = (SI.FIRE_INTERVAL_MS / sf) * (sudden ? 0.5 : 1);
-
-        if (variant === 'invaders') {
-          // Cannon slides toward the victim's column, then fires straight up.
-          const dx = victim.x - cannonXRef.current;
-          const step = SI.CANNON_SPEED * sf * dt;
-          cannonXRef.current += clamp(dx, -step, step);
-          if (now - lastFireRef.current > interval) {
-            lastFireRef.current = now;
-            shotsRef.current.push({
-              x: cannonXRef.current,
-              y: SI.CANNON_Y - 20,
-              vx: 0,
-              vy: -SI.SHOT_SPEED * sf,
-              color: '#8dffb0',
-              kind: 'laser',
-              live: true,
-            });
-          }
-          // Cosmetic return fire from random living aliens.
-          if (backfireRef.current && now - lastBackfireRef.current > 520 / sf) {
-            lastBackfireRef.current = now;
-            const alive = combatantsRef.current.filter((c) => c.alive);
-            if (alive.length > 0) {
-              const shooter = alive[Math.floor(Math.random() * alive.length)];
-              shotsRef.current.push({
-                x: shooter.x,
-                y: shooter.y + 18,
-                vx: 0,
-                vy: SI.BOMB_SPEED * 0.8 * sf,
-                color: shooter.color,
-                kind: 'bomb',
-                live: false,
-              });
-            }
-          }
-        } else {
-          // Defenders: a bomb drops from the horde cell above the victim and
-          // homes gently onto the victim's column.
-          if (now - lastFireRef.current > interval) {
-            lastFireRef.current = now;
-            let src: { x: number; y: number } = { x: victim.x, y: SI.HORDE_TOP_Y };
-            let best = Infinity;
-            for (const h of hordeRef.current) {
-              const hx = h.baseX + marchDXRef.current;
-              const hy = h.baseY + marchDYRef.current;
-              const d = Math.abs(hx - victim.x);
-              if (d < best) {
-                best = d;
-                src = { x: hx, y: hy };
-              }
-            }
-            const homing = clamp((victim.x - src.x) * 0.8, -70, 70);
-            shotsRef.current.push({
-              x: src.x,
-              y: src.y + 16,
-              vx: homing,
-              vy: SI.BOMB_SPEED * sf,
-              color: '#ff5a6a',
-              kind: 'bomb',
-              live: true,
-            });
-          }
-        }
-      }
-
-      // ---- Advance shots + resolve the fatal hit --------------------------
-      const liveShots: Shot[] = [];
-      for (const s of shotsRef.current) {
-        // The fatal shot homes onto the victim's column so the kill lands
-        // quickly and reads as targeted (the draw already committed the fair,
-        // uniform-random pick). Cosmetic shots (live: false) fly straight.
-        if (s.live && victim) {
-          s.vx = clamp((victim.x - s.x) * 4, -150, 150);
-        }
-        s.x += s.vx * dt;
-        s.y += s.vy * dt;
-        let consumed = false;
-        if (s.live && victim && victimHit(s, victim)) {
-          victim.alive = false;
-          spawnExplosion(victim.x, victim.y, victim.color);
-          replayVictimRef.current = { id: victim.id };
-          pendingKillRef.current = victim;
-          deathUntilRef.current = now + SI.DEATH_MS;
-          consumed = true;
-        }
-        if (s.y < -20 || s.y > SI.CANVAS_H + 20) consumed = true;
-        if (!consumed) liveShots.push(s);
-      }
-      shotsRef.current = liveShots;
-
-      // Hard backstop: force the kill if the round drags on.
-      if (victim && !pendingKillRef.current && elapsed > SI.FORCED_END_MS) {
-        victim.alive = false;
-        spawnExplosion(victim.x, victim.y, victim.color);
-        replayVictimRef.current = { id: victim.id };
-        pendingKillRef.current = victim;
-        deathUntilRef.current = now + SI.DEATH_MS;
-      }
-
-      // FX decay.
-      const liveFx: Fx[] = [];
-      for (const fx of fxRef.current) {
-        fx.life -= dt;
-        fx.radius += fx.growth * dt;
-        if (fx.life > 0) liveFx.push(fx);
-      }
-      fxRef.current = liveFx;
-
-      const frame = snapshot();
-      paintWorld(ctx, frame, variant, imgCacheRef.current, shieldsRef.current);
-      drawStandingsStrip(ctx);
-      record(frame);
-
-      // Commit the elimination once the explosion has played.
-      if (pendingKillRef.current && now >= deathUntilRef.current) {
-        const dead = pendingKillRef.current;
-        pendingKillRef.current = null;
-        setRaceState('finished');
-        onWinner(dead.entry);
-        return;
-      }
-      raf = requestAnimationFrame(loop);
+      audio.playLaser();
     };
 
     const drawStandingsStrip = (c2d: CanvasRenderingContext2D) => {
@@ -448,6 +365,218 @@ export function SpaceGame({
         if (x > SI.CANVAS_W - 40) break;
       }
       c2d.restore();
+    };
+
+    const loop = () => {
+      const now = Date.now();
+      const dt = Math.min((now - lastFrameTimeRef.current) / 1000, 0.05);
+      lastFrameTimeRef.current = now;
+      const sf = speedFactor(speedRef.current);
+      const sudden = suddenRef.current;
+      const elapsed = now - roundStartRef.current;
+      const tempo = marchTempo(entries.length, elapsed, sudden);
+
+      // Parallax star drift.
+      starScrollRef.current += SI.STAR_SCROLL_SPEED * dt * (1 + tempo * 0.2);
+
+      // March the moving group (invaders: participants; defenders: horde).
+      const ext = marchExtentRef.current;
+      marchDXRef.current += marchDirRef.current * SI.MARCH_VX * sf * tempo * dt;
+      if (sudden) marchDYRef.current += SI.DESCENT_VY * sf * dt * 6;
+      if (ext.max + marchDXRef.current > SI.CANVAS_W - SI.MARGIN) {
+        marchDirRef.current = -1;
+        marchDYRef.current += SI.MARCH_STEP;
+      } else if (ext.min + marchDXRef.current < SI.MARGIN) {
+        marchDirRef.current = 1;
+        marchDYRef.current += SI.MARCH_STEP;
+      }
+
+      // March heartbeat tick (accelerates with tempo) — also drives leg animation.
+      const tickInterval = 560 / (sf * tempo);
+      if (now - lastMarchTickRef.current > tickInterval) {
+        lastMarchTickRef.current = now;
+        marchStepRef.current += 1;
+        audio.playMarchTick(marchStepRef.current);
+      }
+
+      if (variant === 'invaders') {
+        for (const c of combatantsRef.current) {
+          c.x = c.baseX + marchDXRef.current;
+          c.y = c.baseY + marchDYRef.current;
+        }
+      }
+
+      // Bonus UFO: occasional flyby.
+      const ufo = ufoRef.current;
+      if (ufo.active) {
+        ufo.x += ufo.dir * SI.UFO_SPEED * dt;
+        if (ufo.x < -40 || ufo.x > SI.CANVAS_W + 40) ufo.active = false;
+      } else if (now > nextUfoCheckRef.current) {
+        nextUfoCheckRef.current = now + 4000;
+        if (Math.random() < 0.5) {
+          ufo.dir = Math.random() < 0.5 ? 1 : -1;
+          ufo.x = ufo.dir === 1 ? -30 : SI.CANVAS_W + 30;
+          ufo.active = true;
+          audio.playUfo();
+        }
+      }
+
+      const victim = victimNow();
+
+      // ===== LOCK PHASE: targeting drumroll ==============================
+      if (phaseRef.current === 'lock' && victim) {
+        const lockTotal = lockEndRef.current - lockStartRef.current;
+        const remaining = lockEndRef.current - now;
+        const progress = clamp(1 - remaining / lockTotal, 0, 1);
+
+        if (now >= nextHopRef.current) {
+          const alive = aliveCombatants();
+          // Near the end, settle on the victim; otherwise hop around.
+          let target: Combatant | undefined;
+          if (remaining < 420) {
+            target = victim;
+          } else {
+            target = alive[Math.floor(Math.random() * alive.length)];
+            // Blink dodge: if the reticle finds the shielded/blink victim early,
+            // it teleports away once — extending the suspense.
+            if (target && target.id === victim.id && victim.power === 'blink' && !victim.blinked) {
+              victim.blinked = true;
+              victim.baseX = clamp(
+                victim.baseX + (Math.random() < 0.5 ? -1 : 1) * SI.CELL_W,
+                SI.MARGIN, SI.CANVAS_W - SI.MARGIN
+              );
+              if (variant === 'invaders') {
+                victim.x = victim.baseX + marchDXRef.current;
+                victim.y = victim.baseY + marchDYRef.current;
+              }
+              fxRef.current.push({ x: victim.x, y: victim.y, life: 0.4, maxLife: 0.4, radius: 4, growth: 90, color: '#ffe66d' });
+              audio.playPower();
+              const others = alive.filter((c) => c.id !== victim.id);
+              target = others.length ? others[Math.floor(Math.random() * others.length)] : victim;
+            }
+          }
+          reticleTargetRef.current = target?.id ?? victim.id;
+          // Accelerating hops (drumroll): interval shrinks toward the lock.
+          const hop = (SI.RETICLE_HOP_MS * (0.35 + (remaining / lockTotal) * 0.65)) / sf;
+          nextHopRef.current = now + hop;
+          audio.playLockTick(progress);
+        }
+
+        const rt = combatantsRef.current.find((c) => c.id === reticleTargetRef.current && c.alive) ?? victim;
+        reticleRef.current = { x: rt.x, y: rt.y, locked: false };
+
+        if (now >= lockEndRef.current) {
+          reticleRef.current = { x: victim.x, y: victim.y, locked: true };
+          audio.playLocked();
+          phaseRef.current = 'fire';
+          fireStartRef.current = now;
+          lastFireRef.current = now - 9999; // fire promptly
+        }
+      }
+
+      // ===== FIRE PHASE: land the (possibly shielded) fatal blow ==========
+      if (phaseRef.current === 'fire' && victim && !pendingKillRef.current) {
+        reticleRef.current = { x: victim.x, y: victim.y, locked: true };
+        const interval = (SI.FIRE_INTERVAL_MS / sf) * (sudden ? 0.5 : 1);
+
+        if (variant === 'invaders') {
+          const dx = victim.x - cannonXRef.current;
+          const step = SI.CANNON_SPEED * sf * dt;
+          cannonXRef.current += clamp(dx, -step, step);
+        }
+        if (now - lastFireRef.current > interval) {
+          lastFireRef.current = now;
+          fireFatalShot(victim, sf);
+        }
+      }
+
+      // ---- Cosmetic return fire / rapid-fire power (invaders) ------------
+      if (variant === 'invaders' && (backfireRef.current || aliveCombatants().some((c) => c.power === 'rapid'))) {
+        const backInterval = (sudden ? 320 : 520) / (sf * tempo);
+        if (now - lastBackfireRef.current > backInterval) {
+          lastBackfireRef.current = now;
+          const shooters = aliveCombatants().filter((c) => backfireRef.current || c.power === 'rapid');
+          if (shooters.length) {
+            const s = shooters[Math.floor(Math.random() * shooters.length)];
+            const rounds = s.power === 'rapid' ? 2 : 1;
+            for (let k = 0; k < rounds; k++) {
+              shotsRef.current.push({
+                x: s.x + (k - 0.5) * 6, y: s.y + 18,
+                vx: 0, vy: SI.BOMB_SPEED * 0.8 * sf, color: s.color, kind: 'bomb', live: false,
+              });
+            }
+            audio.playBomb();
+          }
+        }
+      }
+
+      // ---- Advance shots + resolve the fatal hit -------------------------
+      const liveShots: Shot[] = [];
+      for (const s of shotsRef.current) {
+        if (s.live && victim) s.vx = clamp((victim.x - s.x) * 4, -150, 150);
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        let consumed = false;
+        if (s.live && victim && victimHit(s, victim)) {
+          if (victim.shieldUp) {
+            // Protection absorbs this shot — dramatic near-miss, then break.
+            victim.shieldUp = false;
+            fxRef.current.push({ x: victim.x, y: victim.y, life: 0.4, maxLife: 0.4, radius: SI.SPRITE * 0.6, growth: 40, color: '#7fe3ff' });
+            audio.playShieldBreak();
+            consumed = true;
+          } else {
+            victim.alive = false;
+            spawnExplosion(victim.x, victim.y, victim.color);
+            audio.playExplosion();
+            replayVictimRef.current = { id: victim.id };
+            reticleRef.current = null;
+            pendingKillRef.current = victim;
+            deathUntilRef.current = now + SI.DEATH_MS;
+            consumed = true;
+          }
+        }
+        if (s.y < -20 || s.y > SI.CANVAS_H + 20) consumed = true;
+        if (!consumed) liveShots.push(s);
+      }
+      shotsRef.current = liveShots;
+
+      // Hard backstop: force the kill if the fire phase drags on.
+      if (
+        victim && !pendingKillRef.current && phaseRef.current === 'fire' &&
+        now - fireStartRef.current > SI.FORCED_END_MS
+      ) {
+        victim.shieldUp = false;
+        victim.alive = false;
+        spawnExplosion(victim.x, victim.y, victim.color);
+        audio.playExplosion();
+        replayVictimRef.current = { id: victim.id };
+        reticleRef.current = null;
+        pendingKillRef.current = victim;
+        deathUntilRef.current = now + SI.DEATH_MS;
+      }
+
+      // FX decay.
+      const liveFx: Fx[] = [];
+      for (const fx of fxRef.current) {
+        fx.life -= dt;
+        fx.radius += fx.growth * dt;
+        if (fx.life > 0) liveFx.push(fx);
+      }
+      fxRef.current = liveFx;
+
+      const frame = snapshot();
+      paintWorld(ctx, frame, variant, imgCacheRef.current, shieldsRef.current);
+      drawStandingsStrip(ctx);
+      record(frame);
+
+      if (pendingKillRef.current && now >= deathUntilRef.current) {
+        const dead = pendingKillRef.current;
+        pendingKillRef.current = null;
+        setRaceState('finished');
+        onWinner(dead.entry);
+        return;
+      }
+      raf = requestAnimationFrame(loop);
     };
 
     raf = requestAnimationFrame(loop);
@@ -498,11 +627,24 @@ export function SpaceGame({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- replay loop keyed on replayActive
   }, [replayActive]);
 
-  const details = currentWinner
-    ? variant === 'invaders'
-      ? <>Blasted out of the sky!</>
-      : <>Base overrun by the invaders!</>
-    : undefined;
+  // Champion fanfare when the finals dialog appears.
+  const fanfaredRef = useRef(false);
+  useEffect(() => {
+    const isFinals = currentWinner?.isLastPlayer ?? false;
+    if (isFinals && !isRacing && !fanfaredRef.current) {
+      fanfaredRef.current = true;
+      audio.playFanfare();
+    }
+    if (!currentWinner) fanfaredRef.current = false;
+  }, [currentWinner, isRacing]);
+
+  // Elimination flavor only — the last survivor wasn't blasted, so no detail.
+  const details =
+    currentWinner && !currentWinner.isLastPlayer
+      ? variant === 'invaders'
+        ? <>Blasted out of the sky!</>
+        : <>Base overrun by the invaders!</>
+      : undefined;
 
   return (
     <div className="space-game">

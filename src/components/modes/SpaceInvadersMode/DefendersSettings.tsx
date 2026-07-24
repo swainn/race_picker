@@ -24,6 +24,14 @@ export function DefendersSettings() {
           />
           <span>Shield bunkers (cosmetic)</span>
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={settings.sound}
+            onChange={(e) => updateSpaceSettings({ sound: e.target.checked })}
+          />
+          <span>Arcade sound effects</span>
+        </label>
       </fieldset>
     </>
   );

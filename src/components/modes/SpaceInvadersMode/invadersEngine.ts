@@ -40,11 +40,48 @@ export const SI = {
   CANNON_SPEED: 240, // how fast the cannon tracks its target
   FIRE_INTERVAL_MS: 850,
   HIT_TOL_X: 22,
+  /** Target-lock drumroll before the fatal shot (scaled by speed). */
+  LOCK_MS: 2200,
+  RETICLE_HOP_MS: 230,
+  /** Bonus mystery UFO. */
+  UFO_Y: 52,
+  UFO_SPEED: 150,
+  STAR_SCROLL_SPEED: 14, // px/s parallax drift
+  POWER_CHANCE: 0.55, // odds an invader gets a power when power-ups are on
 } as const;
 
 export function speedFactor(speed: Speed): number {
   return speed === 'slow' ? 0.7 : speed === 'fast' ? 1.5 : 1;
 }
+
+/**
+ * March/fire tempo that escalates *within* a round (elapsed) and is faster the
+ * *fewer* invaders remain — the classic accelerating-heartbeat feel. Multiplies
+ * the base speed factor.
+ */
+export function marchTempo(count: number, elapsedMs: number, sudden: boolean): number {
+  const fewness = clampNum(1 + (12 - count) * 0.07, 1, 2.0);
+  const ramp = 1 + Math.min(elapsedMs / 6000, 1) * 1.1;
+  return fewness * ramp * (sudden ? 1.6 : 1);
+}
+
+function clampNum(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/** Theatrical powers/protections. They never change WHO is eliminated (the
+ *  victim is a fair uniform draw) — only how dramatic a round looks. */
+export type Power = 'none' | 'shield' | 'blink' | 'rapid' | 'cloak';
+
+const POWER_POOL: Power[] = ['shield', 'blink', 'rapid', 'cloak'];
+
+export const POWER_LABEL: Record<Power, string> = {
+  none: '',
+  shield: '🛡️',
+  blink: '✨',
+  rapid: '🔥',
+  cloak: '👻',
+};
 
 export interface Combatant {
   id: number;
@@ -56,6 +93,11 @@ export interface Combatant {
   x: number;
   y: number;
   alive: boolean;
+  power: Power;
+  /** Shield protection still intact (absorbs one fatal hit before breaking). */
+  shieldUp: boolean;
+  /** Blink dodge already spent this round. */
+  blinked: boolean;
 }
 
 export interface Shot {
@@ -94,6 +136,9 @@ export interface FrameCombatant {
   color: string;
   alive: boolean;
   hasImage: boolean;
+  power: Power;
+  shielded: boolean;
+  alpha: number;
 }
 
 export interface SpaceFrame {
@@ -102,6 +147,14 @@ export interface SpaceFrame {
   fx: Fx[];
   cannonX: number;
   horde: { x: number; y: number }[];
+  /** Parallax star drift offset. */
+  starScroll: number;
+  /** 0/1 marching-leg animation frame. */
+  animFrame: number;
+  /** Bonus UFO position, or null when none is on screen. */
+  ufo: { x: number; y: number } | null;
+  /** Targeting reticle during the lock-on drumroll, or null. */
+  reticle: { x: number; y: number; locked: boolean } | null;
 }
 
 /** Column count for the participant grid — a roughly-square block, capped at 6
@@ -141,8 +194,28 @@ export function layoutCombatants(
       x: baseX,
       y: baseY,
       alive: true,
+      power: 'none' as Power,
+      shieldUp: false,
+      blinked: false,
     };
   });
+}
+
+/**
+ * Randomly grant theatrical powers to combatants. Each rolls independently;
+ * this is flair only — it never touches who the (already-chosen) victim is.
+ */
+export function assignPowers(combatants: Combatant[], enabled: boolean): void {
+  for (const c of combatants) {
+    if (enabled && Math.random() < SI.POWER_CHANCE) {
+      c.power = POWER_POOL[Math.floor(Math.random() * POWER_POOL.length)];
+      c.shieldUp = c.power === 'shield';
+    } else {
+      c.power = 'none';
+      c.shieldUp = false;
+    }
+    c.blinked = false;
+  }
 }
 
 /** The generic (non-participant) enemy horde used by the Defenders variant. */

@@ -16,6 +16,10 @@ export interface SpaceSettings {
   invadersShootBack: boolean;
   /** Defenders variant: draw classic shield bunkers (cosmetic). */
   defenderShields: boolean;
+  /** Synthesized arcade sound effects. */
+  sound: boolean;
+  /** Random theatrical powers/protections on invaders (never bias the pick). */
+  powerUps: boolean;
 }
 
 const DEFAULT_SETTINGS: SpaceSettings = {
@@ -23,6 +27,8 @@ const DEFAULT_SETTINGS: SpaceSettings = {
   suddenDeath: false,
   invadersShootBack: true,
   defenderShields: true,
+  sound: true,
+  powerUps: true,
 };
 
 function loadSettings(): SpaceSettings {
@@ -37,6 +43,8 @@ function loadSettings(): SpaceSettings {
       suddenDeath: !!parsed.suddenDeath,
       invadersShootBack: parsed.invadersShootBack ?? true,
       defenderShields: parsed.defenderShields ?? true,
+      sound: parsed.sound ?? true,
+      powerUps: parsed.powerUps ?? true,
     };
   } catch {
     return DEFAULT_SETTINGS;
