@@ -130,6 +130,7 @@ export function SpaceModeShell({
         nextLabel={nextLabel}
         entries={entries}
         allEntries={allEntries}
+        eliminatedCount={eliminatedIds.length}
         winOrder={winOrder}
         onWinner={handleWinner}
         onRaceComplete={onRaceComplete}

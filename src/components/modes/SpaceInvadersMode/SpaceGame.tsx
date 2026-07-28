@@ -40,6 +40,8 @@ interface Props {
   nextLabel: string;
   entries: Entry[];
   allEntries: Entry[];
+  /** How many have been eliminated this session (0 = a fresh session). */
+  eliminatedCount: number;
   winOrder: Map<number, number>;
   onWinner: (winner: Entry) => void;
   onRaceComplete: () => void;
@@ -64,6 +66,7 @@ export function SpaceGame({
   nextLabel,
   entries,
   allEntries,
+  eliminatedCount,
   winOrder,
   onWinner,
   onRaceComplete,
@@ -88,6 +91,7 @@ export function SpaceGame({
   const marchStepRef = useRef(0);
   const lastMarchTickRef = useRef(0);
   const starScrollRef = useRef(0);
+  const maxMarchDYRef = useRef(9999);
 
   const victimIdRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef(0);
@@ -182,15 +186,51 @@ export function SpaceGame({
   // ---- Round initialization ---------------------------------------------
   const initRound = () => {
     ensureImages();
-    combatantsRef.current = layoutCombatants(variant, entries, allEntries);
+    const activeIds = new Set(entries.map((e) => e.id));
+    // A session that already has eliminations continues the same formation and
+    // its accumulated march offset; only the very first round builds fresh.
+    const continuing = eliminatedCount > 0 && combatantsRef.current.length > 0;
+
+    if (continuing) {
+      combatantsRef.current = combatantsRef.current.filter((c) => activeIds.has(c.id));
+    } else {
+      combatantsRef.current = layoutCombatants(variant, entries, allEntries);
+      marchDXRef.current = 0;
+      marchDYRef.current = 0;
+      marchDirRef.current = 1;
+      marchStepRef.current = 0;
+      hordeRef.current = variant === 'defenders' ? layoutHorde() : [];
+    }
+
     // Powers are an Invaders-variant flourish (mobile aliens); Defenders stay classic.
     assignPowers(combatantsRef.current, variant === 'invaders' && powerUpsRef.current);
+
+    // Recompute the march extent as the roster thins so survivors can range
+    // wider — classic Space Invaders behavior.
+    marchExtentRef.current =
+      variant === 'defenders'
+        ? baseExtent(hordeRef.current.map((h) => h.baseX))
+        : baseExtent(combatantsRef.current.map((c) => c.baseX));
+
+    // Descent floor so the continuous march never overruns the cannon / bases.
+    const lowestBaseY =
+      variant === 'invaders'
+        ? Math.max(...combatantsRef.current.map((c) => c.baseY))
+        : Math.max(...hordeRef.current.map((h) => h.baseY));
+    const floor = variant === 'invaders' ? SI.CANNON_Y - 96 : SI.BOTTOM_Y - SI.CELL_H - 24;
+    maxMarchDYRef.current = Math.max(0, floor - lowestBaseY);
+
+    // Resume invaders at the persisted offset so a continuing round picks up
+    // exactly where the last one left off.
+    if (variant === 'invaders') {
+      for (const c of combatantsRef.current) {
+        c.x = c.baseX + marchDXRef.current;
+        c.y = c.baseY + marchDYRef.current;
+      }
+    }
+
     shotsRef.current = [];
     fxRef.current = [];
-    marchDXRef.current = 0;
-    marchDYRef.current = 0;
-    marchDirRef.current = 1;
-    marchStepRef.current = 0;
     cannonXRef.current = SI.CANVAS_W / 2;
     lastFireRef.current = 0;
     lastBackfireRef.current = 0;
@@ -198,14 +238,6 @@ export function SpaceGame({
     ufoRef.current = { x: 0, dir: 1, active: false };
     reticleRef.current = null;
     reticleTargetRef.current = null;
-
-    if (variant === 'defenders') {
-      hordeRef.current = layoutHorde();
-      marchExtentRef.current = baseExtent(hordeRef.current.map((h) => h.baseX));
-    } else {
-      hordeRef.current = [];
-      marchExtentRef.current = baseExtent(combatantsRef.current.map((c) => c.baseX));
-    }
 
     const victim = pickVictim(entries);
     victimIdRef.current = victim.id;
@@ -390,6 +422,8 @@ export function SpaceGame({
         marchDirRef.current = 1;
         marchDYRef.current += SI.MARCH_STEP;
       }
+      // Cap the accumulated descent so it never overruns the cannon / bases.
+      marchDYRef.current = Math.min(marchDYRef.current, maxMarchDYRef.current);
 
       // March heartbeat tick (accelerates with tempo) — also drives leg animation.
       const tickInterval = 560 / (sf * tempo);
