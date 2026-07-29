@@ -1,6 +1,6 @@
 # 🎮 Aquaveo Picker
 
-A gamified random-selection tool with seven game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, a battleship grid, or a spinning wheel — all sharing the same participant list.
+A gamified random-selection tool with ten game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, a battleship grid, a spinning wheel, a kung-fu brawl, or a retro Space Invaders assault (as the invaders or the defenders) — all sharing the same participant list.
 
 ## Game Modes
 
@@ -13,8 +13,11 @@ Pick a mode from the dropdown at the top of the page (use the 🎲 button next t
 - **🧗 Wall Climber** — Vertical wall-climbing race with 10 sub-modes (cars, boats, planes, balloons, rockets, ducks, snails, cats, dogs, mixed)
 - **🚢 Battleship** — Each participant gets a ship on an auto-sized grid; rapid-fire cannon, broadside, and depth-charge shots hunt and target ships until the first one is sunk (configurable ship sizes and visibility). Last ship afloat wins.
 - **🎡 Wheel** — Classic spin-the-wheel picker; each spin selects and removes a name, with a running leaderboard and selectable tick sounds
+- **🥋 Kung Fu** — Fighters brawl on a platform, throwing punches, kicks, flying kicks, and chi blasts to knock opponents off the edge, with instant replays and an optional shrinking sudden-death platform. Last fighter standing wins.
+- **👾 Space Invaders** — Participants are the alien formation; an auto-cannon locks on with a target-lock drumroll and picks one off per wave. Features synth arcade sound, an accelerating march that continues across the whole session, and random theatrical powers/protections (shield, blink, rapid-fire, cloak) that never bias the fair pick. Last invader standing wins.
+- **🛡️ Space Defenders** — The same engine flipped: participants are the defender cannons along the bottom while a descending alien horde bombs one base per wave. Last defender standing wins.
 
-All modes share the same participant list and saved groups. Modes with a 🎛 Settings button (Racing, Wall Climber, Battleship, Wheel) expose extra per-mode options. Switching modes mid-race prompts a confirmation and resets the current race.
+All modes share the same participant list and saved groups. Modes with a 🎛 Settings button (Racing, Wall Climber, Battleship, Wheel, Kung Fu, Space Invaders, Space Defenders) expose extra per-mode options. Switching modes mid-race prompts a confirmation and resets the current race.
 
 ## Screenshots
 
@@ -147,6 +150,8 @@ npm run build
   - `WallClimberMode/` — wall-climb race + 10 sub-mode toggle
   - `BattleshipMode/` — grid-based battleship picker (cannon/broadside/depth-charge shots, hunt+target AI, configurable ship sizes and visibility)
   - `WheelMode/` — spin-the-wheel picker with leaderboard and selectable sounds
+  - `KungFuMode/` — platform brawler (moves, knock-offs, instant replay, optional shrinking platform)
+  - `SpaceInvadersMode/` — retro Space Invaders family: **Space Invaders** (participants are the aliens) and **Space Defenders** (participants are the cannons) share one canvas engine, `SpaceGame`, parameterized by variant — target-lock suspense, synth sound, an escalating session-long march, and random powers
 - **components/modes/types.ts** — `ModeViewProps` contract every mode implements
 - **components/modes/registry.ts** — `MODE_REGISTRY` wires each mode's view, optional settings panel, winner theme, label, and `survivalOrder` flag in one place
 - **components/modes/themes.ts** — Per-mode `WinnerTheme` color/typography tokens
