@@ -125,6 +125,12 @@ export function playUfo(): void {
   tone(700, 0.5, 'sine', 0.07, 500);
 }
 
+/** Light zap when a defender laser destroys a horde alien. */
+export function playHordeHit(): void {
+  tone(520, 0.08, 'square', 0.06, 200);
+  noise(0.08, 0.12, 2600, 600);
+}
+
 export function playFanfare(): void {
   if (muted) return;
   const c = ensure();

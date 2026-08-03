@@ -113,9 +113,14 @@ export function SpaceGame({
   const lockEndRef = useRef(0);
   const fireStartRef = useRef(0);
 
-  // Bonus UFO.
+  // UFO — a cosmetic flyby for Invaders; the immune fatal-shot dropper for Defenders.
   const ufoRef = useRef<{ x: number; dir: 1 | -1; active: boolean }>({ x: 0, dir: 1, active: false });
   const nextUfoCheckRef = useRef(0);
+
+  // Defenders: horde combat state.
+  const lastDefenderFireRef = useRef(0);
+  const contactYRef = useRef(9999);
+  const hordeResetNextRef = useRef(false);
 
   const { record, clear, start, stop, getCurrentFrame } = useReplayRecorder<SpaceFrame>({
     maxFrames: 360,
@@ -169,10 +174,12 @@ export function SpaceGame({
     shots: shotsRef.current.map((s) => ({ x: s.x, y: s.y, color: s.color, kind: s.kind })),
     fx: fxRef.current.map((f) => ({ ...f })),
     cannonX: cannonXRef.current,
-    horde: hordeRef.current.map((h) => ({
-      x: h.baseX + marchDXRef.current,
-      y: h.baseY + marchDYRef.current,
-    })),
+    horde: hordeRef.current
+      .filter((h) => h.alive)
+      .map((h) => ({
+        x: h.baseX + marchDXRef.current,
+        y: h.baseY + marchDYRef.current,
+      })),
     starScroll: starScrollRef.current,
     animFrame: marchStepRef.current % 2,
     ufo: ufoRef.current.active ? { x: ufoRef.current.x, y: SI.UFO_Y } : null,
@@ -195,38 +202,42 @@ export function SpaceGame({
       combatantsRef.current = combatantsRef.current.filter((c) => activeIds.has(c.id));
     } else {
       combatantsRef.current = layoutCombatants(variant, entries, allEntries);
-      marchDXRef.current = 0;
-      marchDYRef.current = 0;
-      marchDirRef.current = 1;
       marchStepRef.current = 0;
-      hordeRef.current = variant === 'defenders' ? layoutHorde() : [];
+      if (variant === 'invaders') {
+        marchDXRef.current = 0;
+        marchDYRef.current = 0;
+        marchDirRef.current = 1;
+        hordeRef.current = [];
+      }
     }
 
     // Powers are an Invaders-variant flourish (mobile aliens); Defenders stay classic.
     assignPowers(combatantsRef.current, variant === 'invaders' && powerUpsRef.current);
 
-    // Recompute the march extent as the roster thins so survivors can range
-    // wider — classic Space Invaders behavior.
-    marchExtentRef.current =
-      variant === 'defenders'
-        ? baseExtent(hordeRef.current.map((h) => h.baseX))
-        : baseExtent(combatantsRef.current.map((c) => c.baseX));
-
-    // Descent floor so the continuous march never overruns the cannon / bases.
-    const lowestBaseY =
-      variant === 'invaders'
-        ? Math.max(...combatantsRef.current.map((c) => c.baseY))
-        : Math.max(...hordeRef.current.map((h) => h.baseY));
-    const floor = variant === 'invaders' ? SI.CANNON_Y - 96 : SI.BOTTOM_Y - SI.CELL_H - 24;
-    maxMarchDYRef.current = Math.max(0, floor - lowestBaseY);
-
-    // Resume invaders at the persisted offset so a continuing round picks up
-    // exactly where the last one left off.
     if (variant === 'invaders') {
+      marchExtentRef.current = baseExtent(combatantsRef.current.map((c) => c.baseX));
+      // Descent floor so the continuous march never overruns the cannon.
+      const lowestBaseY = Math.max(...combatantsRef.current.map((c) => c.baseY));
+      maxMarchDYRef.current = Math.max(0, SI.CANNON_Y - 96 - lowestBaseY);
+      // Resume at the persisted offset so a continuing round picks up in place.
       for (const c of combatantsRef.current) {
         c.x = c.baseX + marchDXRef.current;
         c.y = c.baseY + marchDYRef.current;
       }
+    } else {
+      // Defenders: the horde continues its descent across rounds. Reset to full
+      // ranks at the top only on a fresh session or the round after a breakthrough.
+      if (!continuing || hordeResetNextRef.current) {
+        hordeRef.current = layoutHorde();
+        marchDXRef.current = 0;
+        marchDYRef.current = 0;
+        marchDirRef.current = 1;
+        hordeResetNextRef.current = false;
+      }
+      marchExtentRef.current = baseExtent(hordeRef.current.map((h) => h.baseX));
+      maxMarchDYRef.current = Number.POSITIVE_INFINITY; // contact (not a floor) ends the descent
+      // The frontline: the top-most defender row the horde must reach to break through.
+      contactYRef.current = Math.min(...combatantsRef.current.map((c) => c.baseY)) - SI.CELL_H * 0.35;
     }
 
     shotsRef.current = [];
@@ -234,8 +245,11 @@ export function SpaceGame({
     cannonXRef.current = SI.CANVAS_W / 2;
     lastFireRef.current = 0;
     lastBackfireRef.current = 0;
+    lastDefenderFireRef.current = 0;
     pendingKillRef.current = null;
-    ufoRef.current = { x: 0, dir: 1, active: false };
+    // Defenders: an immune killer UFO patrols the top all round; Invaders: idle
+    // until a random cosmetic flyby.
+    ufoRef.current = { x: SI.CANVAS_W / 2, dir: 1, active: variant === 'defenders' };
     reticleRef.current = null;
     reticleTargetRef.current = null;
 
@@ -350,6 +364,15 @@ export function SpaceGame({
       fxRef.current.push({ x, y, life: 0.45, maxLife: 0.45, radius: 2, growth: 130, color: '#ffd23a' });
     };
 
+    // Defenders: refill the alien line at the top with full ranks.
+    const respawnHorde = () => {
+      hordeRef.current = layoutHorde();
+      marchDXRef.current = 0;
+      marchDYRef.current = 0;
+      marchDirRef.current = 1;
+      marchExtentRef.current = baseExtent(hordeRef.current.map((h) => h.baseX));
+    };
+
     const victimHit = (shot: Shot, victim: Combatant): boolean =>
       Math.abs(shot.x - victim.x) < SI.HIT_TOL_X &&
       Math.abs(shot.y - victim.y) < SI.SPRITE * 0.5 + 6;
@@ -361,17 +384,11 @@ export function SpaceGame({
           vx: 0, vy: -SI.SHOT_SPEED * sf, color: '#8dffb0', kind: 'laser', live: true,
         });
       } else {
-        let src: { x: number; y: number } = { x: victim.x, y: SI.HORDE_TOP_Y };
-        let best = Infinity;
-        for (const h of hordeRef.current) {
-          const hx = h.baseX + marchDXRef.current;
-          const hy = h.baseY + marchDYRef.current;
-          const d = Math.abs(hx - victim.x);
-          if (d < best) { best = d; src = { x: hx, y: hy }; }
-        }
+        // The fatal shot drops from the immune UFO onto the victim.
+        const ux = ufoRef.current.x;
         shotsRef.current.push({
-          x: src.x, y: src.y + 16,
-          vx: clamp((victim.x - src.x) * 0.8, -70, 70), vy: SI.BOMB_SPEED * sf,
+          x: ux, y: SI.UFO_Y + 10,
+          vx: clamp((victim.x - ux) * 0.8, -70, 70), vy: SI.BOMB_SPEED * sf,
           color: '#ff5a6a', kind: 'bomb', live: true,
         });
       }
@@ -440,9 +457,21 @@ export function SpaceGame({
         }
       }
 
-      // Bonus UFO: occasional flyby.
+      const victim = victimNow();
+
+      // UFO. Defenders: the immune killer patrols the top and eases over the
+      // victim once locked. Invaders: an occasional cosmetic flyby.
       const ufo = ufoRef.current;
-      if (ufo.active) {
+      if (variant === 'defenders') {
+        if (phaseRef.current === 'fire' && victim) {
+          const step = SI.UFO_SPEED * dt;
+          ufo.x += clamp(victim.x - ufo.x, -step, step);
+        } else {
+          ufo.x += ufo.dir * SI.UFO_SPEED * 0.7 * dt;
+          if (ufo.x < 30) ufo.dir = 1;
+          else if (ufo.x > SI.CANVAS_W - 30) ufo.dir = -1;
+        }
+      } else if (ufo.active) {
         ufo.x += ufo.dir * SI.UFO_SPEED * dt;
         if (ufo.x < -40 || ufo.x > SI.CANVAS_W + 40) ufo.active = false;
       } else if (now > nextUfoCheckRef.current) {
@@ -454,8 +483,6 @@ export function SpaceGame({
           audio.playUfo();
         }
       }
-
-      const victim = victimNow();
 
       // ===== LOCK PHASE: targeting drumroll ==============================
       if (phaseRef.current === 'lock' && victim) {
@@ -544,14 +571,46 @@ export function SpaceGame({
         }
       }
 
-      // ---- Advance shots + resolve the fatal hit -------------------------
+      // ---- Defenders shoot up at the horde (fun, cosmetic to the pick) ----
+      if (variant === 'defenders') {
+        const dInterval = 380 / sf;
+        if (now - lastDefenderFireRef.current > dInterval) {
+          lastDefenderFireRef.current = now;
+          const defs = aliveCombatants();
+          if (defs.length) {
+            const d = defs[Math.floor(Math.random() * defs.length)];
+            shotsRef.current.push({
+              x: d.x, y: d.y - 18,
+              vx: 0, vy: -SI.SHOT_SPEED * sf, color: '#8dffb0', kind: 'laser',
+              live: false, hitsHorde: true,
+            });
+            audio.playLaser();
+          }
+        }
+      }
+
+      // ---- Advance shots + resolve hits ----------------------------------
       const liveShots: Shot[] = [];
       for (const s of shotsRef.current) {
         if (s.live && victim) s.vx = clamp((victim.x - s.x) * 4, -150, 150);
         s.x += s.vx * dt;
         s.y += s.vy * dt;
         let consumed = false;
-        if (s.live && victim && victimHit(s, victim)) {
+        if (s.hitsHorde) {
+          // Defender laser vs horde alien (the UFO is immune — not tested here).
+          for (const h of hordeRef.current) {
+            if (!h.alive) continue;
+            const hx = h.baseX + marchDXRef.current;
+            const hy = h.baseY + marchDYRef.current;
+            if (Math.abs(s.x - hx) < SI.HIT_TOL_X && Math.abs(s.y - hy) < SI.SPRITE * 0.5 + 6) {
+              h.alive = false;
+              spawnExplosion(hx, hy, '#b06bff');
+              audio.playHordeHit();
+              consumed = true;
+              break;
+            }
+          }
+        } else if (s.live && victim && victimHit(s, victim)) {
           if (victim.shieldUp) {
             // Protection absorbs this shot — dramatic near-miss, then break.
             victim.shieldUp = false;
@@ -573,6 +632,28 @@ export function SpaceGame({
         if (!consumed) liveShots.push(s);
       }
       shotsRef.current = liveShots;
+
+      // ---- Defenders: manage the alien line ------------------------------
+      if (variant === 'defenders') {
+        const aliveH = hordeRef.current.filter((h) => h.alive);
+        if (aliveH.length === 0) {
+          respawnHorde(); // fully cleared by the defenders → start over at the top
+        } else if (victim && !pendingKillRef.current) {
+          const lowestY = Math.max(...aliveH.map((h) => h.baseY + marchDYRef.current));
+          if (lowestY >= contactYRef.current) {
+            // The line reached the front row → breakthrough eliminates the victim,
+            // and the alien line resets to full ranks next round.
+            victim.alive = false;
+            spawnExplosion(victim.x, victim.y, victim.color);
+            audio.playExplosion();
+            replayVictimRef.current = { id: victim.id };
+            reticleRef.current = null;
+            pendingKillRef.current = victim;
+            deathUntilRef.current = now + SI.DEATH_MS;
+            hordeResetNextRef.current = true;
+          }
+        }
+      }
 
       // Hard backstop: force the kill if the fire phase drags on.
       if (

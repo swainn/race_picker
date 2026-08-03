@@ -109,6 +109,8 @@ export interface Shot {
   kind: 'laser' | 'bomb';
   /** true for the threat's aimed fatal projectile; false for cosmetic ones. */
   live: boolean;
+  /** Defender laser: collides with (and destroys) horde aliens, never the UFO. */
+  hitsHorde?: boolean;
 }
 
 export interface Fx {
@@ -122,8 +124,10 @@ export interface Fx {
 }
 
 export interface HordeCell {
+  id: number;
   baseX: number;
   baseY: number;
+  alive: boolean;
 }
 
 /** A replay/paint snapshot. The live loop and the replay share one painter, so
@@ -223,11 +227,14 @@ export function layoutHorde(): HordeCell[] {
   const gridWidth = (SI.HORDE_COLS - 1) * SI.CELL_W;
   const startX = (SI.CANVAS_W - gridWidth) / 2;
   const cells: HordeCell[] = [];
+  let id = 0;
   for (let row = 0; row < SI.HORDE_ROWS; row++) {
     for (let col = 0; col < SI.HORDE_COLS; col++) {
       cells.push({
+        id: id++,
         baseX: startX + col * SI.CELL_W,
         baseY: SI.HORDE_TOP_Y + row * SI.CELL_H,
+        alive: true,
       });
     }
   }
