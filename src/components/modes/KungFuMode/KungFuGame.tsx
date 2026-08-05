@@ -4,7 +4,7 @@ import { generateColor } from '../../../utils/colors';
 import { useReplayRecorder } from '../../../hooks/useReplayRecorder';
 import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import { kungFuTheme } from '../themes';
-import { KF, MOVES, MOVE_IDS, SPECIAL_IDS, type MoveId, type MoveDef } from './kungFuMoves';
+import { KF, MOVES, MOVE_IDS, SPECIAL_IDS, MOVE_ICON, abilityLabel, type MoveId, type MoveDef } from './kungFuMoves';
 import { decideIntent, type AiFighter } from './kungFuAi';
 import {
   drawBackground,
@@ -22,6 +22,9 @@ import './KungFuGame.css';
 interface KillerInfo {
   name: string;
   weapon: string;
+  /** Ability emoji + short title-cased name for the elimination dialog. */
+  icon?: string;
+  ability?: string;
 }
 
 interface Props {
@@ -726,8 +729,14 @@ export function KungFuGame({
       if (pendingRingOutRef.current) {
         const victim = pendingRingOutRef.current;
         pendingRingOutRef.current = null;
+        const killMove = victim.lastHitByMove ?? 'punch';
         const killerInfo: KillerInfo | undefined = victim.lastHitByName
-          ? { name: victim.lastHitByName, weapon: MOVES[victim.lastHitByMove ?? 'punch'].weaponLabel }
+          ? {
+              name: victim.lastHitByName,
+              weapon: MOVES[killMove].weaponLabel,
+              icon: MOVE_ICON[killMove],
+              ability: abilityLabel(killMove),
+            }
           : undefined;
         replayVictimRef.current = { id: victim.id };
         setRaceState('finished');
@@ -790,14 +799,32 @@ export function KungFuGame({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- replay loop keyed on replayActive; reads recorder via stable callbacks
   }, [replayActive]);
 
-  const details = currentWinnerKillerInfo ? (
-    <>
-      Knocked off by <strong>{currentWinnerKillerInfo.name}</strong> with{' '}
-      {currentWinnerKillerInfo.weapon}
-    </>
-  ) : currentWinner ? (
-    <>Tumbled off the platform!</>
-  ) : undefined;
+  const details =
+    currentWinnerIsLastPlayer ? undefined
+    : currentWinnerKillerInfo ? (
+      <span
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          lineHeight: 1.25,
+          gap: 1,
+        }}
+      >
+        <span style={{ fontSize: '0.8em', opacity: 0.75, letterSpacing: '0.06em' }}>
+          💥 ELIMINATED BY
+        </span>
+        <span style={{ fontSize: '1.35em', fontWeight: 800 }}>
+          🥋 {currentWinnerKillerInfo.name}
+        </span>
+        <span style={{ fontSize: '0.75em', opacity: 0.7 }}>with</span>
+        <span style={{ fontSize: '1.25em', fontWeight: 800, letterSpacing: '0.02em' }}>
+          {currentWinnerKillerInfo.icon} {currentWinnerKillerInfo.ability ?? currentWinnerKillerInfo.weapon}
+        </span>
+      </span>
+    ) : currentWinner ? (
+      <span style={{ fontWeight: 600 }}>🌀 Tumbled off the platform!</span>
+    ) : undefined;
 
   return (
     <div className="kung-fu-game">

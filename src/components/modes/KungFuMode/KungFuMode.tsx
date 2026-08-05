@@ -6,6 +6,8 @@ import { KungFuGame } from './KungFuGame';
 interface KillerInfo {
   name: string;
   weapon: string;
+  icon?: string;
+  ability?: string;
 }
 
 interface WinnerDisplay {

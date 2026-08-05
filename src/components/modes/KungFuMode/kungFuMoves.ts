@@ -145,6 +145,26 @@ export const SIGNATURE_ICON: Partial<Record<MoveId, string>> = {
   getOverHere: '⛓️',
 };
 
+/** Emoji for every move — used in the elimination dialog. */
+export const MOVE_ICON: Record<MoveId, string> = {
+  punch: '👊',
+  kick: '🦵',
+  flyingKick: '💨',
+  chiBlast: '🌀',
+  hadoken: '🔥',
+  shoryuken: '🐉',
+  hurricane: '🌪️',
+  throw: '🤚',
+  getOverHere: '⛓️',
+};
+
+/** Short, title-cased ability name (e.g. "a roundhouse kick" → "Roundhouse Kick"). */
+export function abilityLabel(move: MoveId): string {
+  return MOVES[move].weaponLabel
+    .replace(/^an?\s+/i, '')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /** Global tuning constants for the arena, physics, and round pacing. */
 export const KF = {
   // Canvas / platform geometry (canvas matches the other modes' 400x600).
