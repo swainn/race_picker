@@ -4,8 +4,8 @@ import { generateColor } from '../../../utils/colors';
 import { useReplayRecorder } from '../../../hooks/useReplayRecorder';
 import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import { kungFuTheme } from '../themes';
-import { KF, MOVES, type MoveId, type MoveDef } from './kungFuMoves';
-import { decideIntent } from './kungFuAi';
+import { KF, MOVES, MOVE_IDS, SPECIAL_IDS, type MoveId, type MoveDef } from './kungFuMoves';
+import { decideIntent, type AiFighter } from './kungFuAi';
 import {
   drawBackground,
   drawPlatform,
@@ -55,12 +55,19 @@ interface Fighter extends FighterView {
   desiredVy: number;
   lastHitByName?: string;
   lastHitByMove?: MoveId;
+  /** Super meter + assigned signature special (overrides the optional base fields). */
+  charge: number;
+  signature: MoveId;
+  /** "Get Over Here" follow-up strike: after the yank lands, a delayed launch. */
+  hookStrikeAt?: number;
+  hookedBy?: number;
 }
 
 interface Projectile {
   id: number;
   ownerId: number;
   ownerName: string;
+  moveId: MoveId;
   x: number;
   y: number;
   vx: number;
@@ -68,6 +75,7 @@ interface Projectile {
   traveled: number;
   color: string;
   radius: number;
+  range: number;
 }
 
 interface ImpactFx extends FxView {
@@ -130,12 +138,14 @@ export function KungFuGame({
     playbackSpeed: 0.4,
   });
 
-  // Keep the latest "shrink platform" setting readable inside the game loop.
+  // Keep the latest settings readable inside the game loop.
   const settings = useKungFuSettings();
   const shrinkRef = useRef(settings.shrinkPlatform);
+  const specialsRef = useRef(settings.specialMoves);
   useEffect(() => {
     shrinkRef.current = settings.shrinkPlatform;
-  }, [settings.shrinkPlatform]);
+    specialsRef.current = settings.specialMoves;
+  }, [settings.shrinkPlatform, settings.specialMoves]);
 
   // ---- Initialization ---------------------------------------------------
   // With shrink disabled the platform is always full size; with it enabled,
@@ -159,6 +169,10 @@ export function KungFuGame({
       const x = KF.PLATFORM_CX + Math.cos(angle) * ringRx;
       const y = KF.PLATFORM_CY + Math.sin(angle) * ringRy;
       const facing: 1 | -1 = KF.PLATFORM_CX >= x ? 1 : -1;
+      const cooldowns = Object.fromEntries(MOVE_IDS.map((m) => [m, 0])) as Record<MoveId, number>;
+      // Each fighter gets a random signature special for the round. Start with a
+      // partial meter so specials start flying early.
+      const signature = SPECIAL_IDS[Math.floor(Math.random() * SPECIAL_IDS.length)];
       return {
         id: entry.id,
         entry,
@@ -174,7 +188,7 @@ export function KungFuGame({
         currentMove: null,
         movePhase: null,
         movePhaseUntil: 0,
-        cooldowns: { punch: 0, kick: 0, flyingKick: 0, chiBlast: 0 },
+        cooldowns,
         hitSet: new Set<number>(),
         blockUntil: 0,
         nextDecisionAt: 0,
@@ -183,6 +197,8 @@ export function KungFuGame({
         desiredVy: 0,
         fallScale: 1,
         blocking: false,
+        charge: KF.CHARGE_MAX * (0.3 + Math.random() * 0.4),
+        signature,
       };
     });
     projectilesRef.current = [];
@@ -283,6 +299,18 @@ export function KungFuGame({
 
     const spawnFx = (fx: ImpactFx) => fxRef.current.push(fx);
 
+    // The launching strike that follows a "Get Over Here" chain yank — hurls the
+    // pulled-in victim back out toward the edge.
+    const HOOK_STRIKE_MOVE: MoveDef = {
+      ...MOVES.getOverHere,
+      isProjectile: false,
+      pull: false,
+      grab: true,
+      knockback: KF.HOOK_STRIKE_KNOCKBACK,
+      damage: KF.HOOK_STRIKE_DAMAGE,
+      damageStun: 320,
+    };
+
     const applyHit = (
       victim: Fighter,
       srcX: number,
@@ -293,21 +321,26 @@ export function KungFuGame({
     ) => {
       if (victim.state === 'out' || victim.state === 'falling') return;
       const guard = victim.blockUntil > now;
-      const dx = victim.x - srcX;
-      const dy = victim.y - srcY;
+      // A throw hurls the victim outward from the platform center; everything
+      // else knocks them away from the source of the hit.
+      const dx = move.grab ? victim.x - KF.PLATFORM_CX : victim.x - srcX;
+      const dy = move.grab ? victim.y - KF.PLATFORM_CY : victim.y - srcY;
       const len = Math.hypot(dx, dy) || 1;
       const mult = (guard ? KF.GUARD_KNOCKBACK_MULT : 1) * (1 + (100 - victim.hp) / 160);
       const impulse = move.knockback * mult;
       victim.vx += (dx / len) * impulse;
       victim.vy += (dy / len) * impulse;
+      // Shoryuken launches the victim skyward.
+      if (!guard && move.launchVy) victim.vy += move.launchVy;
       victim.state = 'knockback';
       victim.stateUntil = now + move.damageStun * (guard ? KF.GUARD_STUN_MULT : 1);
-      victim.hp = Math.max(0, victim.hp - (guard ? 4 : 9));
+      victim.hp = Math.max(0, victim.hp - (guard ? 4 : move.damage ?? 9));
       victim.currentMove = null;
       victim.movePhase = null;
       if (!guard) {
         victim.lastHitByName = srcName;
         victim.lastHitByMove = move.id;
+        victim.charge = Math.min(KF.CHARGE_MAX, victim.charge + KF.CHARGE_ON_TAKEN);
       }
       if (guard) {
         spawnFx({ x: victim.x, y: victim.y - 6, life: 0.3, maxLife: 0.3, radius: 10, growth: 40, color: '#bfe3ff', kind: 'block', alpha: 1 });
@@ -339,6 +372,14 @@ export function KungFuGame({
       f.movePhaseUntil = now + def.windupMs;
       f.state = 'attack';
       f.hitSet.clear();
+      // Unleashing a signature special spends the whole meter and shouts a callout.
+      if (def.isSpecial) {
+        f.charge = 0;
+        if (def.callout) {
+          spawnFx({ x: f.x, y: f.y - 34, life: 0.85, maxLife: 0.85, radius: 0, growth: 0, color: f.color, kind: 'hit', alpha: 1, text: def.callout });
+        }
+        spawnFx({ x: f.x, y: f.y - 2, life: 0.4, maxLife: 0.4, radius: 6, growth: 100, color: f.color, kind: 'hit', alpha: 1 });
+      }
     };
 
     const stepMove = (f: Fighter, now: number) => {
@@ -357,17 +398,20 @@ export function KungFuGame({
               dirx = dx / len;
               diry = dy / len;
             }
+            const speed = def.projSpeed ?? KF.CHI_SPEED;
             projectilesRef.current.push({
               id: nextProjIdRef.current++,
               ownerId: f.id,
               ownerName: f.entry.name,
+              moveId: def.id,
               x: f.x + f.facing * def.reach,
               y: f.y,
-              vx: dirx * KF.CHI_SPEED,
-              vy: diry * KF.CHI_SPEED,
+              vx: dirx * speed,
+              vy: diry * speed,
               traveled: 0,
-              color: f.color,
+              color: def.id === 'hadoken' ? '#ff9838' : def.id === 'getOverHere' ? '#8dff9e' : f.color,
               radius: def.hitRadius,
+              range: def.projRange ?? KF.CHI_RANGE,
             });
             f.movePhase = 'recover';
             f.movePhaseUntil = now + def.recoverMs;
@@ -398,6 +442,7 @@ export function KungFuGame({
           if (Math.hypot(o.x - hx, o.y - hy) <= def.hitRadius + KF.FIGHTER_RADIUS) {
             f.hitSet.add(o.id);
             applyHit(o, f.x, f.y, f.entry.name, def, now);
+            f.charge = Math.min(KF.CHARGE_MAX, f.charge + KF.CHARGE_ON_HIT);
           }
         }
       }
@@ -488,8 +533,17 @@ export function KungFuGame({
           const others = fighters.filter(
             (o) => o.id !== f.id && o.state !== 'out' && o.state !== 'falling'
           );
+          // Zero out the meter for the AI when specials are disabled so it never
+          // picks a signature move.
+          const self: AiFighter = specialsRef.current
+            ? f
+            : {
+                id: f.id, x: f.x, y: f.y, facing: f.facing, state: f.state,
+                currentMove: f.currentMove, movePhase: f.movePhase, cooldowns: f.cooldowns,
+                charge: 0, signature: null,
+              };
           const intent = decideIntent({
-            self: f,
+            self,
             others,
             platformCx: KF.PLATFORM_CX,
             platformCy: KF.PLATFORM_CY,
@@ -528,6 +582,7 @@ export function KungFuGame({
         f.x += f.vx * dt;
         f.y += f.vy * dt;
         f.blocking = f.blockUntil > now;
+        f.charge = Math.min(KF.CHARGE_MAX, f.charge + KF.CHARGE_TRICKLE * dt);
       }
 
       // Fighter–fighter separation.
@@ -565,6 +620,16 @@ export function KungFuGame({
         if ((f.state === 'knockback' || f.state === 'hitstun') && now >= f.stateUntil) {
           f.state = 'idle';
         }
+        // "Get Over Here" follow-up: the launching strike after the yank lands.
+        if (f.hookStrikeAt !== undefined && now >= f.hookStrikeAt) {
+          const hooker = fighters.find((o) => o.id === f.hookedBy);
+          f.hookStrikeAt = undefined;
+          f.hookedBy = undefined;
+          if (hooker && hooker.state !== 'out' && hooker.state !== 'falling') {
+            applyHit(f, hooker.x, hooker.y, hooker.entry.name, HOOK_STRIKE_MOVE, now);
+            hooker.charge = Math.min(KF.CHARGE_MAX, hooker.charge + KF.CHARGE_ON_HIT);
+          }
+        }
         // Ring-out against the rendered ellipse (normalized distance > 1 = off).
         const ndx = (f.x - KF.PLATFORM_CX) / platformR;
         const ndy = (f.y - KF.PLATFORM_CY) / (platformR * KF.PLATFORM_SQUASH);
@@ -582,11 +647,36 @@ export function KungFuGame({
         p.x += p.vx * dt;
         p.y += p.vy * dt;
         p.traveled += Math.hypot(p.vx, p.vy) * dt;
+        const move = MOVES[p.moveId];
         let consumed = false;
         for (const o of fighters) {
           if (o.id === p.ownerId || o.state === 'out' || o.state === 'falling') continue;
           if (Math.hypot(o.x - p.x, o.y - p.y) <= p.radius + KF.FIGHTER_RADIUS) {
-            applyHit(o, p.x, p.y, p.ownerName, MOVES.chiBlast, now);
+            const owner = fighters.find((fr) => fr.id === p.ownerId);
+            if (move.pull) {
+              // Yank the victim toward the owner, then schedule the launch strike.
+              const ox = owner ? owner.x : p.x;
+              const oy = owner ? owner.y : p.y;
+              const ddx = ox - o.x;
+              const ddy = oy - o.y;
+              const dl = Math.hypot(ddx, ddy) || 1;
+              o.vx = (ddx / dl) * move.knockback;
+              o.vy = (ddy / dl) * move.knockback;
+              o.state = 'knockback';
+              o.stateUntil = now + move.damageStun;
+              o.hp = Math.max(0, o.hp - (move.damage ?? 9));
+              o.currentMove = null;
+              o.movePhase = null;
+              o.lastHitByName = p.ownerName;
+              o.lastHitByMove = p.moveId;
+              o.charge = Math.min(KF.CHARGE_MAX, o.charge + KF.CHARGE_ON_TAKEN);
+              o.hookStrikeAt = now + KF.HOOK_STRIKE_DELAY_MS;
+              o.hookedBy = p.ownerId;
+              spawnFx({ x: o.x, y: o.y - 6, life: 0.32, maxLife: 0.32, radius: 8, growth: 80, color: '#8dff9e', kind: 'hit', alpha: 1 });
+            } else {
+              applyHit(o, p.x, p.y, p.ownerName, move, now);
+            }
+            if (owner) owner.charge = Math.min(KF.CHARGE_MAX, owner.charge + KF.CHARGE_ON_HIT);
             consumed = true;
             break;
           }
@@ -594,7 +684,7 @@ export function KungFuGame({
         const pndx = (p.x - KF.PLATFORM_CX) / platformR;
         const pndy = (p.y - KF.PLATFORM_CY) / (platformR * KF.PLATFORM_SQUASH);
         const offPlatform = pndx * pndx + pndy * pndy > 1.2;
-        if (!consumed && p.traveled < KF.CHI_RANGE && !offPlatform) liveProjectiles.push(p);
+        if (!consumed && p.traveled < p.range && !offPlatform) liveProjectiles.push(p);
       }
       projectilesRef.current = liveProjectiles;
 
@@ -623,6 +713,8 @@ export function KungFuGame({
           movePhase: f.movePhase,
           fallScale: f.fallScale,
           blocking: f.blocking,
+          charge: specialsRef.current ? f.charge : undefined,
+          signature: specialsRef.current ? f.signature : null,
         })),
         projectiles: projectilesRef.current.map((p) => ({ x: p.x, y: p.y, color: p.color, radius: p.radius })),
         fx: fxRef.current.map((fx) => ({ ...fx })),

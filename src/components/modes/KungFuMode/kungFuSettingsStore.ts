@@ -10,10 +10,13 @@ export interface KungFuSettings {
   /** When true, the platform gradually shrinks during a round (sudden death).
    *  A hard time-cap collapse always applies regardless, to prevent stalemates. */
   shrinkPlatform: boolean;
+  /** Street Fighter-style signature specials + super meter. */
+  specialMoves: boolean;
 }
 
 const DEFAULT_SETTINGS: KungFuSettings = {
   shrinkPlatform: false,
+  specialMoves: true,
 };
 
 function loadSettings(): KungFuSettings {
@@ -21,7 +24,10 @@ function loadSettings(): KungFuSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<KungFuSettings>;
-    return { shrinkPlatform: !!parsed.shrinkPlatform };
+    return {
+      shrinkPlatform: !!parsed.shrinkPlatform,
+      specialMoves: parsed.specialMoves ?? true,
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }

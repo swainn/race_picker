@@ -9,7 +9,7 @@
  * Figure style is modeled on WallClimberGame's `drawClimber`: simple primitives,
  * body in the participant color, white limb strokes.
  */
-import { KF, type MoveId } from './kungFuMoves';
+import { KF, MOVES, type MoveId } from './kungFuMoves';
 
 export type FighterState =
   | 'idle'
@@ -34,6 +34,10 @@ export interface FighterView {
   /** 1 while on the platform; lerps 1→0 while falling off (shrink + fade). */
   fallScale: number;
   blocking: boolean;
+  /** Super-meter fill 0..CHARGE_MAX (drawn as a bar); optional for basic views. */
+  charge?: number;
+  /** The fighter's assigned signature special (drives the meter badge). */
+  signature?: MoveId | null;
 }
 
 export interface FxView {
@@ -138,6 +142,29 @@ export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: 
     ctx.scale(fall, fall);
     ctx.globalAlpha = fall;
   }
+
+  // Signature-special aura — a symmetric glow, drawn before the mirror/spin.
+  const specialActive =
+    !!f.currentMove &&
+    !!MOVES[f.currentMove].isSpecial &&
+    (f.movePhase === 'windup' || f.movePhase === 'active');
+  if (specialActive) {
+    const aura = ctx.createRadialGradient(0, -2, 2, 0, -2, 22);
+    aura.addColorStop(0, f.color);
+    aura.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(0, -2, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Hurricane kick spins the whole figure.
+  if (f.currentMove === 'hurricane' && f.movePhase === 'active') {
+    ctx.rotate((now / 40) % (Math.PI * 2));
+  }
   ctx.scale(f.facing, 1);
 
   // Cyclic bob / step phase (cosmetic; based on wall-clock so replay matches).
@@ -171,6 +198,22 @@ export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: 
     ctx.lineTo(cx + 16, cy + 1);
     ctx.moveTo(cx, cy + 6);
     ctx.lineTo(cx + 12, cy + 9);
+    ctx.stroke();
+  } else if (f.currentMove === 'hurricane') {
+    // Legs extended outward for the spinning kick.
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 4);
+    ctx.lineTo(cx + 17, cy + 6);
+    ctx.moveTo(cx, cy + 4);
+    ctx.lineTo(cx - 15, cy + 8);
+    ctx.stroke();
+  } else if (f.currentMove === 'shoryuken') {
+    // Leaping upward: legs tucked and trailing.
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx - 6, cy + 13);
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx + 4, cy + 12);
     ctx.stroke();
   } else if (moving) {
     // Walking: legs splay from the hip with a stride cycle.
@@ -232,8 +275,28 @@ export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: 
     ctx.beginPath();
     ctx.arc(cx + 17, cy - 3, 2.4, 0, Math.PI * 2);
     ctx.fill();
-  } else if (f.currentMove === 'chiBlast') {
-    // Both palms forward; glowing orb during windup.
+  } else if (f.currentMove === 'shoryuken') {
+    // Rising uppercut: lead arm punches upward.
+    ctx.beginPath();
+    ctx.moveTo(cx + 1, cy - 4);
+    ctx.lineTo(cx + 8, cy - 16);
+    ctx.moveTo(cx - 3, cy - 3);
+    ctx.lineTo(cx - 7, cy + 2);
+    ctx.stroke();
+    ctx.fillStyle = '#FFD9B3';
+    ctx.beginPath();
+    ctx.arc(cx + 9, cy - 18, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (f.currentMove === 'throw') {
+    // Both arms forward to grab.
+    ctx.beginPath();
+    ctx.moveTo(cx + 1, cy - 3);
+    ctx.lineTo(cx + 14, cy - 4);
+    ctx.moveTo(cx + 1, cy + 1);
+    ctx.lineTo(cx + 14, cy + 2);
+    ctx.stroke();
+  } else if (f.currentMove === 'chiBlast' || f.currentMove === 'hadoken' || f.currentMove === 'getOverHere') {
+    // Palms forward; glowing orb during windup (color per move).
     ctx.beginPath();
     ctx.moveTo(cx + 1, cy - 4);
     ctx.lineTo(cx + 11, cy - 1);
@@ -241,9 +304,13 @@ export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: 
     ctx.lineTo(cx + 11, cy + 2);
     ctx.stroke();
     if (f.movePhase === 'windup') {
+      const rgb =
+        f.currentMove === 'hadoken' ? '255,150,40'
+        : f.currentMove === 'getOverHere' ? '160,255,150'
+        : '160,230,255';
       const orb = ctx.createRadialGradient(cx + 14, cy, 0, cx + 14, cy, 7);
-      orb.addColorStop(0, 'rgba(160,230,255,0.95)');
-      orb.addColorStop(1, 'rgba(120,180,255,0)');
+      orb.addColorStop(0, `rgba(${rgb},0.95)`);
+      orb.addColorStop(1, `rgba(${rgb},0)`);
       ctx.fillStyle = orb;
       ctx.beginPath();
       ctx.arc(cx + 14, cy, 7, 0, Math.PI * 2);
@@ -280,6 +347,28 @@ export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: 
   ctx.stroke();
 
   ctx.restore();
+
+  // Super meter bar (world coords, unmirrored) — fills in the fighter color and
+  // glows gold when a signature special is ready.
+  if (f.signature && f.charge !== undefined && f.state !== 'falling') {
+    const full = f.charge >= KF.CHARGE_MAX;
+    const w = 20;
+    const h = 3;
+    const bx = f.x - w / 2;
+    const by = f.y + 17;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(bx - 1, by - 1, w + 2, h + 2);
+    ctx.fillStyle = full ? '#ffe66d' : f.color;
+    ctx.fillRect(bx, by, w * Math.max(0, Math.min(1, f.charge / KF.CHARGE_MAX)), h);
+    if (full) {
+      ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(now / 120));
+      ctx.strokeStyle = '#fff2a8';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx - 1.5, by - 1.5, w + 3, h + 3);
+    }
+    ctx.restore();
+  }
 }
 
 /** Draw a chi-blast projectile (glowing orb). */

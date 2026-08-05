@@ -13,6 +13,14 @@ export function KungFuSettings() {
         />
         <span>Shrink the platform over time (sudden death)</span>
       </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={settings.specialMoves}
+          onChange={(e) => updateKungFuSettings({ specialMoves: e.target.checked })}
+        />
+        <span>Street Fighter specials (super meter)</span>
+      </label>
     </fieldset>
   );
 }

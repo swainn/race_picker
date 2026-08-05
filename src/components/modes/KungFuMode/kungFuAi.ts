@@ -20,6 +20,9 @@ export interface AiFighter {
   currentMove: MoveId | null;
   movePhase: 'windup' | 'active' | 'recover' | null;
   cooldowns: Record<MoveId, number>;
+  /** Super-meter fill and the fighter's assigned signature special. */
+  charge: number;
+  signature: MoveId | null;
 }
 
 export interface AiContext {
@@ -118,9 +121,28 @@ export function decideIntent(ctx: AiContext): AiIntent {
   }
   if (!block && Math.random() < 0.1) block = true;
 
-  // (4) Attack selection when something is in range and we're free to act.
-  let move: MoveId | null = null;
   const canAct = self.currentMove === null && (self.state === 'idle' || self.state === 'approach');
+
+  // (4a) Signature special: unleash it when the meter is full and the target is
+  // in the right range for that move. Otherwise keep approaching (fall through).
+  if (canAct && !block && self.charge >= KF.CHARGE_MAX && self.signature && ready(self, self.signature, now)) {
+    const sig = self.signature;
+    const def = MOVES[sig];
+    const projRange = def.projRange ?? KF.CHI_RANGE;
+    const inRange =
+      sig === 'throw' ? distToTarget <= def.reach + KF.FIGHTER_RADIUS + 6 :
+      sig === 'shoryuken' ? distToTarget <= def.reach + KF.FIGHTER_RADIUS * 2 :
+      sig === 'hurricane' ? distToTarget <= 72 :
+      sig === 'hadoken' ? distToTarget <= projRange && Math.abs(tdy) < 34 :
+      sig === 'getOverHere' ? distToTarget >= 50 && distToTarget <= projRange :
+      false;
+    if (inRange) {
+      return { targetId: target.id, desiredVx, desiredVy, move: sig, block: false };
+    }
+  }
+
+  // (4b) Basic attack selection when something is in range and we're free to act.
+  let move: MoveId | null = null;
   if (canAct && !block) {
     const targetNearEdge = normDist(target.x, target.y) > 0.62;
     if (distToTarget >= 40 && distToTarget <= 90 && targetNearEdge && ready(self, 'flyingKick', now)) {
