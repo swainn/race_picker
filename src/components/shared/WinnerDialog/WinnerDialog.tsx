@@ -24,11 +24,13 @@ export function WinnerDialog(props: WinnerDialogProps) {
     onShowFinalStandings,
     onReplayStart,
     autoMinimizeMs = DEFAULT_AUTO_MINIMIZE_MS,
+    autoMinimize = true,
   } = props;
 
   const { phase, minimize, expand } = useWinnerLifecycle({
     show,
     autoMinimizeMs,
+    autoMinimize,
     onMinimize: onReplayStart,
   });
 

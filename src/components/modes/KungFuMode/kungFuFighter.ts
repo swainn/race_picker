@@ -16,6 +16,9 @@ export type FighterState =
   | 'approach'
   | 'attack'
   | 'blocking'
+  | 'shielding'
+  | 'jumping'
+  | 'dodging'
   | 'hitstun'
   | 'knockback'
   | 'falling'
@@ -38,6 +41,11 @@ export interface FighterView {
   charge?: number;
   /** The fighter's assigned signature special (drives the meter badge). */
   signature?: MoveId | null;
+  /** Jump arc height 0 (grounded) → 1 (peak); drives the airborne lift. */
+  airProgress?: number;
+  /** Normalized dodge dash direction, for the motion afterimage. */
+  dashDx?: number;
+  dashDy?: number;
 }
 
 export interface FxView {
@@ -133,14 +141,32 @@ export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: 
   if (f.state === 'out') return;
 
   const fall = f.state === 'falling' ? Math.max(0, f.fallScale) : 1;
-  drawShadow(ctx, f.x, f.y, fall);
+  const air = f.state === 'jumping' ? (f.airProgress ?? 0) : 0;
+  drawShadow(ctx, f.x, f.y, fall * (1 - air * 0.55));
+
+  // Dodge afterimage: faint trailing silhouettes opposite the dash direction.
+  if (f.state === 'dodging' && (f.dashDx || f.dashDy)) {
+    for (let g = 1; g <= 2; g++) {
+      const gx = f.x - (f.dashDx ?? 0) * 10 * g;
+      const gy = f.y - (f.dashDy ?? 0) * 10 * g;
+      ctx.save();
+      ctx.globalAlpha = 0.2 / g;
+      ctx.fillStyle = f.color;
+      ctx.beginPath();
+      ctx.ellipse(gx, gy - 4, 6, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
 
   ctx.save();
-  ctx.translate(f.x, f.y);
+  ctx.translate(f.x, f.y - air * KF.JUMP_LIFT);
   if (f.state === 'falling') {
     ctx.rotate((1 - fall) * 2.4 * f.facing);
     ctx.scale(fall, fall);
     ctx.globalAlpha = fall;
+  } else if (f.state === 'jumping') {
+    ctx.scale(1 + air * 0.12, 1 + air * 0.12);
   }
 
   // Signature-special aura — a symmetric glow, drawn before the mirror/spin.
@@ -254,7 +280,7 @@ export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: 
   // Arms.
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 2.4;
-  if (f.blocking || f.state === 'blocking') {
+  if (f.blocking || f.state === 'blocking' || f.state === 'shielding') {
     // Crossed forearms guard.
     ctx.beginPath();
     ctx.moveTo(cx - 4, cy - 4);
@@ -345,6 +371,25 @@ export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: 
   ctx.moveTo(cx - 4, cy - 12);
   ctx.quadraticCurveTo(cx - 9, cy - 9 + flick, cx - 10, cy - 5 - flick);
   ctx.stroke();
+
+  // Shield dome — a glowing protective bubble while shielding.
+  if (f.state === 'shielding') {
+    const pulse = 0.55 + 0.25 * Math.abs(Math.sin(now / 90));
+    const dome = ctx.createRadialGradient(0, -3, 4, 0, -3, 20);
+    dome.addColorStop(0, 'rgba(150,220,255,0.05)');
+    dome.addColorStop(0.7, 'rgba(150,220,255,0.16)');
+    dome.addColorStop(1, 'rgba(120,190,255,0.30)');
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = dome;
+    ctx.beginPath();
+    ctx.arc(0, -3, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(190,235,255,0.9)';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.restore();
 

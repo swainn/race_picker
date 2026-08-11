@@ -5,7 +5,7 @@ import { useReplayRecorder } from '../../../hooks/useReplayRecorder';
 import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import { kungFuTheme } from '../themes';
 import { KF, MOVES, MOVE_IDS, SPECIAL_IDS, MOVE_ICON, abilityLabel, type MoveId, type MoveDef } from './kungFuMoves';
-import { decideIntent, type AiFighter } from './kungFuAi';
+import { decideIntent, type AiFighter, type Defense } from './kungFuAi';
 import {
   drawBackground,
   drawPlatform,
@@ -51,7 +51,6 @@ interface Fighter extends FighterView {
   movePhaseUntil: number;
   cooldowns: Record<MoveId, number>;
   hitSet: Set<number>;
-  blockUntil: number;
   nextDecisionAt: number;
   targetId: number | null;
   desiredVx: number;
@@ -64,6 +63,8 @@ interface Fighter extends FighterView {
   /** "Get Over Here" follow-up strike: after the yank lands, a delayed launch. */
   hookStrikeAt?: number;
   hookedBy?: number;
+  /** Cooldown gate before the next defensive maneuver (shield/jump/dodge). */
+  defenseCdUntil: number;
 }
 
 interface Projectile {
@@ -193,7 +194,6 @@ export function KungFuGame({
         movePhaseUntil: 0,
         cooldowns,
         hitSet: new Set<number>(),
-        blockUntil: 0,
         nextDecisionAt: 0,
         targetId: null,
         desiredVx: 0,
@@ -202,6 +202,10 @@ export function KungFuGame({
         blocking: false,
         charge: KF.CHARGE_MAX * (0.3 + Math.random() * 0.4),
         signature,
+        defenseCdUntil: 0,
+        airProgress: 0,
+        dashDx: 0,
+        dashDy: 0,
       };
     });
     projectilesRef.current = [];
@@ -323,36 +327,39 @@ export function KungFuGame({
       now: number
     ) => {
       if (victim.state === 'out' || victim.state === 'falling') return;
-      const guard = victim.blockUntil > now;
+      // Jump / dodge grant i-frames — the attack whiffs entirely.
+      if (victim.state === 'jumping' || victim.state === 'dodging') {
+        spawnFx({ x: victim.x, y: victim.y - 22, life: 0.5, maxLife: 0.5, radius: 0, growth: 0, color: '#cfe8ff', kind: 'hit', alpha: 1, text: 'MISS!' });
+        return;
+      }
+      // Shielding fully blocks the hit.
+      if (victim.state === 'shielding') {
+        spawnFx({ x: victim.x, y: victim.y - 3, life: 0.35, maxLife: 0.35, radius: 12, growth: 60, color: '#9cd6ff', kind: 'block', alpha: 1 });
+        spawnFx({ x: victim.x, y: victim.y - 20, life: 0.55, maxLife: 0.55, radius: 0, growth: 0, color: '#bfe3ff', kind: 'block', alpha: 1, text: 'BLOCK!' });
+        return;
+      }
       // A throw hurls the victim outward from the platform center; everything
       // else knocks them away from the source of the hit.
       const dx = move.grab ? victim.x - KF.PLATFORM_CX : victim.x - srcX;
       const dy = move.grab ? victim.y - KF.PLATFORM_CY : victim.y - srcY;
       const len = Math.hypot(dx, dy) || 1;
-      const mult = (guard ? KF.GUARD_KNOCKBACK_MULT : 1) * (1 + (100 - victim.hp) / 160);
+      const mult = 1 + (100 - victim.hp) / 160;
       const impulse = move.knockback * mult;
       victim.vx += (dx / len) * impulse;
       victim.vy += (dy / len) * impulse;
       // Shoryuken launches the victim skyward.
-      if (!guard && move.launchVy) victim.vy += move.launchVy;
+      if (move.launchVy) victim.vy += move.launchVy;
       victim.state = 'knockback';
-      victim.stateUntil = now + move.damageStun * (guard ? KF.GUARD_STUN_MULT : 1);
-      victim.hp = Math.max(0, victim.hp - (guard ? 4 : move.damage ?? 9));
+      victim.stateUntil = now + move.damageStun;
+      victim.hp = Math.max(0, victim.hp - (move.damage ?? 9));
       victim.currentMove = null;
       victim.movePhase = null;
-      if (!guard) {
-        victim.lastHitByName = srcName;
-        victim.lastHitByMove = move.id;
-        victim.charge = Math.min(KF.CHARGE_MAX, victim.charge + KF.CHARGE_ON_TAKEN);
-      }
-      if (guard) {
-        spawnFx({ x: victim.x, y: victim.y - 6, life: 0.3, maxLife: 0.3, radius: 10, growth: 40, color: '#bfe3ff', kind: 'block', alpha: 1 });
-        spawnFx({ x: victim.x, y: victim.y - 18, life: 0.5, maxLife: 0.5, radius: 0, growth: 0, color: '#bfe3ff', kind: 'block', alpha: 1, text: 'BLOCK' });
-      } else {
-        const word = HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)];
-        spawnFx({ x: victim.x, y: victim.y - 6, life: 0.32, maxLife: 0.32, radius: 8, growth: 80, color: '#ffd23a', kind: 'hit', alpha: 1 });
-        spawnFx({ x: victim.x, y: victim.y - 20, life: 0.55, maxLife: 0.55, radius: 0, growth: 0, color: '#ffd23a', kind: 'hit', alpha: 1, text: word });
-      }
+      victim.lastHitByName = srcName;
+      victim.lastHitByMove = move.id;
+      victim.charge = Math.min(KF.CHARGE_MAX, victim.charge + KF.CHARGE_ON_TAKEN);
+      const word = HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)];
+      spawnFx({ x: victim.x, y: victim.y - 6, life: 0.32, maxLife: 0.32, radius: 8, growth: 80, color: '#ffd23a', kind: 'hit', alpha: 1 });
+      spawnFx({ x: victim.x, y: victim.y - 20, life: 0.55, maxLife: 0.55, radius: 0, growth: 0, color: '#ffd23a', kind: 'hit', alpha: 1, text: word });
     };
 
     const nearestOpponent = (self: Fighter): Fighter | null => {
@@ -364,6 +371,55 @@ export function KungFuGame({
         if (d < bestD) { bestD = d; best = o; }
       }
       return best;
+    };
+
+    // Start a defensive maneuver: shield (full block), jump (hop over), or dodge
+    // (dash aside) — the last two grant i-frames.
+    const beginDefense = (f: Fighter, kind: Defense, now: number) => {
+      f.currentMove = null;
+      f.movePhase = null;
+      if (kind === 'shield') {
+        f.state = 'shielding';
+        f.stateUntil = now + KF.SHIELD_MS;
+        f.vx *= 0.4;
+        f.vy *= 0.4;
+      } else if (kind === 'jump') {
+        f.state = 'jumping';
+        f.stateUntil = now + KF.JUMP_MS;
+        f.airProgress = 0;
+        f.vx *= 0.5;
+        f.vy *= 0.5;
+      } else if (kind === 'dodge') {
+        f.state = 'dodging';
+        f.stateUntil = now + KF.DODGE_MS;
+        // Dash perpendicular to the nearest opponent, biased toward center so the
+        // dodge doesn't fling the fighter off the platform.
+        const opp = nearestOpponent(f);
+        let dirx: number;
+        let diry: number;
+        if (opp) {
+          const ox = opp.x - f.x;
+          const oy = opp.y - f.y;
+          const ol = Math.hypot(ox, oy) || 1;
+          const px = -oy / ol;
+          const py = ox / ol;
+          const dot = px * (KF.PLATFORM_CX - f.x) + py * (KF.PLATFORM_CY - f.y);
+          dirx = dot >= 0 ? px : -px;
+          diry = dot >= 0 ? py : -py;
+        } else {
+          const tx = KF.PLATFORM_CX - f.x;
+          const ty = KF.PLATFORM_CY - f.y;
+          const tl = Math.hypot(tx, ty) || 1;
+          dirx = tx / tl;
+          diry = ty / tl;
+        }
+        f.dashDx = dirx;
+        f.dashDy = diry;
+        f.vx = dirx * KF.DODGE_SPEED;
+        f.vy = diry * KF.DODGE_SPEED;
+        spawnFx({ x: f.x, y: f.y + 8, life: 0.3, maxLife: 0.3, radius: 6, growth: 60, color: '#dfe7ff', kind: 'block', alpha: 0.8 });
+      }
+      f.defenseCdUntil = f.stateUntil + KF.DEFENSE_CD_MS;
     };
 
     const beginMove = (f: Fighter, move: MoveId, now: number) => {
@@ -543,7 +599,7 @@ export function KungFuGame({
             : {
                 id: f.id, x: f.x, y: f.y, facing: f.facing, state: f.state,
                 currentMove: f.currentMove, movePhase: f.movePhase, cooldowns: f.cooldowns,
-                charge: 0, signature: null,
+                charge: 0, signature: null, defenseCdUntil: f.defenseCdUntil,
               };
           const intent = decideIntent({
             self,
@@ -557,8 +613,11 @@ export function KungFuGame({
           f.targetId = intent.targetId;
           f.desiredVx = intent.desiredVx;
           f.desiredVy = intent.desiredVy;
-          if (intent.block) f.blockUntil = now + 250;
-          if (intent.move && f.currentMove === null) beginMove(f, intent.move, now);
+          if (intent.defense !== 'none' && now >= f.defenseCdUntil) {
+            beginDefense(f, intent.defense, now);
+          } else if (intent.move && f.currentMove === null) {
+            beginMove(f, intent.move, now);
+          }
           f.nextDecisionAt = now + 180 + Math.random() * 140;
         }
         if (f.state === 'idle' || f.state === 'approach') {
@@ -584,7 +643,7 @@ export function KungFuGame({
         }
         f.x += f.vx * dt;
         f.y += f.vy * dt;
-        f.blocking = f.blockUntil > now;
+        f.blocking = f.state === 'shielding';
         f.charge = Math.min(KF.CHARGE_MAX, f.charge + KF.CHARGE_TRICKLE * dt);
       }
 
@@ -620,6 +679,20 @@ export function KungFuGame({
           }
           continue;
         }
+        // Jump: airborne arc, immune to ring-out (lands back on the pad).
+        if (f.state === 'jumping') {
+          const p = clamp((f.stateUntil - now) / KF.JUMP_MS, 0, 1);
+          f.airProgress = Math.sin((1 - p) * Math.PI);
+          if (now >= f.stateUntil) {
+            f.state = 'idle';
+            f.airProgress = 0;
+          }
+          continue;
+        }
+        // Dodge / shield windows end back to idle (dodge can still dash off → ring-out).
+        if ((f.state === 'dodging' || f.state === 'shielding') && now >= f.stateUntil) {
+          f.state = 'idle';
+        }
         if ((f.state === 'knockback' || f.state === 'hitstun') && now >= f.stateUntil) {
           f.state = 'idle';
         }
@@ -654,7 +727,18 @@ export function KungFuGame({
         let consumed = false;
         for (const o of fighters) {
           if (o.id === p.ownerId || o.state === 'out' || o.state === 'falling') continue;
-          if (Math.hypot(o.x - p.x, o.y - p.y) <= p.radius + KF.FIGHTER_RADIUS) {
+          // Jump / dodge i-frames — the projectile passes over/through untouched.
+          if (o.state === 'jumping' || o.state === 'dodging') continue;
+          const dist = Math.hypot(o.x - p.x, o.y - p.y);
+          // Reactive evade: hop over an incoming projectile that's closing in.
+          if ((o.state === 'idle' || o.state === 'approach') && now >= o.defenseCdUntil && dist < 46) {
+            const closing = (o.x - p.x) * p.vx + (o.y - p.y) * p.vy > 0;
+            if (closing && Math.random() < 0.06) {
+              beginDefense(o, 'jump', now);
+              continue;
+            }
+          }
+          if (dist <= p.radius + KF.FIGHTER_RADIUS) {
             const owner = fighters.find((fr) => fr.id === p.ownerId);
             if (move.pull) {
               // Yank the victim toward the owner, then schedule the launch strike.
@@ -718,6 +802,9 @@ export function KungFuGame({
           blocking: f.blocking,
           charge: specialsRef.current ? f.charge : undefined,
           signature: specialsRef.current ? f.signature : null,
+          airProgress: f.airProgress,
+          dashDx: f.dashDx,
+          dashDy: f.dashDy,
         })),
         projectiles: projectilesRef.current.map((p) => ({ x: p.x, y: p.y, color: p.color, radius: p.radius })),
         fx: fxRef.current.map((fx) => ({ ...fx })),
@@ -799,6 +886,19 @@ export function KungFuGame({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- replay loop keyed on replayActive; reads recorder via stable callbacks
   }, [replayActive]);
 
+  // After the final round, auto-open the leaderboard once the champion is crowned
+  // (brief pause so the GRAND CHAMPION card is seen first). Kept in a ref so an
+  // unstable onShowFinalStandings identity doesn't keep re-arming the timer.
+  const showStandingsRef = useRef(onShowFinalStandings);
+  useEffect(() => {
+    showStandingsRef.current = onShowFinalStandings;
+  }, [onShowFinalStandings]);
+  useEffect(() => {
+    if (!currentWinnerIsLastPlayer || !currentWinner || isRacing) return;
+    const t = window.setTimeout(() => showStandingsRef.current?.(), 2600);
+    return () => window.clearTimeout(t);
+  }, [currentWinnerIsLastPlayer, currentWinner, isRacing]);
+
   const details =
     currentWinnerIsLastPlayer ? undefined
     : currentWinnerKillerInfo ? (
@@ -841,6 +941,7 @@ export function KungFuGame({
         finalsHeadline="🥋 GRAND CHAMPION 🥋"
         nextLabel="🥋 Next Round"
         detailsNode={details}
+        autoMinimize={false}
         onNext={onRaceComplete}
         onShowFinalStandings={() => onShowFinalStandings?.()}
         onReplayStart={() => setReplayActive(true)}

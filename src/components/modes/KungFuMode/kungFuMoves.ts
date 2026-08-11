@@ -207,6 +207,14 @@ export const KF = {
   GUARD_KNOCKBACK_MULT: 0.35,
   GUARD_STUN_MULT: 0.4,
 
+  // Defensive maneuvers (shield = full block; jump/dodge = i-frame evasion).
+  SHIELD_MS: 380,
+  JUMP_MS: 520,
+  DODGE_MS: 300,
+  DEFENSE_CD_MS: 950, // cooldown after a maneuver before the next
+  DODGE_SPEED: 460, // lateral dash burst
+  JUMP_LIFT: 18, // px the sprite lifts at the peak of a jump
+
   // Round pacing (ms).
   REVEAL_MS: 2600,
   SHRINK_GRACE_MS: 6000,

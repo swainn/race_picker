@@ -6,6 +6,8 @@ interface UseWinnerLifecycleArgs {
   show: boolean;
   autoMinimizeMs: number;
   onMinimize?: () => void;
+  /** When false, the dialog stays expanded until the user minimizes it. */
+  autoMinimize?: boolean;
 }
 
 interface WinnerLifecycle {
@@ -18,6 +20,7 @@ export function useWinnerLifecycle({
   show,
   autoMinimizeMs,
   onMinimize,
+  autoMinimize = true,
 }: UseWinnerLifecycleArgs): WinnerLifecycle {
   const [phase, setPhase] = useState<WinnerPhase>('hidden');
   const onMinimizeRef = useRef(onMinimize);
@@ -36,11 +39,12 @@ export function useWinnerLifecycle({
     }
     setPhase('expanded');
     minimizedFiredRef.current = false;
+    if (!autoMinimize) return;
     const handle = window.setTimeout(() => {
       setPhase((current) => (current === 'expanded' ? 'minimized' : current));
     }, autoMinimizeMs);
     return () => window.clearTimeout(handle);
-  }, [show, autoMinimizeMs]);
+  }, [show, autoMinimizeMs, autoMinimize]);
 
   useEffect(() => {
     if (phase === 'minimized' && !minimizedFiredRef.current) {
