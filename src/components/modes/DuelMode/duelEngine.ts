@@ -17,6 +17,12 @@ export const DL = {
   GRAVITY: 1150,
   MAX_HP: 66,
 
+  // Super meter (fills to full ~once or twice per duel).
+  METER_MAX: 70,
+  METER_ON_HIT: 22, // gained by the attacker per landed hit
+  METER_ON_TAKEN: 15, // gained by the victim (comeback factor)
+  METER_ON_BLOCK: 6,
+
   // Phase timings (ms).
   INTRO_MS: 1700, // "ALICE vs BOB" splash
   ANNOUNCE_MS: 950, // "ROUND 1 / FIGHT!"
@@ -29,7 +35,17 @@ export const DL = {
   HADOKEN_RANGE: 460,
 } as const;
 
-export type DuelMoveId = 'punch' | 'kick' | 'hadoken' | 'shoryuken';
+export type DuelMoveId =
+  | 'punch'
+  | 'kick'
+  | 'hadoken'
+  | 'shoryuken'
+  | 'superCombo'
+  | 'superFireball';
+
+/** The two super arts a duelist can be randomly assigned. */
+export type SuperMove = 'superCombo' | 'superFireball';
+export const DUEL_SUPERS: SuperMove[] = ['superCombo', 'superFireball'];
 
 export interface DuelMove {
   id: DuelMoveId;
@@ -66,9 +82,20 @@ export const DUEL_MOVES: Record<DuelMoveId, DuelMove> = {
     id: 'shoryuken', windupMs: 120, activeMs: 220, recoverMs: 380, cooldownMs: 1700,
     reach: 46, dmg: 20, knockback: 120, launch: true, callout: 'SHORYUKEN!',
   },
+  // ---- Supers (spent from a full meter) ----
+  superCombo: {
+    id: 'superCombo', windupMs: 240, activeMs: 640, recoverMs: 520, cooldownMs: 0,
+    reach: 56, dmg: 6, knockback: 24, callout: 'SUPER COMBO!',
+  },
+  superFireball: {
+    id: 'superFireball', windupMs: 300, activeMs: 0, recoverMs: 560, cooldownMs: 0,
+    reach: 30, dmg: 30, knockback: 170, isProjectile: true, callout: 'SUPER FIREBALL!', chip: 10,
+  },
 };
 
-export const DUEL_MOVE_IDS: DuelMoveId[] = ['punch', 'kick', 'hadoken', 'shoryuken'];
+export const DUEL_MOVE_IDS: DuelMoveId[] = [
+  'punch', 'kick', 'hadoken', 'shoryuken', 'superCombo', 'superFireball',
+];
 
 export type DuelState =
   | 'idle'
@@ -99,6 +126,11 @@ export interface DuelFighter {
   nextDecisionAt: number;
   blockUntil: number;
   hitReg: boolean; // whether the current active move has already connected
+  /** Super meter fill 0..METER_MAX, and the assigned super art. */
+  meter: number;
+  superMove: SuperMove;
+  /** Next super-combo flurry-hit timestamp. */
+  comboHitAt: number;
 }
 
 export interface DuelProjectile {
@@ -108,6 +140,11 @@ export interface DuelProjectile {
   ownerSide: 1 | -1;
   color: string;
   traveled: number;
+  radius: number;
+  dmg: number;
+  chip: number;
+  /** true for a Super Fireball (bigger, flashier). */
+  big?: boolean;
 }
 
 export interface DuelFx {

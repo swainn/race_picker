@@ -7,6 +7,8 @@ import type { WinnerTheme } from '../themes';
 import {
   DL,
   DUEL_MOVES,
+  DUEL_MOVE_IDS,
+  DUEL_SUPERS,
   pickDuelists,
   type DuelFighter,
   type DuelMoveId,
@@ -111,12 +113,17 @@ export function DuelGame(props: Props) {
       currentMove: null,
       movePhase: null,
       movePhaseUntil: 0,
-      cooldowns: { punch: 0, kick: 0, hadoken: 0, shoryuken: 0 },
+      cooldowns: Object.fromEntries(DUEL_MOVE_IDS.map((m) => [m, 0])) as Record<DuelMoveId, number>,
       nextDecisionAt: 0,
       blockUntil: 0,
       hitReg: false,
+      meter: Math.round(DL.METER_MAX * 0.22), // head-start so a super reliably lands mid-duel
+      superMove: DUEL_SUPERS[Math.floor(Math.random() * DUEL_SUPERS.length)],
+      comboHitAt: 0,
     };
   };
+
+  const superFlashUntilRef = useRef(0);
 
   const startDuel = (now: number) => {
     const p = propsRef.current;
@@ -158,10 +165,35 @@ export function DuelGame(props: Props) {
     f.state = 'jump';
   };
 
+  // Spend a full meter on the fighter's assigned super — flash + freeze + callout.
+  const startSuper = (f: DuelFighter, opp: DuelFighter, now: number) => {
+    f.meter = 0;
+    f.facing = opp.x >= f.x ? 1 : -1;
+    f.currentMove = f.superMove;
+    f.movePhase = 'windup';
+    f.movePhaseUntil = now + DUEL_MOVES[f.superMove].windupMs;
+    f.state = 'attack';
+    f.hitReg = false;
+    f.comboHitAt = 0;
+    superFlashUntilRef.current = now + 260;
+    fxRef.current.push({ x: DL.CANVAS_W / 2, y: DL.GROUND_Y * 0.42, life: 1, maxLife: 1, radius: 0, growth: 0, color: f.color, kind: 'spark', text: DUEL_MOVES[f.superMove].callout });
+    audio.playFireball();
+  };
+
   const decide = (self: DuelFighter, opp: DuelFighter, now: number) => {
     if (self.state === 'hurt' || self.state === 'attack' || self.air > 2) return;
     self.facing = opp.x >= self.x ? 1 : -1;
     const dist = Math.abs(opp.x - self.x);
+
+    // Full meter → unleash the super (fireball from range; combo needs to close in).
+    if (self.meter >= DL.METER_MAX && self.currentMove === null) {
+      if (self.superMove === 'superFireball' || dist <= DUEL_MOVES.kick.reach + 20) {
+        startSuper(self, opp, now);
+        return;
+      }
+      self.state = 'walk';
+      return;
+    }
 
     // React to an incoming attack: block or hop (kept modest so fights stay decisive).
     if (opp.currentMove && opp.movePhase === 'windup' && dist < DUEL_MOVES.kick.reach + 26) {
@@ -196,8 +228,15 @@ export function DuelGame(props: Props) {
     if (word) fxRef.current.push({ x, y: y - 14, life: 0.5, maxLife: 0.5, radius: 0, growth: 0, color: '#ffd23a', kind: 'spark', text: word });
   };
 
+  const isSuperMove = (m: DuelMoveId) => m === 'superCombo' || m === 'superFireball';
+
+  const gainMeter = (f: DuelFighter, amount: number) => {
+    f.meter = Math.min(DL.METER_MAX, f.meter + amount);
+  };
+
   const applyDamage = (a: DuelFighter, d: DuelFighter, moveId: DuelMoveId, now: number) => {
     const m = DUEL_MOVES[moveId];
+    const zsuper = isSuperMove(moveId);
     const blocking = d.state === 'block' && Math.sign(a.x - d.x) === d.facing;
     d.currentMove = null;
     d.movePhase = null;
@@ -205,6 +244,8 @@ export function DuelGame(props: Props) {
       d.hp = Math.max(0, d.hp - (m.chip ?? 0));
       d.x = clamp(d.x + a.facing * 10, DL.STAGE_L, DL.STAGE_R);
       fxRef.current.push({ x: d.x + d.facing * 12, y: DL.GROUND_Y - 40, life: 0.28, maxLife: 0.28, radius: 10, growth: 40, color: '#9cd6ff', kind: 'block' });
+      gainMeter(d, DL.METER_ON_BLOCK);
+      if (!zsuper) gainMeter(a, DL.METER_ON_BLOCK);
       audio.playBlock();
       return;
     }
@@ -213,7 +254,10 @@ export function DuelGame(props: Props) {
     d.stateUntil = now + DL.HITSTUN_MS;
     d.x = clamp(d.x + a.facing * m.knockback * 0.3, DL.STAGE_L, DL.STAGE_R);
     if (m.launch) { d.vy = DL.JUMP_VY * 0.85; d.air = Math.max(d.air, 1); }
-    spawnSpark(d.x + d.facing * 10, DL.GROUND_Y - 42, '#fff2a8', HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)]);
+    gainMeter(d, DL.METER_ON_TAKEN);
+    if (!zsuper) gainMeter(a, DL.METER_ON_HIT);
+    const sparkCol = zsuper ? '#ffe66d' : '#fff2a8';
+    spawnSpark(d.x + d.facing * 10, DL.GROUND_Y - 42, sparkCol, zsuper ? undefined : HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)]);
     audio.playHit();
   };
 
@@ -223,13 +267,20 @@ export function DuelGame(props: Props) {
     if (now >= f.movePhaseUntil) {
       if (f.movePhase === 'windup') {
         if (m.isProjectile) {
-          projRef.current.push({ x: f.x + f.facing * 22, y: DL.GROUND_Y - 40, vx: f.facing * DL.HADOKEN_SPEED, ownerSide: f.side, color: f.color, traveled: 0 });
+          const big = f.currentMove === 'superFireball';
+          projRef.current.push({
+            x: f.x + f.facing * 22, y: DL.GROUND_Y - 40,
+            vx: f.facing * DL.HADOKEN_SPEED * (big ? 1.15 : 1),
+            ownerSide: f.side, color: f.color, traveled: 0,
+            radius: big ? 30 : 16, dmg: m.dmg, chip: m.chip ?? 0, big,
+          });
           f.movePhase = 'recover';
           f.movePhaseUntil = now + m.recoverMs;
         } else {
           f.movePhase = 'active';
           f.movePhaseUntil = now + m.activeMs;
           f.hitReg = false;
+          f.comboHitAt = 0;
           if (m.launch) { f.vy = DL.JUMP_VY * 0.6; f.air = Math.max(f.air, 1); audio.playPunch(); }
           else audio.playPunch();
         }
@@ -245,9 +296,19 @@ export function DuelGame(props: Props) {
       }
     }
     // Melee hit window.
-    if (f.movePhase === 'active' && !m.isProjectile && !f.hitReg) {
+    if (f.movePhase === 'active' && !m.isProjectile) {
       const dist = Math.abs(opp.x - f.x);
-      if (dist <= m.reach + DL.FIGHTER_HALF_W && (opp.x >= f.x ? 1 : -1) === f.facing) {
+      const inReach = dist <= m.reach + DL.FIGHTER_HALF_W && (opp.x >= f.x ? 1 : -1) === f.facing;
+      if (f.currentMove === 'superCombo') {
+        // Multi-hit flurry: a hit every ~85ms, combo-locking the opponent in range.
+        if (now >= f.comboHitAt && inReach) {
+          applyDamage(f, opp, 'superCombo', now);
+          opp.x = clamp(f.x + f.facing * DUEL_MOVES.punch.reach, DL.STAGE_L, DL.STAGE_R);
+          f.comboHitAt = now + 85;
+        } else if (now >= f.comboHitAt) {
+          f.comboHitAt = now + 85;
+        }
+      } else if (!f.hitReg && inReach) {
         f.hitReg = true;
         applyDamage(f, opp, f.currentMove, now);
       }
@@ -300,20 +361,25 @@ export function DuelGame(props: Props) {
       pr.x += pr.vx * dt;
       pr.traveled += Math.abs(pr.vx) * dt;
       const target = pr.ownerSide === 1 ? f2 : f1;
+      const owner = pr.ownerSide === 1 ? f1 : f2;
       let consumed = false;
-      if (Math.abs(target.x - pr.x) < 20 && target.air < 40) {
+      if (Math.abs(target.x - pr.x) < pr.radius + 4 && target.air < 40) {
         const blocking = target.state === 'block' && Math.sign(pr.vx) === -target.facing;
         if (blocking) {
-          target.hp = Math.max(0, target.hp - (DUEL_MOVES.hadoken.chip ?? 0));
-          fxRef.current.push({ x: target.x, y: DL.GROUND_Y - 40, life: 0.28, maxLife: 0.28, radius: 10, growth: 40, color: '#9cd6ff', kind: 'block' });
+          target.hp = Math.max(0, target.hp - pr.chip);
+          fxRef.current.push({ x: target.x, y: DL.GROUND_Y - 40, life: 0.28, maxLife: 0.28, radius: 12, growth: 40, color: '#9cd6ff', kind: 'block' });
+          gainMeter(target, DL.METER_ON_BLOCK);
+          if (!pr.big) gainMeter(owner, DL.METER_ON_BLOCK);
           audio.playBlock();
         } else {
-          target.hp = Math.max(0, target.hp - DUEL_MOVES.hadoken.dmg);
+          target.hp = Math.max(0, target.hp - pr.dmg);
           target.state = 'hurt';
           target.stateUntil = now + DL.HITSTUN_MS;
           target.currentMove = null;
           target.movePhase = null;
-          spawnSpark(target.x, DL.GROUND_Y - 42, '#aee9ff');
+          gainMeter(target, DL.METER_ON_TAKEN);
+          if (!pr.big) gainMeter(owner, DL.METER_ON_HIT);
+          spawnSpark(target.x, DL.GROUND_Y - 42, pr.big ? '#ffe66d' : '#aee9ff');
           audio.playHit();
         }
         consumed = true;
@@ -367,6 +433,15 @@ export function DuelGame(props: Props) {
       for (const f of order) drawFighter(ctx, f, imgOf(f.entry), now);
     }
     for (const fx of fxRef.current) drawDuelFx(ctx, fx);
+    // Super activation flash.
+    if (now < superFlashUntilRef.current) {
+      const a = (superFlashUntilRef.current - now) / 260;
+      ctx.save();
+      ctx.globalAlpha = 0.7 * a;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, DL.CANVAS_W, DL.GROUND_Y);
+      ctx.restore();
+    }
     drawCrowd(ctx, crowdRef.current, now);
     if (withBars && f1 && f2) {
       const timer = Math.max(0, DL.ROUND_TIME_S - (now - fightStartRef.current) / 1000);

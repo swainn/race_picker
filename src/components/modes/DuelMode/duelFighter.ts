@@ -121,8 +121,28 @@ export function drawFighter(
     ctx.scale(f.facing, 1);
   }
 
+  // Idle/ready bounce — the whole fighter bobs on its toes (offset per fighter
+  // so the two aren't perfectly synced).
+  const grounded = f.air <= 0.5 && f.state !== 'ko';
+  const bouncing = grounded && (f.state === 'idle' || f.state === 'walk' || f.state === 'block' || f.state === 'win');
+  const bounce = bouncing ? Math.abs(Math.sin(now / 165 + f.x * 0.06)) * 2.6 : 0;
+  ctx.translate(0, -bounce);
+
   const move = f.currentMove;
   const active = f.movePhase === 'active';
+  // Bright aura while charging/unleashing a super.
+  if ((move === 'superCombo' || move === 'superFireball') && f.movePhase !== null) {
+    const auraCol = move === 'superFireball' ? '255,210,80' : '120,220,255';
+    const aura = ctx.createRadialGradient(0, -26, 3, 0, -26, 30);
+    aura.addColorStop(0, `rgba(${auraCol},0.75)`);
+    aura.addColorStop(1, `rgba(${auraCol},0)`);
+    ctx.save();
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(0, -26, 30, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
   const walkCycle = f.state === 'walk' ? Math.sin(now / 90) : 0;
   const lean = f.state === 'hurt' ? -6 : move === 'kick' && active ? 4 : 0;
 
@@ -175,16 +195,18 @@ export function drawFighter(
     ctx.moveTo(2, -34);
     ctx.lineTo(10, -24);
     ctx.stroke();
-  } else if (move === 'punch' && active) {
+  } else if ((move === 'punch' && active) || move === 'superCombo') {
+    // Punch — or a rapid two-fisted flurry during a Super Combo.
+    const flurry = move === 'superCombo' ? Math.sin(now / 45) * 6 : 0;
     ctx.beginPath();
     ctx.moveTo(0, -40);
-    ctx.lineTo(30, -38);
+    ctx.lineTo(30 + flurry, -38);
     ctx.moveTo(-2, -38);
-    ctx.lineTo(-8, -30);
+    ctx.lineTo(24 - flurry, -32);
     ctx.stroke();
     ctx.fillStyle = '#ffd9b3';
     ctx.beginPath();
-    ctx.arc(31, -38, 3.2, 0, Math.PI * 2);
+    ctx.arc(31 + flurry, -38, 3.2, 0, Math.PI * 2);
     ctx.fill();
   } else if (move === 'shoryuken') {
     // Rising uppercut fist.
@@ -198,7 +220,8 @@ export function drawFighter(
     ctx.beginPath();
     ctx.arc(13, -62, 3.4, 0, Math.PI * 2);
     ctx.fill();
-  } else if (move === 'hadoken') {
+  } else if (move === 'hadoken' || move === 'superFireball') {
+    const big = move === 'superFireball';
     ctx.beginPath();
     ctx.moveTo(2, -38);
     ctx.lineTo(16, -34);
@@ -206,12 +229,14 @@ export function drawFighter(
     ctx.lineTo(16, -30);
     ctx.stroke();
     if (f.movePhase === 'windup') {
-      const orb = ctx.createRadialGradient(20, -32, 0, 20, -32, 9);
-      orb.addColorStop(0, 'rgba(150,220,255,0.95)');
-      orb.addColorStop(1, 'rgba(120,180,255,0)');
+      const rr = big ? 15 : 9;
+      const rgb = big ? '255,210,80' : '150,220,255';
+      const orb = ctx.createRadialGradient(20, -32, 0, 20, -32, rr);
+      orb.addColorStop(0, `rgba(${rgb},0.95)`);
+      orb.addColorStop(1, `rgba(${rgb},0)`);
       ctx.fillStyle = orb;
       ctx.beginPath();
-      ctx.arc(20, -32, 9, 0, Math.PI * 2);
+      ctx.arc(20, -32, rr, 0, Math.PI * 2);
       ctx.fill();
     }
   } else {
@@ -258,13 +283,14 @@ export function drawFighter(
 }
 
 export function drawDuelProjectile(ctx: CanvasRenderingContext2D, p: DuelProjectile): void {
-  const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 16);
-  grad.addColorStop(0, '#eafaff');
-  grad.addColorStop(0.5, p.color);
-  grad.addColorStop(1, 'rgba(120,180,255,0)');
+  const r = p.radius;
+  const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(0.5, p.big ? '#ffcf5d' : p.color);
+  grad.addColorStop(1, p.big ? 'rgba(255,180,60,0)' : 'rgba(120,180,255,0)');
   ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 16, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -374,14 +400,47 @@ export function drawHealthBars(
   drawBar(barL, false, f1.hp);
   drawBar(barR - barW, true, f2.hp);
 
+  // Super meter bars beneath each health bar.
+  const superY = barY + barH + 3;
+  const superH = 5;
+  const superW = barW * 0.75;
+  const drawSuper = (x: number, anchorRight: boolean, meter: number) => {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    roundRect(ctx, x, superY, superW, superH, 2);
+    ctx.fill();
+    const frac = Math.max(0, Math.min(1, meter / DL.METER_MAX));
+    const full = frac >= 1;
+    const w = superW * frac;
+    ctx.fillStyle = full ? '#ffe66d' : '#4fd0ff';
+    if (anchorRight) roundRect(ctx, x + superW - w, superY, w, superH, 2);
+    else roundRect(ctx, x, superY, w, superH, 2);
+    ctx.fill();
+    if (full) {
+      ctx.save();
+      ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(Date.now() / 130));
+      ctx.strokeStyle = '#fff2a8';
+      ctx.lineWidth = 1;
+      roundRect(ctx, x - 1, superY - 1, superW + 2, superH + 2, 3);
+      ctx.stroke();
+      ctx.font = 'bold 8px system-ui, sans-serif';
+      ctx.fillStyle = '#ffe66d';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = anchorRight ? 'right' : 'left';
+      ctx.fillText('SUPER', anchorRight ? x + superW : x, superY + superH + 7);
+      ctx.restore();
+    }
+  };
+  drawSuper(barL, false, f1.meter);
+  drawSuper(barR - superW, true, f2.meter);
+
   ctx.save();
   ctx.font = 'bold 11px system-ui, sans-serif';
   ctx.fillStyle = '#fff';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
-  ctx.fillText(f1.entry.name.toUpperCase(), barL, barY + barH + 9);
+  ctx.fillText(f1.entry.name.toUpperCase(), barL, superY + superH + 8);
   ctx.textAlign = 'right';
-  ctx.fillText(f2.entry.name.toUpperCase(), barR, barY + barH + 9);
+  ctx.fillText(f2.entry.name.toUpperCase(), barR, superY + superH + 8);
 
   // Round timer.
   ctx.textAlign = 'center';
