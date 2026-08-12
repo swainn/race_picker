@@ -111,6 +111,19 @@ export const defendersTheme: WinnerTheme = {
   buttonStyle: 'solid',
 };
 
+export const duelTheme: WinnerTheme = {
+  accent: '#ff5a3c',
+  accentSoft: 'rgba(255, 90, 60, 0.55)',
+  bgGradient: 'linear-gradient(135deg,#3a2a56 0%,#241a3a 100%)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#ffcf5d',
+  fontFamily: '"Arial Black", system-ui, sans-serif',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};
+
 export const wheelTheme: WinnerTheme = {
   accent: '#2d3436',
   accentSoft: 'rgba(45, 52, 54, 0.45)',

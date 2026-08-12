@@ -9,6 +9,7 @@ import {
   kungFuTheme,
   invadersTheme,
   defendersTheme,
+  duelTheme,
   racingTheme,
   wallClimberTheme,
   wheelTheme,
@@ -30,6 +31,8 @@ import { InvadersMode } from './SpaceInvadersMode/InvadersMode';
 import { InvadersSettings } from './SpaceInvadersMode/InvadersSettings';
 import { DefendersMode } from './SpaceInvadersMode/DefendersMode';
 import { DefendersSettings } from './SpaceInvadersMode/DefendersSettings';
+import { DuelMode } from './DuelMode/DuelMode';
+import { DuelSettings } from './DuelMode/DuelSettings';
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -52,6 +55,7 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   'kung-fu':      { View: KungFuMode,      Settings: KungFuSettings, theme: kungFuTheme, label: '🥋 Kung Fu', survivalOrder: true },
   'space-invaders':  { View: InvadersMode,  Settings: InvadersSettings,  theme: invadersTheme,  label: '👾 Space Invaders', survivalOrder: true },
   'space-defenders': { View: DefendersMode, Settings: DefendersSettings, theme: defendersTheme, label: '🛡️ Space Defenders', survivalOrder: true },
+  'street-duel':     { View: DuelMode,      Settings: DuelSettings,      theme: duelTheme,      label: '🥊 Street Duel', survivalOrder: true },
 };
 
 export const MODE_LIST: { value: GameMode; label: string }[] =
