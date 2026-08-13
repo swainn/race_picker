@@ -8,9 +8,10 @@ export type DuelSpeed = 'slow' | 'normal' | 'fast';
 export interface DuelSettings {
   speed: DuelSpeed;
   sound: boolean;
+  music: boolean;
 }
 
-const DEFAULT_SETTINGS: DuelSettings = { speed: 'normal', sound: true };
+const DEFAULT_SETTINGS: DuelSettings = { speed: 'normal', sound: true, music: true };
 
 function loadSettings(): DuelSettings {
   try {
@@ -19,7 +20,7 @@ function loadSettings(): DuelSettings {
     const parsed = JSON.parse(raw) as Partial<DuelSettings>;
     const speed: DuelSpeed =
       parsed.speed === 'slow' || parsed.speed === 'fast' ? parsed.speed : 'normal';
-    return { speed, sound: parsed.sound ?? true };
+    return { speed, sound: parsed.sound ?? true, music: parsed.music ?? true };
   } catch {
     return DEFAULT_SETTINGS;
   }

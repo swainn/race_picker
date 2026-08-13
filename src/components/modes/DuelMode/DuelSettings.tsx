@@ -35,6 +35,14 @@ export function DuelSettings() {
           />
           <span>Arcade sound effects</span>
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={settings.music}
+            onChange={(e) => updateDuelSettings({ music: e.target.checked })}
+          />
+          <span>8-bit soundtrack</span>
+        </label>
       </fieldset>
     </>
   );

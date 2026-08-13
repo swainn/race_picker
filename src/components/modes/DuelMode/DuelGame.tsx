@@ -9,11 +9,13 @@ import {
   DUEL_MOVES,
   DUEL_MOVE_IDS,
   DUEL_SUPERS,
+  STAGE_IDS,
   pickDuelists,
   type DuelFighter,
   type DuelMoveId,
   type DuelProjectile,
   type DuelFx,
+  type StageId,
 } from './duelEngine';
 import {
   drawStage,
@@ -65,8 +67,12 @@ export function DuelGame(props: Props) {
   useEffect(() => {
     audio.setDuelMuted(!settings.sound);
   }, [settings.sound]);
+  useEffect(() => {
+    audio.setMusicMuted(!settings.music);
+  }, [settings.music]);
   const speedRef = useRef(settings.speed);
   speedRef.current = settings.speed;
+  const stageRef = useRef<StageId>('city');
 
   const phaseRef = useRef<Phase>('ready');
   const f1Ref = useRef<DuelFighter | null>(null);
@@ -138,9 +144,11 @@ export function DuelGame(props: Props) {
     crowdRef.current = p.entries
       .filter((e) => e.id !== a.id && e.id !== b.id)
       .map((e) => ({ color: colorOf(e), name: e.name }));
+    stageRef.current = STAGE_IDS[Math.floor(Math.random() * STAGE_IDS.length)];
     introUntilRef.current = now + DL.INTRO_MS;
     phaseRef.current = 'intro';
     audio.playBell();
+    audio.startTrack(stageRef.current); // no-op if music is muted
   };
 
   // ---- Combat helpers ---------------------------------------------------
@@ -423,7 +431,7 @@ export function DuelGame(props: Props) {
 
   // ---- Rendering --------------------------------------------------------
   const drawScene = (ctx: CanvasRenderingContext2D, now: number, withBars: boolean) => {
-    drawStage(ctx);
+    drawStage(ctx, stageRef.current);
     for (const pr of projRef.current) drawDuelProjectile(ctx, pr);
     const f1 = f1Ref.current;
     const f2 = f2Ref.current;
@@ -468,7 +476,7 @@ export function DuelGame(props: Props) {
 
       switch (phaseRef.current) {
         case 'ready': {
-          drawStage(ctx);
+          drawStage(ctx, stageRef.current);
           crowdRef.current = p.entries.map((e) => ({ color: colorOf(e), name: e.name }));
           drawCrowd(ctx, crowdRef.current, now);
           drawAnnounce(ctx, 'READY?', '#ffd23a', 0.8);
@@ -514,6 +522,7 @@ export function DuelGame(props: Props) {
           else drawAnnounce(ctx, `${winner.entry.name.toUpperCase()} WINS!`, winner.color, 0.72);
           if (now >= koUntilRef.current) {
             phaseRef.current = 'finished';
+            audio.stopTrack();
             audio.playFanfare();
             p.onWinner(loserRef.current!.entry, winnerRef.current!.entry.name);
           }
@@ -530,7 +539,10 @@ export function DuelGame(props: Props) {
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      audio.stopTrack();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- persistent canvas loop; reads latest props/settings via refs
   }, []);
 

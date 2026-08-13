@@ -1,4 +1,13 @@
-import { DL, type DuelFighter, type DuelFx, type DuelProjectile } from './duelEngine';
+import { DL, type DuelFighter, type DuelFx, type DuelProjectile, type StageId } from './duelEngine';
+
+/* Deterministic star/detail field so backdrops don't twinkle. */
+function seeded(n: number): () => number {
+  let s = n;
+  return () => {
+    s = (s * 1664525 + 1013904223) % 4294967296;
+    return s / 4294967296;
+  };
+}
 
 function roundRect(
   ctx: CanvasRenderingContext2D,
@@ -18,40 +27,151 @@ function roundRect(
   ctx.closePath();
 }
 
-/** Dark arcade stage with a backdrop skyline and a floor. */
-export function drawStage(ctx: CanvasRenderingContext2D): void {
-  const sky = ctx.createLinearGradient(0, 0, 0, DL.GROUND_Y);
-  sky.addColorStop(0, '#241a3a');
-  sky.addColorStop(1, '#3a2a56');
-  ctx.fillStyle = sky;
+function sky(ctx: CanvasRenderingContext2D, top: string, bottom: string): void {
+  const g = ctx.createLinearGradient(0, 0, 0, DL.GROUND_Y);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bottom);
+  ctx.fillStyle = g;
   ctx.fillRect(0, 0, DL.CANVAS_W, DL.GROUND_Y);
+}
 
-  // Skyline silhouette.
-  ctx.fillStyle = 'rgba(18,12,32,0.7)';
-  let bx = 8;
-  const seedH = [70, 120, 46, 96, 60, 140, 84, 54, 110, 72, 100];
-  let i = 0;
-  while (bx < DL.CANVAS_W) {
-    const w = 26 + (i % 3) * 10;
-    const h = seedH[i % seedH.length];
-    ctx.fillRect(bx, DL.GROUND_Y - 60 - h, w, h + 60);
-    bx += w + 6;
-    i++;
-  }
-
-  // Floor.
-  const floor = ctx.createLinearGradient(0, DL.GROUND_Y, 0, DL.CANVAS_H);
-  floor.addColorStop(0, '#4a3b2b');
-  floor.addColorStop(1, '#2a2018');
-  ctx.fillStyle = floor;
+function floor(ctx: CanvasRenderingContext2D, top: string, bottom: string, edge: string): void {
+  const g = ctx.createLinearGradient(0, DL.GROUND_Y, 0, DL.CANVAS_H);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bottom);
+  ctx.fillStyle = g;
   ctx.fillRect(0, DL.GROUND_Y, DL.CANVAS_W, DL.CANVAS_H - DL.GROUND_Y);
-  // Floor edge highlight.
-  ctx.strokeStyle = 'rgba(255,220,150,0.35)';
+  ctx.strokeStyle = edge;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(0, DL.GROUND_Y);
   ctx.lineTo(DL.CANVAS_W, DL.GROUND_Y);
   ctx.stroke();
+}
+
+/** Draw the arena backdrop for the given stage. */
+export function drawStage(ctx: CanvasRenderingContext2D, stage: StageId): void {
+  if (stage === 'city') {
+    sky(ctx, '#241a3a', '#3a2a56');
+    ctx.fillStyle = 'rgba(18,12,32,0.7)';
+    const heights = [70, 120, 46, 96, 60, 140, 84, 54, 110, 72, 100];
+    let bx = 8;
+    let i = 0;
+    while (bx < DL.CANVAS_W) {
+      const w = 26 + (i % 3) * 10;
+      const h = heights[i % heights.length];
+      ctx.fillRect(bx, DL.GROUND_Y - 60 - h, w, h + 60);
+      // lit windows
+      ctx.fillStyle = 'rgba(255,220,120,0.5)';
+      const r = seeded(i * 31 + 7);
+      for (let wy = DL.GROUND_Y - 55 - h; wy < DL.GROUND_Y - 60; wy += 12) {
+        for (let wx = bx + 4; wx < bx + w - 4; wx += 8) if (r() > 0.5) ctx.fillRect(wx, wy, 3, 4);
+      }
+      ctx.fillStyle = 'rgba(18,12,32,0.7)';
+      bx += w + 6;
+      i++;
+    }
+    floor(ctx, '#4a3b2b', '#2a2018', 'rgba(255,220,150,0.35)');
+    return;
+  }
+
+  if (stage === 'jungle') {
+    sky(ctx, '#0e3b2e', '#1c5c40');
+    // Sun disc.
+    ctx.fillStyle = 'rgba(255,240,180,0.5)';
+    ctx.beginPath();
+    ctx.arc(DL.CANVAS_W * 0.72, 80, 34, 0, Math.PI * 2);
+    ctx.fill();
+    // Layered canopy silhouettes.
+    const layers = [
+      { y: DL.GROUND_Y - 40, col: 'rgba(8,40,24,0.9)', r: 60 },
+      { y: DL.GROUND_Y - 110, col: 'rgba(12,56,34,0.85)', r: 52 },
+      { y: DL.GROUND_Y - 175, col: 'rgba(16,72,44,0.7)', r: 44 },
+    ];
+    for (const l of layers) {
+      ctx.fillStyle = l.col;
+      for (let x = -20; x < DL.CANVAS_W + 40; x += l.r * 0.9) {
+        ctx.beginPath();
+        ctx.arc(x, l.y, l.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // Hanging vines.
+    ctx.strokeStyle = 'rgba(30,90,50,0.6)';
+    ctx.lineWidth = 2;
+    const rv = seeded(99);
+    for (let k = 0; k < 9; k++) {
+      const x = 20 + rv() * (DL.CANVAS_W - 40);
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.quadraticCurveTo(x + 8, 60, x, 120 + rv() * 60);
+      ctx.stroke();
+    }
+    floor(ctx, '#3c5a2a', '#22371a', 'rgba(160,230,120,0.35)');
+    return;
+  }
+
+  if (stage === 'space') {
+    sky(ctx, '#05060f', '#0c1030');
+    const rs = seeded(2024);
+    for (let k = 0; k < 90; k++) {
+      ctx.globalAlpha = 0.3 + rs() * 0.6;
+      ctx.fillStyle = '#cdd6ff';
+      ctx.fillRect(rs() * DL.CANVAS_W, rs() * DL.GROUND_Y, rs() > 0.9 ? 2 : 1, 1);
+    }
+    ctx.globalAlpha = 1;
+    // Planet.
+    const pg = ctx.createRadialGradient(90, 110, 6, 90, 110, 46);
+    pg.addColorStop(0, '#6ba3ff');
+    pg.addColorStop(1, '#20366e');
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.arc(90, 110, 46, 0, Math.PI * 2);
+    ctx.fill();
+    // Station panels along the horizon.
+    ctx.fillStyle = 'rgba(40,52,90,0.85)';
+    ctx.fillRect(0, DL.GROUND_Y - 46, DL.CANVAS_W, 46);
+    ctx.fillStyle = 'rgba(90,120,200,0.5)';
+    for (let x = 6; x < DL.CANVAS_W; x += 26) ctx.fillRect(x, DL.GROUND_Y - 40, 16, 10);
+    // Metal floor with a grid.
+    floor(ctx, '#2b3350', '#161a2c', 'rgba(120,160,255,0.5)');
+    ctx.strokeStyle = 'rgba(120,160,255,0.15)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < DL.CANVAS_W; x += 34) {
+      ctx.beginPath();
+      ctx.moveTo(x, DL.GROUND_Y);
+      ctx.lineTo(x - 40, DL.CANVAS_H);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  // desert
+  sky(ctx, '#f2a65a', '#f9d98a');
+  ctx.fillStyle = 'rgba(255,250,210,0.9)';
+  ctx.beginPath();
+  ctx.arc(DL.CANVAS_W * 0.3, 96, 40, 0, Math.PI * 2);
+  ctx.fill();
+  // Distant pyramids.
+  ctx.fillStyle = 'rgba(190,130,70,0.7)';
+  const pyr = [[120, 150], [230, 200], [360, 130]];
+  for (const [px, ph] of pyr) {
+    ctx.beginPath();
+    ctx.moveTo(px, DL.GROUND_Y - 30);
+    ctx.lineTo(px + ph * 0.9, DL.GROUND_Y - 30);
+    ctx.lineTo(px + ph * 0.45, DL.GROUND_Y - 30 - ph);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Dune ridges.
+  ctx.fillStyle = 'rgba(210,150,80,0.55)';
+  ctx.beginPath();
+  ctx.moveTo(0, DL.GROUND_Y - 18);
+  for (let x = 0; x <= DL.CANVAS_W; x += 40) ctx.quadraticCurveTo(x + 20, DL.GROUND_Y - 34, x + 40, DL.GROUND_Y - 18);
+  ctx.lineTo(DL.CANVAS_W, DL.GROUND_Y);
+  ctx.lineTo(0, DL.GROUND_Y);
+  ctx.fill();
+  floor(ctx, '#d9a35a', '#a06f34', 'rgba(255,240,180,0.5)');
 }
 
 /** Bobbing spectator heads along the crowd band. */

@@ -35,6 +35,10 @@ export const DL = {
   HADOKEN_RANGE: 460,
 } as const;
 
+/** Cycling arena backdrops, each with its own 8-bit track. */
+export type StageId = 'city' | 'jungle' | 'space' | 'desert';
+export const STAGE_IDS: StageId[] = ['city', 'jungle', 'space', 'desert'];
+
 export type DuelMoveId =
   | 'punch'
   | 'kick'
