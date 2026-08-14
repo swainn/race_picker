@@ -1,5 +1,6 @@
 import type { Entry } from '../../../types';
 import { shuffle } from '../../../utils/array';
+import type { DuelCharacter } from './duelCharacters';
 
 /** Layout + tuning for the side-view Street Duel. Portrait canvas (480×600):
  *  health bars up top, a side-view stage in the middle, a spectator crowd below. */
@@ -46,10 +47,6 @@ export type DuelMoveId =
   | 'shoryuken'
   | 'superCombo'
   | 'superFireball';
-
-/** The two super arts a duelist can be randomly assigned. */
-export type SuperMove = 'superCombo' | 'superFireball';
-export const DUEL_SUPERS: SuperMove[] = ['superCombo', 'superFireball'];
 
 export interface DuelMove {
   id: DuelMoveId;
@@ -130,11 +127,14 @@ export interface DuelFighter {
   nextDecisionAt: number;
   blockUntil: number;
   hitReg: boolean; // whether the current active move has already connected
-  /** Super meter fill 0..METER_MAX, and the assigned super art. */
+  /** Super meter fill 0..METER_MAX. The super itself comes from the character. */
   meter: number;
-  superMove: SuperMove;
-  /** Next super-combo flurry-hit timestamp. */
+  /** The randomly-assigned roster character (look + signature super). */
+  character: DuelCharacter;
+  /** Next flurry-hit timestamp (multi-hit supers). */
   comboHitAt: number;
+  /** Crusher/dash-super horizontal velocity while traveling. */
+  superVx: number;
 }
 
 export interface DuelProjectile {

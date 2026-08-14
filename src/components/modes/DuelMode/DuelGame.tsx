@@ -8,7 +8,6 @@ import {
   DL,
   DUEL_MOVES,
   DUEL_MOVE_IDS,
-  DUEL_SUPERS,
   STAGE_IDS,
   pickDuelists,
   type DuelFighter,
@@ -17,6 +16,7 @@ import {
   type DuelFx,
   type StageId,
 } from './duelEngine';
+import { pickTwoCharacters, type DuelCharacter } from './duelCharacters';
 import {
   drawStage,
   drawCrowd,
@@ -98,7 +98,7 @@ export function DuelGame(props: Props) {
   };
   const imgOf = (entry: Entry): HTMLImageElement | null => imgCacheRef.current.get(entry.id) ?? null;
 
-  const makeFighter = (entry: Entry, side: 1 | -1): DuelFighter => {
+  const makeFighter = (entry: Entry, side: 1 | -1, character: DuelCharacter): DuelFighter => {
     const url = getPreferredEntryImage(entry);
     if (url && !imgCacheRef.current.has(entry.id)) {
       const im = new Image();
@@ -124,8 +124,9 @@ export function DuelGame(props: Props) {
       blockUntil: 0,
       hitReg: false,
       meter: Math.round(DL.METER_MAX * 0.22), // head-start so a super reliably lands mid-duel
-      superMove: DUEL_SUPERS[Math.floor(Math.random() * DUEL_SUPERS.length)],
+      character,
       comboHitAt: 0,
+      superVx: 0,
     };
   };
 
@@ -135,8 +136,9 @@ export function DuelGame(props: Props) {
     const p = propsRef.current;
     audio.resumeDuelAudio();
     const [a, b] = pickDuelists(p.entries);
-    f1Ref.current = makeFighter(a, 1);
-    f2Ref.current = makeFighter(b, -1);
+    const [ca, cb] = pickTwoCharacters();
+    f1Ref.current = makeFighter(a, 1, ca);
+    f2Ref.current = makeFighter(b, -1, cb);
     projRef.current = [];
     fxRef.current = [];
     loserRef.current = null;
@@ -173,18 +175,21 @@ export function DuelGame(props: Props) {
     f.state = 'jump';
   };
 
-  // Spend a full meter on the fighter's assigned super — flash + freeze + callout.
+  // Spend a full meter on the character's signature super — flash + callout.
   const startSuper = (f: DuelFighter, opp: DuelFighter, now: number) => {
+    const kind = f.character.superKind;
+    const moveId: DuelMoveId = kind === 'projectile' ? 'superFireball' : 'superCombo';
     f.meter = 0;
     f.facing = opp.x >= f.x ? 1 : -1;
-    f.currentMove = f.superMove;
+    f.currentMove = moveId;
     f.movePhase = 'windup';
-    f.movePhaseUntil = now + DUEL_MOVES[f.superMove].windupMs;
+    f.movePhaseUntil = now + DUEL_MOVES[moveId].windupMs;
     f.state = 'attack';
     f.hitReg = false;
     f.comboHitAt = 0;
+    f.superVx = 0;
     superFlashUntilRef.current = now + 260;
-    fxRef.current.push({ x: DL.CANVAS_W / 2, y: DL.GROUND_Y * 0.42, life: 1, maxLife: 1, radius: 0, growth: 0, color: f.color, kind: 'spark', text: DUEL_MOVES[f.superMove].callout });
+    fxRef.current.push({ x: DL.CANVAS_W / 2, y: DL.GROUND_Y * 0.42, life: 1, maxLife: 1, radius: 0, growth: 0, color: f.character.superColor, kind: 'spark', text: f.character.superCallout });
     audio.playFireball();
   };
 
@@ -193,9 +198,16 @@ export function DuelGame(props: Props) {
     self.facing = opp.x >= self.x ? 1 : -1;
     const dist = Math.abs(opp.x - self.x);
 
-    // Full meter → unleash the super (fireball from range; combo needs to close in).
+    // Full meter → unleash the character's super when it's in its useful range:
+    // projectile fires from anywhere; travelling supers (grab/crusher/dive) fire
+    // from mid-range; melee flurries need to close in first.
     if (self.meter >= DL.METER_MAX && self.currentMove === null) {
-      if (self.superMove === 'superFireball' || dist <= DUEL_MOVES.kick.reach + 20) {
+      const kind = self.character.superKind;
+      const inRange =
+        kind === 'projectile' ? true :
+        kind === 'grab' || kind === 'crusher' || kind === 'dive' ? dist <= 220 :
+        dist <= DUEL_MOVES.kick.reach + 20;
+      if (inRange) {
         startSuper(self, opp, now);
         return;
       }
@@ -242,8 +254,17 @@ export function DuelGame(props: Props) {
     f.meter = Math.min(DL.METER_MAX, f.meter + amount);
   };
 
-  const applyDamage = (a: DuelFighter, d: DuelFighter, moveId: DuelMoveId, now: number) => {
+  const applyDamage = (
+    a: DuelFighter,
+    d: DuelFighter,
+    moveId: DuelMoveId,
+    now: number,
+    override?: { dmg?: number; knockback?: number; launch?: boolean }
+  ) => {
     const m = DUEL_MOVES[moveId];
+    const dmg = override?.dmg ?? m.dmg;
+    const knockback = override?.knockback ?? m.knockback;
+    const launch = override?.launch ?? m.launch;
     const zsuper = isSuperMove(moveId);
     const blocking = d.state === 'block' && Math.sign(a.x - d.x) === d.facing;
     d.currentMove = null;
@@ -257,15 +278,19 @@ export function DuelGame(props: Props) {
       audio.playBlock();
       return;
     }
-    d.hp = Math.max(0, d.hp - m.dmg);
+    d.hp = Math.max(0, d.hp - dmg);
     d.state = 'hurt';
     d.stateUntil = now + DL.HITSTUN_MS;
-    d.x = clamp(d.x + a.facing * m.knockback * 0.3, DL.STAGE_L, DL.STAGE_R);
-    if (m.launch) { d.vy = DL.JUMP_VY * 0.85; d.air = Math.max(d.air, 1); }
+    d.x = clamp(d.x + a.facing * knockback * 0.3, DL.STAGE_L, DL.STAGE_R);
+    if (launch) { d.vy = DL.JUMP_VY * 0.85; d.air = Math.max(d.air, 1); }
     gainMeter(d, DL.METER_ON_TAKEN);
     if (!zsuper) gainMeter(a, DL.METER_ON_HIT);
-    const sparkCol = zsuper ? '#ffe66d' : '#fff2a8';
+    const sparkCol = zsuper ? a.character.superColor : '#fff2a8';
     spawnSpark(d.x + d.facing * 10, DL.GROUND_Y - 42, sparkCol, zsuper ? undefined : HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)]);
+    // Electric super: extra shock rings around the victim.
+    if (zsuper && a.character.superKind === 'electric') {
+      fxRef.current.push({ x: d.x, y: DL.GROUND_Y - 40, life: 0.35, maxLife: 0.35, radius: 6, growth: 110, color: a.character.superColor, kind: 'ring' });
+    }
     audio.playHit();
   };
 
@@ -279,7 +304,7 @@ export function DuelGame(props: Props) {
           projRef.current.push({
             x: f.x + f.facing * 22, y: DL.GROUND_Y - 40,
             vx: f.facing * DL.HADOKEN_SPEED * (big ? 1.15 : 1),
-            ownerSide: f.side, color: f.color, traveled: 0,
+            ownerSide: f.side, color: big ? f.character.superColor : f.color, traveled: 0,
             radius: big ? 30 : 16, dmg: m.dmg, chip: m.chip ?? 0, big,
           });
           f.movePhase = 'recover';
@@ -289,12 +314,24 @@ export function DuelGame(props: Props) {
           f.movePhaseUntil = now + m.activeMs;
           f.hitReg = false;
           f.comboHitAt = 0;
+          // Character supers with motion: set their travel on activation.
+          if (f.currentMove === 'superCombo') {
+            const kind = f.character.superKind;
+            if (kind === 'grab') f.superVx = f.facing * 380;
+            else if (kind === 'crusher') f.superVx = f.facing * 420;
+            else if (kind === 'dive') {
+              f.vy = DL.JUMP_VY * 1.05;
+              f.air = Math.max(f.air, 1);
+              f.superVx = f.facing * 200;
+            } else if (f.character.dashing) f.superVx = f.facing * 160;
+          }
           if (m.launch) { f.vy = DL.JUMP_VY * 0.6; f.air = Math.max(f.air, 1); audio.playPunch(); }
           else audio.playPunch();
         }
       } else if (f.movePhase === 'active') {
         f.movePhase = 'recover';
         f.movePhaseUntil = now + m.recoverMs;
+        f.superVx = 0;
       } else {
         f.cooldowns[f.currentMove] = now + m.cooldownMs;
         f.currentMove = null;
@@ -308,13 +345,23 @@ export function DuelGame(props: Props) {
       const dist = Math.abs(opp.x - f.x);
       const inReach = dist <= m.reach + DL.FIGHTER_HALF_W && (opp.x >= f.x ? 1 : -1) === f.facing;
       if (f.currentMove === 'superCombo') {
-        // Multi-hit flurry: a hit every ~85ms, combo-locking the opponent in range.
-        if (now >= f.comboHitAt && inReach) {
-          applyDamage(f, opp, 'superCombo', now);
-          opp.x = clamp(f.x + f.facing * DUEL_MOVES.punch.reach, DL.STAGE_L, DL.STAGE_R);
-          f.comboHitAt = now + 85;
-        } else if (now >= f.comboHitAt) {
-          f.comboHitAt = now + 85;
+        const kind = f.character.superKind;
+        if (kind === 'grab' || kind === 'crusher' || kind === 'dive') {
+          // Travelling super: one big launching blow on contact.
+          if (!f.hitReg && inReach) {
+            f.hitReg = true;
+            f.superVx = kind === 'crusher' ? f.superVx : 0; // crusher keeps going through
+            applyDamage(f, opp, 'superCombo', now, { dmg: 24, knockback: 220, launch: true });
+          }
+        } else {
+          // Flurry/electric: a hit every ~85ms, combo-locking the opponent in range.
+          if (now >= f.comboHitAt && inReach) {
+            applyDamage(f, opp, 'superCombo', now);
+            opp.x = clamp(f.x + f.facing * DUEL_MOVES.punch.reach, DL.STAGE_L, DL.STAGE_R);
+            f.comboHitAt = now + 85;
+          } else if (now >= f.comboHitAt) {
+            f.comboHitAt = now + 85;
+          }
         }
       } else if (!f.hitReg && inReach) {
         f.hitReg = true;
@@ -324,6 +371,10 @@ export function DuelGame(props: Props) {
   };
 
   const stepPhysics = (f: DuelFighter, opp: DuelFighter, dt: number) => {
+    // Travelling super (grab rush / psycho crusher / claw dive drift).
+    if (f.superVx !== 0 && f.movePhase === 'active') {
+      f.x = clamp(f.x + f.superVx * dt, DL.STAGE_L, DL.STAGE_R);
+    }
     // Jump arc.
     if (f.air > 0 || f.vy !== 0) {
       f.air += f.vy * dt;

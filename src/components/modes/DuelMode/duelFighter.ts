@@ -216,16 +216,22 @@ export function drawCrowd(
 export function drawFighter(
   ctx: CanvasRenderingContext2D,
   f: DuelFighter,
-  img: HTMLImageElement | null,
+  _img: HTMLImageElement | null,
   now: number
 ): void {
+  const v = f.character.visual;
+  // Build scaling: wider/taller bodies per archetype.
+  const bw = v.build === 'thin' ? 0.8 : v.build === 'wide' ? 1.5 : v.build === 'huge' ? 1.3 : 1;
+  const bh = v.build === 'thin' ? 1.12 : v.build === 'wide' ? 0.95 : v.build === 'huge' ? 1.08 : 1;
+  const halfW = 8 * bw;
+
   const feetY = DL.GROUND_Y - f.air;
   // Shadow (shrinks with height).
   ctx.save();
   ctx.globalAlpha = 0.28 * (1 - Math.min(0.6, f.air / 120));
   ctx.fillStyle = '#000';
   ctx.beginPath();
-  ctx.ellipse(f.x, DL.GROUND_Y + 2, 16, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(f.x, DL.GROUND_Y + 2, 16 * bw, 5, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
@@ -250,16 +256,17 @@ export function drawFighter(
 
   const move = f.currentMove;
   const active = f.movePhase === 'active';
-  // Bright aura while charging/unleashing a super.
-  if ((move === 'superCombo' || move === 'superFireball') && f.movePhase !== null) {
-    const auraCol = move === 'superFireball' ? '255,210,80' : '120,220,255';
-    const aura = ctx.createRadialGradient(0, -26, 3, 0, -26, 30);
-    aura.addColorStop(0, `rgba(${auraCol},0.75)`);
-    aura.addColorStop(1, `rgba(${auraCol},0)`);
+  const isSuper = move === 'superCombo' || move === 'superFireball';
+  // Bright aura in the character's super color while charging/unleashing.
+  if (isSuper && f.movePhase !== null) {
+    const aura = ctx.createRadialGradient(0, -26, 3, 0, -26, 32);
+    aura.addColorStop(0, f.character.superColor);
+    aura.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.save();
+    ctx.globalAlpha = 0.6;
     ctx.fillStyle = aura;
     ctx.beginPath();
-    ctx.arc(0, -26, 30, 0, Math.PI * 2);
+    ctx.arc(0, -26, 32, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -268,11 +275,10 @@ export function drawFighter(
 
   ctx.lineCap = 'round';
 
-  // ---- Legs ----
-  ctx.strokeStyle = '#3a2f4a';
-  ctx.lineWidth = 5;
+  // ---- Legs (skin or trousers tinted darker than body) ----
+  ctx.strokeStyle = v.build === 'wide' ? v.skin : '#3a2f4a';
+  ctx.lineWidth = 5 * Math.max(1, bw * 0.85);
   if (move === 'kick' && active) {
-    // Front kick extended.
     ctx.beginPath();
     ctx.moveTo(0, -20);
     ctx.lineTo(26, -24);
@@ -280,7 +286,6 @@ export function drawFighter(
     ctx.lineTo(-6, 0);
     ctx.stroke();
   } else if (f.air > 2) {
-    // Tucked in the air.
     ctx.beginPath();
     ctx.moveTo(0, -20);
     ctx.lineTo(8, -8);
@@ -290,24 +295,44 @@ export function drawFighter(
   } else {
     ctx.beginPath();
     ctx.moveTo(0, -20);
-    ctx.lineTo(-6 + walkCycle * 4, 0);
+    ctx.lineTo(-6 * bw + walkCycle * 4, 0);
     ctx.moveTo(0, -20);
-    ctx.lineTo(7 - walkCycle * 4, 0);
+    ctx.lineTo(7 * bw - walkCycle * 4, 0);
     ctx.stroke();
   }
 
-  // ---- Torso (gi in participant color) ----
+  // ---- Torso (character costume) ----
   ctx.save();
   ctx.translate(lean * 0.4, 0);
-  ctx.fillStyle = f.color;
-  roundRect(ctx, -8, -44, 16, 26, 5);
+  ctx.fillStyle = v.body;
+  roundRect(ctx, -halfW, -44 * bh, halfW * 2, 26 * bh + (bh - 1) * 18, 5 * bw);
   ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.fillRect(-8, -30, 16, 3); // belt
+  // Wide build: bare belly overhang (sumo).
+  if (v.build === 'wide') {
+    ctx.fillStyle = v.skin;
+    ctx.beginPath();
+    ctx.ellipse(0, -26, halfW * 0.85, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Cape (drawn behind-ish, trailing).
+  if (v.cape) {
+    ctx.fillStyle = 'rgba(30,20,50,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(-halfW, -42);
+    ctx.quadraticCurveTo(-halfW - 10, -20, -halfW - 6 + Math.sin(now / 200) * 2, -2);
+    ctx.lineTo(-halfW + 2, -16);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Belt / trim.
+  ctx.fillStyle = v.trim;
+  ctx.fillRect(-halfW, -30 * bh + (bh - 1) * -6, halfW * 2, 3);
 
   // ---- Arms ----
-  ctx.strokeStyle = f.color;
-  ctx.lineWidth = 5;
+  ctx.strokeStyle = v.build === 'wide' || v.build === 'huge' ? v.skin : v.body;
+  ctx.lineWidth = 5 * Math.max(1, bw * 0.85);
+  const fist = v.gloves ? '#c9302c' : v.skin;
+  const fistR = v.gloves ? 4.4 : 3.2;
   if (f.state === 'block') {
     ctx.beginPath();
     ctx.moveTo(2, -40);
@@ -316,29 +341,40 @@ export function drawFighter(
     ctx.lineTo(10, -24);
     ctx.stroke();
   } else if ((move === 'punch' && active) || move === 'superCombo') {
-    // Punch — or a rapid two-fisted flurry during a Super Combo.
+    // Punch — or the rapid flurry during a multi-hit super.
     const flurry = move === 'superCombo' ? Math.sin(now / 45) * 6 : 0;
+    const reachX = v.build === 'thin' ? 36 : 30; // lanky arms reach farther
     ctx.beginPath();
     ctx.moveTo(0, -40);
-    ctx.lineTo(30 + flurry, -38);
+    ctx.lineTo(reachX + flurry, -38);
     ctx.moveTo(-2, -38);
-    ctx.lineTo(24 - flurry, -32);
+    ctx.lineTo(reachX - 6 - flurry, -32);
     ctx.stroke();
-    ctx.fillStyle = '#ffd9b3';
+    ctx.fillStyle = fist;
     ctx.beginPath();
-    ctx.arc(31 + flurry, -38, 3.2, 0, Math.PI * 2);
+    ctx.arc(reachX + 1 + flurry, -38, fistR, 0, Math.PI * 2);
     ctx.fill();
+    // Claw slash lines.
+    if (v.claw) {
+      ctx.strokeStyle = '#e8e8f2';
+      ctx.lineWidth = 2;
+      for (let k = -1; k <= 1; k++) {
+        ctx.beginPath();
+        ctx.moveTo(reachX + 2 + flurry, -38 + k * 3);
+        ctx.lineTo(reachX + 12 + flurry, -40 + k * 4);
+        ctx.stroke();
+      }
+    }
   } else if (move === 'shoryuken') {
-    // Rising uppercut fist.
     ctx.beginPath();
     ctx.moveTo(2, -40);
     ctx.lineTo(12, -60);
     ctx.moveTo(-2, -38);
     ctx.lineTo(-8, -30);
     ctx.stroke();
-    ctx.fillStyle = '#ffd9b3';
+    ctx.fillStyle = fist;
     ctx.beginPath();
-    ctx.arc(13, -62, 3.4, 0, Math.PI * 2);
+    ctx.arc(13, -62, fistR, 0, Math.PI * 2);
     ctx.fill();
   } else if (move === 'hadoken' || move === 'superFireball') {
     const big = move === 'superFireball';
@@ -350,10 +386,9 @@ export function drawFighter(
     ctx.stroke();
     if (f.movePhase === 'windup') {
       const rr = big ? 15 : 9;
-      const rgb = big ? '255,210,80' : '150,220,255';
       const orb = ctx.createRadialGradient(20, -32, 0, 20, -32, rr);
-      orb.addColorStop(0, `rgba(${rgb},0.95)`);
-      orb.addColorStop(1, `rgba(${rgb},0)`);
+      orb.addColorStop(0, big ? f.character.superColor : 'rgba(150,220,255,0.95)');
+      orb.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = orb;
       ctx.beginPath();
       ctx.arc(20, -32, rr, 0, Math.PI * 2);
@@ -366,39 +401,215 @@ export function drawFighter(
     ctx.moveTo(-3, -40);
     ctx.lineTo(-9, -30);
     ctx.stroke();
+    if (v.gloves) {
+      ctx.fillStyle = fist;
+      ctx.beginPath();
+      ctx.arc(10, -29, fistR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(-10, -29, fistR, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.restore();
 
-  // ---- Head (participant photo, or skin) ----
+  // ---- Head + headgear ----
   const hx = lean * 0.5;
-  const hy = -52;
-  if (img && img.complete && img.naturalWidth > 0) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(hx, hy, 8, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    const s = Math.max(16 / img.naturalWidth, 16 / img.naturalHeight);
-    ctx.drawImage(img, hx - (img.naturalWidth * s) / 2, hy - (img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
-    ctx.restore();
-    ctx.strokeStyle = f.color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(hx, hy, 8, 0, Math.PI * 2);
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = '#ffd9b3';
-    ctx.beginPath();
-    ctx.arc(hx, hy, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = f.color;
-    ctx.lineWidth = 2.4;
-    ctx.beginPath();
-    ctx.moveTo(hx - 7, hy - 3);
-    ctx.lineTo(hx + 7, hy - 3);
-    ctx.stroke();
+  const hy = (-52 * bh) + (bh - 1) * -4;
+  ctx.fillStyle = v.skin;
+  ctx.beginPath();
+  ctx.arc(hx, hy, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  switch (v.headgear) {
+    case 'turban': {
+      ctx.fillStyle = v.trim;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 3, 7.2, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = '#e8c14a';
+      ctx.beginPath();
+      ctx.arc(hx, hy - 8, 2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'topknot': {
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2.5, 7.1, Math.PI * 1.05, Math.PI * 1.95);
+      ctx.fill();
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.ellipse(hx - 2, hy - 8.5, 3.4, 2.2, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'mane': {
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 8.6, Math.PI * 0.9, Math.PI * 2.1);
+      ctx.fill();
+      // spiky tips
+      for (let k = -2; k <= 2; k++) {
+        ctx.beginPath();
+        ctx.moveTo(hx + k * 3.4, hy - 7);
+        ctx.lineTo(hx + k * 4.2, hy - 12);
+        ctx.lineTo(hx + k * 3.4 + 2, hy - 7);
+        ctx.closePath();
+        ctx.fill();
+      }
+      break;
+    }
+    case 'mohawk': {
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.moveTo(hx - 6, hy - 4);
+      ctx.quadraticCurveTo(hx, hy - 14, hx + 6, hy - 4);
+      ctx.lineTo(hx + 3, hy - 4);
+      ctx.quadraticCurveTo(hx, hy - 9, hx - 3, hy - 4);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'cap': {
+      ctx.fillStyle = v.hair;
+      ctx.fillRect(hx - 7, hy - 8, 14, 4);
+      ctx.fillStyle = v.body;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 7, 6.6, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = v.trim;
+      ctx.fillRect(hx - 3, hy - 9, 6, 2);
+      break;
+    }
+    case 'mask': {
+      ctx.fillStyle = '#f2f2f6';
+      ctx.beginPath();
+      ctx.arc(hx, hy, 6.4, -Math.PI * 0.65, Math.PI * 0.65);
+      ctx.fill();
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx - 2, hy - 3, 6.4, Math.PI * 0.8, Math.PI * 1.9);
+      ctx.fill();
+      break;
+    }
+    case 'band': {
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.fill();
+      ctx.fillStyle = v.trim;
+      ctx.fillRect(hx - 7, hy - 4.5, 14, 2.4);
+      break;
+    }
   }
 
+  ctx.restore();
+}
+
+/** A character mugshot for HUD portraits / VS splash (head + shoulders). */
+export function drawCharacterMug(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  f: DuelFighter
+): void {
+  const v = f.character.visual;
+  ctx.save();
+  roundRect(ctx, x, y, size, size, 5);
+  ctx.save();
+  ctx.clip();
+  // Backdrop tinted by the costume.
+  const bg = ctx.createLinearGradient(x, y, x, y + size);
+  bg.addColorStop(0, v.body);
+  bg.addColorStop(1, '#1a1428');
+  ctx.fillStyle = bg;
+  ctx.fillRect(x, y, size, size);
+  // Shoulders.
+  ctx.fillStyle = v.body;
+  ctx.beginPath();
+  ctx.ellipse(x + size / 2, y + size * 0.98, size * 0.44, size * 0.3, 0, Math.PI, 0);
+  ctx.fill();
+  // Head, scaled up ~2.4x of the in-game sprite head.
+  ctx.translate(x + size / 2, y + size * 0.56);
+  ctx.scale(size / 34, size / 34);
+  ctx.fillStyle = v.skin;
+  ctx.beginPath();
+  ctx.arc(0, 0, 7, 0, Math.PI * 2);
+  ctx.fill();
+  // Eyes.
+  ctx.fillStyle = '#1a1a24';
+  ctx.beginPath();
+  ctx.arc(-2.4, -0.8, 0.9, 0, Math.PI * 2);
+  ctx.arc(2.4, -0.8, 0.9, 0, Math.PI * 2);
+  ctx.fill();
+  // Headgear (reuse the same shapes at the head origin).
+  const hx = 0;
+  const hy = 0;
+  switch (v.headgear) {
+    case 'turban':
+      ctx.fillStyle = v.trim;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 3, 7.2, Math.PI, 0);
+      ctx.fill();
+      break;
+    case 'topknot':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2.5, 7.1, Math.PI * 1.05, Math.PI * 1.95);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(hx - 2, hy - 8.5, 3.4, 2.2, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'mane':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 8.6, Math.PI * 0.9, Math.PI * 2.1);
+      ctx.fill();
+      break;
+    case 'mohawk':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.moveTo(hx - 6, hy - 4);
+      ctx.quadraticCurveTo(hx, hy - 14, hx + 6, hy - 4);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case 'cap':
+      ctx.fillStyle = v.body;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 5, 6.8, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = v.trim;
+      ctx.fillRect(hx - 3, hy - 8, 6, 2);
+      break;
+    case 'mask':
+      ctx.fillStyle = '#f2f2f6';
+      ctx.beginPath();
+      ctx.arc(hx, hy, 6.4, -Math.PI * 0.65, Math.PI * 0.65);
+      ctx.fill();
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx - 2, hy - 3, 6.4, Math.PI * 0.8, Math.PI * 1.9);
+      ctx.fill();
+      break;
+    case 'band':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.fill();
+      ctx.fillStyle = v.trim;
+      ctx.fillRect(hx - 7, hy - 4.5, 14, 2.4);
+      break;
+  }
+  ctx.restore();
+  // Frame.
+  ctx.strokeStyle = v.trim;
+  ctx.lineWidth = 2;
+  roundRect(ctx, x, y, size, size, 5);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -447,39 +658,6 @@ export function drawDuelFx(ctx: CanvasRenderingContext2D, fx: DuelFx): void {
   ctx.restore();
 }
 
-function drawPortrait(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  size: number,
-  img: HTMLImageElement | null,
-  color: string,
-  name: string
-): void {
-  ctx.save();
-  roundRect(ctx, x, y, size, size, 5);
-  ctx.save();
-  ctx.clip();
-  if (img && img.complete && img.naturalWidth > 0) {
-    const s = Math.max(size / img.naturalWidth, size / img.naturalHeight);
-    ctx.drawImage(img, x + size / 2 - (img.naturalWidth * s) / 2, y + size / 2 - (img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
-  } else {
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y, size, size);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText((name[0] ?? '?').toUpperCase(), x + size / 2, y + size / 2 + 1);
-  }
-  ctx.restore();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  roundRect(ctx, x, y, size, size, 5);
-  ctx.stroke();
-  ctx.restore();
-}
-
 /** Top HUD: portraits, names, draining health bars, and the round timer. */
 export function drawHealthBars(
   ctx: CanvasRenderingContext2D,
@@ -497,8 +675,10 @@ export function drawHealthBars(
   const barR = DL.CANVAS_W - pad - pSize - 6;
   const barW = (DL.CANVAS_W / 2) - barL - 20;
 
-  drawPortrait(ctx, pad, barY - 3, pSize, img1, f1.color, f1.entry.name);
-  drawPortrait(ctx, DL.CANVAS_W - pad - pSize, barY - 3, pSize, img2, f2.color, f2.entry.name);
+  void img1;
+  void img2;
+  drawCharacterMug(ctx, pad, barY - 3, pSize, f1);
+  drawCharacterMug(ctx, DL.CANVAS_W - pad - pSize, barY - 3, pSize, f2);
 
   const drawBar = (x: number, anchorRight: boolean, hp: number) => {
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -558,9 +738,15 @@ export function drawHealthBars(
   ctx.fillStyle = '#fff';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
-  ctx.fillText(f1.entry.name.toUpperCase(), barL, superY + superH + 8);
+  ctx.fillText(
+    `${f1.entry.name.toUpperCase()} · ${f1.character.name.toUpperCase()}`,
+    barL, superY + superH + 8
+  );
   ctx.textAlign = 'right';
-  ctx.fillText(f2.entry.name.toUpperCase(), barR, superY + superH + 8);
+  ctx.fillText(
+    `${f2.entry.name.toUpperCase()} · ${f2.character.name.toUpperCase()}`,
+    barR, superY + superH + 8
+  );
 
   // Round timer.
   ctx.textAlign = 'center';
@@ -597,13 +783,15 @@ export function drawVsSplash(
   img1: HTMLImageElement | null,
   img2: HTMLImageElement | null
 ): void {
+  void img1;
+  void img2;
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
   ctx.fillRect(0, 0, DL.CANVAS_W, DL.CANVAS_H);
   const cy = DL.CANVAS_H * 0.4;
   const s = 96;
-  drawPortrait(ctx, DL.CANVAS_W * 0.5 - s - 30, cy - s / 2, s, img1, f1.color, f1.entry.name);
-  drawPortrait(ctx, DL.CANVAS_W * 0.5 + 30, cy - s / 2, s, img2, f2.color, f2.entry.name);
+  drawCharacterMug(ctx, DL.CANVAS_W * 0.5 - s - 30, cy - s / 2, s, f1);
+  drawCharacterMug(ctx, DL.CANVAS_W * 0.5 + 30, cy - s / 2, s, f2);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -614,10 +802,16 @@ export function drawVsSplash(
   ctx.fillStyle = '#ffd23a';
   ctx.fillText('VS', DL.CANVAS_W / 2, cy);
 
+  const x1 = DL.CANVAS_W * 0.5 - s / 2 - 30;
+  const x2 = DL.CANVAS_W * 0.5 + s / 2 + 30;
   ctx.font = 'bold 16px system-ui, sans-serif';
   ctx.fillStyle = f1.color;
-  ctx.fillText(f1.entry.name, DL.CANVAS_W * 0.5 - s / 2 - 30, cy + s / 2 + 18);
+  ctx.fillText(f1.entry.name, x1, cy + s / 2 + 18);
   ctx.fillStyle = f2.color;
-  ctx.fillText(f2.entry.name, DL.CANVAS_W * 0.5 + s / 2 + 30, cy + s / 2 + 18);
+  ctx.fillText(f2.entry.name, x2, cy + s / 2 + 18);
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillText(`as ${f1.character.name.toUpperCase()}`, x1, cy + s / 2 + 35);
+  ctx.fillText(`as ${f2.character.name.toUpperCase()}`, x2, cy + s / 2 + 35);
   ctx.restore();
 }
