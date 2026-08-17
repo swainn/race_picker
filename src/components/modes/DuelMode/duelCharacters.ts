@@ -7,16 +7,29 @@
  */
 
 export type Build = 'thin' | 'normal' | 'wide' | 'huge';
-export type Headgear = 'turban' | 'topknot' | 'mane' | 'mohawk' | 'cap' | 'mask' | 'band';
+export type Headgear =
+  | 'turban'
+  | 'topknot'
+  | 'mane'
+  | 'mohawk'
+  | 'cap'
+  | 'mask'
+  | 'band'
+  | 'buns'
+  | 'beret'
+  | 'ponytail'
+  | 'pigtails';
 
 /** The super mechanic a character unleashes from a full meter. */
 export type SuperKind =
   | 'projectile' // a big flaming/energy fireball
   | 'flurry' // rapid multi-hit (optionally dashing forward)
   | 'electric' // short-range burst that shocks anyone nearby
-  | 'grab' // rush in and slam (piledriver)
+  | 'grab' // rush in and slam (piledriver / flying press)
   | 'crusher' // spin-charge straight across the screen
-  | 'dive'; // leap up and crash down
+  | 'dive' // leap up and crash down
+  | 'drill' // low horizontal drilling dash (spiral arrow)
+  | 'volley'; // staggered burst of three thrown projectiles
 
 export interface CharacterVisual {
   skin: string;
@@ -41,6 +54,8 @@ export interface DuelCharacter {
   superColor: string;
   /** Extra motion for the flurry/dash supers. */
   dashing?: boolean;
+  /** Flurry supers throw punches by default; 'kick' flurries kick instead. */
+  flurryStyle?: 'kick';
 }
 
 export const DUEL_CHARACTERS: DuelCharacter[] = [
@@ -78,6 +93,27 @@ export const DUEL_CHARACTERS: DuelCharacter[] = [
     id: 'claw', name: 'Claw',
     visual: { skin: '#e8c19a', body: '#7a2a5a', trim: '#e8c14a', hair: '#caa06a', build: 'thin', headgear: 'mask', claw: true },
     superKind: 'dive', superCallout: 'CLAW DIVE!', superColor: '#ff6bd0',
+  },
+  {
+    id: 'lightning', name: 'Lightning',
+    visual: { skin: '#f0c8a0', body: '#2a6ae8', trim: '#e8c14a', hair: '#2a1d12', build: 'normal', headgear: 'buns' },
+    superKind: 'flurry', superCallout: 'LIGHTNING KICKS!', superColor: '#7ad7ff',
+    flurryStyle: 'kick',
+  },
+  {
+    id: 'commando', name: 'Commando',
+    visual: { skin: '#e8c19a', body: '#3a8a4a', trim: '#c02a2a', hair: '#d5a53a', build: 'thin', headgear: 'beret' },
+    superKind: 'drill', superCallout: 'SPIRAL ARROW!', superColor: '#7dff8a',
+  },
+  {
+    id: 'kunoichi', name: 'Kunoichi',
+    visual: { skin: '#e8c19a', body: '#4a4458', trim: '#c9a227', hair: '#2a1d12', build: 'thin', headgear: 'ponytail' },
+    superKind: 'volley', superCallout: 'KUNAI STORM!', superColor: '#d9b3ff',
+  },
+  {
+    id: 'luchadora', name: 'Luchadora',
+    visual: { skin: '#e8b48a', body: '#e84a8a', trim: '#f5f5f5', hair: '#7ad7ff', build: 'normal', headgear: 'pigtails' },
+    superKind: 'grab', superCallout: 'FLYING PRESS!', superColor: '#ff9ac0',
   },
 ];
 

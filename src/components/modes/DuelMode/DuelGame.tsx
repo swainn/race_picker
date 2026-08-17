@@ -215,7 +215,8 @@ export function DuelGame(props: Props) {
   // Spend a full meter on the character's signature super — flash + callout.
   const startSuper = (f: DuelFighter, opp: DuelFighter, now: number) => {
     const kind = f.character.superKind;
-    const moveId: DuelMoveId = kind === 'projectile' ? 'superFireball' : 'superCombo';
+    const moveId: DuelMoveId =
+      kind === 'projectile' || kind === 'volley' ? 'superFireball' : 'superCombo';
     f.meter = 0;
     f.facing = opp.x >= f.x ? 1 : -1;
     f.currentMove = moveId;
@@ -241,8 +242,8 @@ export function DuelGame(props: Props) {
     if (self.meter >= DL.METER_MAX && self.currentMove === null) {
       const kind = self.character.superKind;
       const inRange =
-        kind === 'projectile' ? true :
-        kind === 'grab' || kind === 'crusher' || kind === 'dive' ? dist <= 220 :
+        kind === 'projectile' || kind === 'volley' ? true :
+        kind === 'grab' || kind === 'crusher' || kind === 'dive' || kind === 'drill' ? dist <= 220 :
         dist <= DUEL_MOVES.kick.reach + 20;
       if (inRange) {
         startSuper(self, opp, now);
@@ -339,13 +340,25 @@ export function DuelGame(props: Props) {
     if (now >= f.movePhaseUntil) {
       if (f.movePhase === 'windup') {
         if (m.isProjectile) {
-          const big = f.currentMove === 'superFireball';
-          projRef.current.push({
-            x: f.x + f.facing * 22, y: DL.GROUND_Y - 40,
-            vx: f.facing * DL.HADOKEN_SPEED * (big ? 1.15 : 1),
-            ownerSide: f.side, color: big ? f.character.superColor : f.color, traveled: 0,
-            radius: big ? 30 : 16, dmg: m.dmg, chip: m.chip ?? 0, big,
-          });
+          if (f.currentMove === 'superFireball' && f.character.superKind === 'volley') {
+            // Kunai storm: three thrown blades at staggered speeds.
+            for (let k = 0; k < 3; k++) {
+              projRef.current.push({
+                x: f.x + f.facing * (18 + k * 6), y: DL.GROUND_Y - 40,
+                vx: f.facing * DL.HADOKEN_SPEED * (1.1 + k * 0.28),
+                ownerSide: f.side, color: f.character.superColor, traveled: 0,
+                radius: 10, dmg: 9, chip: 2, big: false,
+              });
+            }
+          } else {
+            const big = f.currentMove === 'superFireball';
+            projRef.current.push({
+              x: f.x + f.facing * 22, y: DL.GROUND_Y - 40,
+              vx: f.facing * DL.HADOKEN_SPEED * (big ? 1.15 : 1),
+              ownerSide: f.side, color: big ? f.character.superColor : f.color, traveled: 0,
+              radius: big ? 30 : 16, dmg: m.dmg, chip: m.chip ?? 0, big,
+            });
+          }
           f.movePhase = 'recover';
           f.movePhaseUntil = now + m.recoverMs;
         } else {
@@ -358,6 +371,7 @@ export function DuelGame(props: Props) {
             const kind = f.character.superKind;
             if (kind === 'grab') f.superVx = f.facing * 380;
             else if (kind === 'crusher') f.superVx = f.facing * 420;
+            else if (kind === 'drill') f.superVx = f.facing * 460;
             else if (kind === 'dive') {
               f.vy = DL.JUMP_VY * 1.05;
               f.air = Math.max(f.air, 1);
@@ -385,11 +399,12 @@ export function DuelGame(props: Props) {
       const inReach = dist <= m.reach + DL.FIGHTER_HALF_W && (opp.x >= f.x ? 1 : -1) === f.facing;
       if (f.currentMove === 'superCombo') {
         const kind = f.character.superKind;
-        if (kind === 'grab' || kind === 'crusher' || kind === 'dive') {
+        if (kind === 'grab' || kind === 'crusher' || kind === 'dive' || kind === 'drill') {
           // Travelling super: one big launching blow on contact.
           if (!f.hitReg && inReach) {
             f.hitReg = true;
-            f.superVx = kind === 'crusher' ? f.superVx : 0; // crusher keeps going through
+            // Crusher and drill carry through the opponent; grab/dive stop.
+            f.superVx = kind === 'crusher' || kind === 'drill' ? f.superVx : 0;
             applyDamage(f, opp, 'superCombo', now, { dmg: 24, knockback: 220, launch: true });
           }
         } else {

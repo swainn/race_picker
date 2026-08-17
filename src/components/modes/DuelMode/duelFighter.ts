@@ -270,6 +270,12 @@ export function drawFighter(
     ctx.fill();
     ctx.restore();
   }
+  // Drill super (Spiral Arrow): the whole body tips near-horizontal, feet-first
+  // spin read as a corkscrew dash.
+  if (move === 'superCombo' && f.character.superKind === 'drill' && f.movePhase === 'active') {
+    ctx.rotate(1.25);
+  }
+
   const walkCycle = f.state === 'walk' ? Math.sin(now / 90) : 0;
   const lean = f.state === 'hurt' ? -6 : move === 'kick' && active ? 4 : 0;
 
@@ -286,7 +292,17 @@ export function drawFighter(
   const isSumo = v.build === 'wide';
   const legL = isSumo ? -(halfW - 1.5) : -(halfW - legW / 2);
   const legR = isSumo ? halfW - 1.5 : halfW - legW / 2;
-  if (move === 'kick' && active) {
+  const kickFlurry = move === 'superCombo' && active && f.character.flurryStyle === 'kick';
+  if (kickFlurry) {
+    // Lightning-kick flurry: the front leg blurs between heights.
+    const fl = Math.sin(now / 40) * 9;
+    ctx.beginPath();
+    ctx.moveTo(legR, -18);
+    ctx.lineTo(28, -26 + fl);
+    ctx.moveTo(legL, -18);
+    ctx.lineTo(legL, 0);
+    ctx.stroke();
+  } else if (move === 'kick' && active) {
     // Front leg kicks from the front anchor; back leg stays planted.
     ctx.beginPath();
     ctx.moveTo(legR, -18);
@@ -365,7 +381,7 @@ export function drawFighter(
     ctx.moveTo(shL, shTop);
     ctx.lineTo(10, -24);
     ctx.stroke();
-  } else if ((move === 'punch' && active) || move === 'superCombo') {
+  } else if ((move === 'punch' && active) || (move === 'superCombo' && f.character.flurryStyle !== 'kick')) {
     // Punch — or the rapid flurry during a multi-hit super.
     const flurry = move === 'superCombo' ? Math.sin(now / 45) * 6 : 0;
     const reachX = v.build === 'thin' ? 36 : 30; // lanky arms reach farther
@@ -528,6 +544,68 @@ export function drawFighter(
       ctx.fillRect(hx - 7, hy - 4.5, 14, 2.4);
       break;
     }
+    case 'buns': {
+      // Hair cap + twin ox-horn buns with trim ribbons.
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7, Math.PI, 0);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(hx - 5.5, hy - 7, 3, 0, Math.PI * 2);
+      ctx.arc(hx + 5.5, hy - 7, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = v.trim;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(hx - 5.5, hy - 7, 3.4, 0, Math.PI * 2);
+      ctx.moveTo(hx + 8.9, hy - 7);
+      ctx.arc(hx + 5.5, hy - 7, 3.4, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    }
+    case 'beret': {
+      // Braided hair falling back + a tilted beret.
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 7.4, Math.PI * 0.95, Math.PI * 2.05);
+      ctx.fill();
+      ctx.fillRect(hx - 8, hy - 2, 3, 12); // braids trailing behind
+      ctx.fillStyle = v.trim;
+      ctx.beginPath();
+      ctx.ellipse(hx + 1, hy - 6.5, 6.6, 3, -0.18, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'ponytail': {
+      // Ninja wrap + a high ponytail flowing behind.
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7, Math.PI, 0);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(hx - 4, hy - 7);
+      ctx.quadraticCurveTo(hx - 11, hy - 10 + Math.sin(now / 150) * 1.5, hx - 13, hy + 2);
+      ctx.lineTo(hx - 9, hy + 2);
+      ctx.quadraticCurveTo(hx - 8, hy - 5, hx - 2, hy - 7.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = v.trim;
+      ctx.fillRect(hx - 7, hy - 5, 14, 2); // forehead band
+      break;
+    }
+    case 'pigtails': {
+      // Twin high pigtails, one each side.
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7, Math.PI, 0);
+      ctx.fill();
+      const flick2 = Math.sin(now / 160) * 1.4;
+      ctx.beginPath();
+      ctx.ellipse(hx - 8, hy - 5 + flick2, 3, 5.5, -0.5, 0, Math.PI * 2);
+      ctx.ellipse(hx + 8, hy - 5 - flick2, 3, 5.5, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
   }
 
   ctx.restore();
@@ -628,6 +706,47 @@ export function drawCharacterMug(
       ctx.fill();
       ctx.fillStyle = v.trim;
       ctx.fillRect(hx - 7, hy - 4.5, 14, 2.4);
+      break;
+    case 'buns':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7, Math.PI, 0);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(hx - 5.5, hy - 7, 3, 0, Math.PI * 2);
+      ctx.arc(hx + 5.5, hy - 7, 3, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'beret':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 7.4, Math.PI * 0.95, Math.PI * 2.05);
+      ctx.fill();
+      ctx.fillStyle = v.trim;
+      ctx.beginPath();
+      ctx.ellipse(hx + 1, hy - 6.5, 6.6, 3, -0.18, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'ponytail':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7, Math.PI, 0);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(hx - 8, hy - 3, 2.6, 6, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = v.trim;
+      ctx.fillRect(hx - 7, hy - 5, 14, 2);
+      break;
+    case 'pigtails':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7, Math.PI, 0);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(hx - 8, hy - 4, 3, 5.5, -0.5, 0, Math.PI * 2);
+      ctx.ellipse(hx + 8, hy - 4, 3, 5.5, 0.5, 0, Math.PI * 2);
+      ctx.fill();
       break;
   }
   ctx.restore();
