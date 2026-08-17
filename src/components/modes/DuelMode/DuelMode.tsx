@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
 import type { ModeViewProps } from '../types';
 import { duelTheme } from '../themes';
 import { getEntryImages, getPreferredEntryImage } from '../../../utils/entryImages';
 import { DuelGame, type DuelWinnerDisplay } from './DuelGame';
+import { DuelStandingsDialog } from './DuelStandingsDialog';
 import './DuelGame.css';
 
 /**
@@ -20,16 +21,27 @@ export function DuelMode({
   currentWinner,
   onWinner,
   onRaceComplete,
-  onShowFinalStandings,
   onStartRace,
   onResetRace,
 }: ModeViewProps) {
   const [winnerDisplay, setWinnerDisplay] = useState<DuelWinnerDisplay | null>(null);
+  /** Snapshot of damage totals taken when the standings open (null = closed). */
+  const [damageStandings, setDamageStandings] = useState<Map<number, number> | null>(null);
+  /** Total damage inflicted per entry across all duels this session. Kept in a
+   *  ref (updated at 60fps from the game loop) — read only when standings open. */
+  const damageTotalsRef = useRef<Map<number, number>>(new Map());
+
+  const handleDamage = useCallback((attackerId: number, amount: number) => {
+    const m = damageTotalsRef.current;
+    m.set(attackerId, (m.get(attackerId) ?? 0) + amount);
+  }, []);
 
   useEffect(() => {
     if (eliminatedIds.length === 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- synced from parent-driven prop transitions
       setWinnerDisplay(null);
+      setDamageStandings(null);
+      damageTotalsRef.current = new Map();
     }
   }, [eliminatedIds.length]);
 
@@ -97,11 +109,20 @@ export function DuelMode({
         allEntries={allEntries}
         winOrder={winOrder}
         onWinner={handleWinner}
+        onDamage={handleDamage}
         onRaceComplete={onRaceComplete}
-        onShowFinalStandings={onShowFinalStandings}
+        onShowFinalStandings={() => setDamageStandings(new Map(damageTotalsRef.current))}
         isRacing={isRacing}
         currentWinner={winnerDisplay}
       />
+
+      {damageStandings && (
+        <DuelStandingsDialog
+          entries={allEntries}
+          damageTotals={damageStandings}
+          onClose={() => setDamageStandings(null)}
+        />
+      )}
     </div>
   );
 }

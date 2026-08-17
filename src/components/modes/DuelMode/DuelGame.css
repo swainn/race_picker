@@ -36,3 +36,18 @@
   border-radius: 8px;
   display: block;
 }
+
+/* Damage-based standings extras. */
+.duel-standings-note {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.duel-standing-damage {
+  margin-left: auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

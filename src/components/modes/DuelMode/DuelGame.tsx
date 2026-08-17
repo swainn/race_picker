@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useReplayRecorder } from '../../../hooks/useReplayRecorder';
 import type { Entry } from '../../../types';
 import { generateColor } from '../../../utils/colors';
 import { getPreferredEntryImage } from '../../../utils/entryImages';
@@ -45,10 +46,20 @@ interface Props {
   allEntries: Entry[];
   winOrder: Map<number, number>;
   onWinner: (loser: Entry, winnerName: string) => void;
+  /** Reports every point of damage inflicted (attacker entry id, amount). */
+  onDamage?: (attackerId: number, amount: number) => void;
   onRaceComplete: () => void;
   onShowFinalStandings?: () => void;
   isRacing: boolean;
   currentWinner: DuelWinnerDisplay | null;
+}
+
+/** Replay snapshot: shallow fighter copies (entry/character refs are stable). */
+interface DuelFrame {
+  f1: DuelFighter;
+  f2: DuelFighter;
+  projectiles: DuelProjectile[];
+  fx: DuelFx[];
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -73,6 +84,30 @@ export function DuelGame(props: Props) {
   const speedRef = useRef(settings.speed);
   speedRef.current = settings.speed;
   const stageRef = useRef<StageId>('city');
+
+  // Instant replay: slow-mo playback of the final moments, zoomed on the loser.
+  const { record, clear, start, stop, getCurrentFrame } = useReplayRecorder<DuelFrame>({
+    maxFrames: 360,
+    msPerFrame: 16,
+    playbackSpeed: 0.4,
+  });
+  const [replayActive, setReplayActive] = useState(false);
+  const replayActiveRef = useRef(false);
+  const replayStartedAtRef = useRef(0);
+  // The persistent loop never re-renders its closure — keep the latest
+  // getCurrentFrame (which depends on isReplaying state) readable via a ref.
+  const getFrameRef = useRef(getCurrentFrame);
+  getFrameRef.current = getCurrentFrame;
+  useEffect(() => {
+    replayActiveRef.current = replayActive;
+    if (replayActive) {
+      replayStartedAtRef.current = performance.now();
+      start(0.55);
+    } else {
+      stop();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recorder callbacks are stable
+  }, [replayActive]);
 
   const phaseRef = useRef<Phase>('ready');
   const f1Ref = useRef<DuelFighter | null>(null);
@@ -149,6 +184,8 @@ export function DuelGame(props: Props) {
     stageRef.current = STAGE_IDS[Math.floor(Math.random() * STAGE_IDS.length)];
     introUntilRef.current = now + DL.INTRO_MS;
     phaseRef.current = 'intro';
+    clear();
+    setReplayActive(false);
     audio.playBell();
     audio.startTrack(stageRef.current); // no-op if music is muted
   };
@@ -271,6 +308,7 @@ export function DuelGame(props: Props) {
     d.movePhase = null;
     if (blocking) {
       d.hp = Math.max(0, d.hp - (m.chip ?? 0));
+      if (m.chip) propsRef.current.onDamage?.(a.entry.id, m.chip);
       d.x = clamp(d.x + a.facing * 10, DL.STAGE_L, DL.STAGE_R);
       fxRef.current.push({ x: d.x + d.facing * 12, y: DL.GROUND_Y - 40, life: 0.28, maxLife: 0.28, radius: 10, growth: 40, color: '#9cd6ff', kind: 'block' });
       gainMeter(d, DL.METER_ON_BLOCK);
@@ -279,6 +317,7 @@ export function DuelGame(props: Props) {
       return;
     }
     d.hp = Math.max(0, d.hp - dmg);
+    propsRef.current.onDamage?.(a.entry.id, dmg);
     d.state = 'hurt';
     d.stateUntil = now + DL.HITSTUN_MS;
     d.x = clamp(d.x + a.facing * knockback * 0.3, DL.STAGE_L, DL.STAGE_R);
@@ -426,12 +465,14 @@ export function DuelGame(props: Props) {
         const blocking = target.state === 'block' && Math.sign(pr.vx) === -target.facing;
         if (blocking) {
           target.hp = Math.max(0, target.hp - pr.chip);
+          if (pr.chip) propsRef.current.onDamage?.(owner.entry.id, pr.chip);
           fxRef.current.push({ x: target.x, y: DL.GROUND_Y - 40, life: 0.28, maxLife: 0.28, radius: 12, growth: 40, color: '#9cd6ff', kind: 'block' });
           gainMeter(target, DL.METER_ON_BLOCK);
           if (!pr.big) gainMeter(owner, DL.METER_ON_BLOCK);
           audio.playBlock();
         } else {
           target.hp = Math.max(0, target.hp - pr.dmg);
+          propsRef.current.onDamage?.(owner.entry.id, pr.dmg);
           target.state = 'hurt';
           target.stateUntil = now + DL.HITSTUN_MS;
           target.currentMove = null;
@@ -508,6 +549,52 @@ export function DuelGame(props: Props) {
     }
   };
 
+  // Snapshot the world for the replay buffer (shallow copies; entry/character
+  // references are stable and safe to share across frames).
+  const recordFrame = () => {
+    const f1 = f1Ref.current;
+    const f2 = f2Ref.current;
+    if (!f1 || !f2) return;
+    record({
+      f1: { ...f1 },
+      f2: { ...f2 },
+      projectiles: projRef.current.map((pr) => ({ ...pr })),
+      fx: fxRef.current.map((fx) => ({ ...fx })),
+    });
+  };
+
+  // Slow-mo replay frame, zoomed on the loser's final moments.
+  const drawReplay = (ctx: CanvasRenderingContext2D, wallNow: number): boolean => {
+    const frame = getFrameRef.current(wallNow);
+    if (!frame) return false;
+    const zoom = 1 + 0.9 * Math.min(1, (wallNow - replayStartedAtRef.current) / 1100);
+    const loser = loserRef.current;
+    const target = loser && frame.f1.side === loser.side ? frame.f1 : frame.f2;
+    const fx = target.x;
+    const fy = DL.GROUND_Y - 40;
+    ctx.save();
+    ctx.translate(DL.CANVAS_W / 2, DL.CANVAS_H / 2);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-fx, -fy);
+    drawStage(ctx, stageRef.current);
+    for (const pr of frame.projectiles) drawDuelProjectile(ctx, pr);
+    const order = frame.f1.x <= frame.f2.x ? [frame.f1, frame.f2] : [frame.f2, frame.f1];
+    for (const f of order) drawFighter(ctx, f, imgOf(f.entry), wallNow);
+    for (const e of frame.fx) drawDuelFx(ctx, e);
+    ctx.restore();
+    // Banner (unzoomed).
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 18, DL.CANVAS_W, 30);
+    ctx.font = 'bold 18px system-ui, sans-serif';
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('◀◀ INSTANT REPLAY', DL.CANVAS_W / 2, 33);
+    ctx.restore();
+    return true;
+  };
+
   // ---- Persistent game loop --------------------------------------------
   useEffect(() => {
     let raf = 0;
@@ -557,6 +644,7 @@ export function DuelGame(props: Props) {
         case 'fight': {
           updateFight(now, dt);
           decayFx(dt);
+          recordFrame();
           drawScene(ctx, now, true);
           // "FIGHT!" lingers briefly.
           if (now - fightStartRef.current < 500) drawAnnounce(ctx, 'FIGHT!', '#ff5a3c');
@@ -567,6 +655,7 @@ export function DuelGame(props: Props) {
           stepPhysics(f1Ref.current!, f2Ref.current!, dt);
           stepPhysics(f2Ref.current!, f1Ref.current!, dt);
           decayFx(dt);
+          recordFrame();
           drawScene(ctx, now, true);
           const winner = winnerRef.current!;
           if (now - koStartRef.current < 900) drawAnnounce(ctx, 'K.O.!', '#ff3b3b', 1.15);
@@ -580,6 +669,8 @@ export function DuelGame(props: Props) {
           break;
         }
         case 'finished': {
+          // Once the winner dialog minimizes, play the slow-mo instant replay.
+          if (replayActiveRef.current && drawReplay(ctx, performance.now())) break;
           decayFx(dt);
           drawScene(ctx, now, true);
           const winner = winnerRef.current;
@@ -623,6 +714,7 @@ export function DuelGame(props: Props) {
         detailsNode={details}
         onNext={props.onRaceComplete}
         onShowFinalStandings={() => props.onShowFinalStandings?.()}
+        onReplayStart={() => setReplayActive(true)}
       />
     </div>
   );
