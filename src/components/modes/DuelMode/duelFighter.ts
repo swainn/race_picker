@@ -278,26 +278,47 @@ export function drawFighter(
   // ---- Legs (skin or trousers tinted darker than body) ----
   ctx.strokeStyle = v.build === 'wide' ? v.skin : '#3a2f4a';
   ctx.lineWidth = 5 * Math.max(1, bw * 0.85);
+  // Legs hang from the torso's base (y = -18) as vertical lines. The stroke
+  // centerline is inset by half the line width so the legs' OUTER edges align
+  // flush with the torso's outside edges. Sumo instead keeps corner anchors
+  // for its bow-legged squat stance.
+  const legW = 5 * Math.max(1, bw * 0.85);
+  const isSumo = v.build === 'wide';
+  const legL = isSumo ? -(halfW - 1.5) : -(halfW - legW / 2);
+  const legR = isSumo ? halfW - 1.5 : halfW - legW / 2;
   if (move === 'kick' && active) {
+    // Front leg kicks from the front anchor; back leg stays planted.
     ctx.beginPath();
-    ctx.moveTo(0, -20);
+    ctx.moveTo(legR, -18);
     ctx.lineTo(26, -24);
-    ctx.moveTo(0, -20);
-    ctx.lineTo(-6, 0);
+    ctx.moveTo(legL, -18);
+    ctx.lineTo(legL, 0);
     ctx.stroke();
   } else if (f.air > 2) {
+    // Tucked in the air, bent from the anchors.
     ctx.beginPath();
-    ctx.moveTo(0, -20);
-    ctx.lineTo(8, -8);
-    ctx.moveTo(0, -20);
-    ctx.lineTo(-6, -6);
+    ctx.moveTo(legR, -18);
+    ctx.lineTo(legR + 6, -8);
+    ctx.moveTo(legL, -18);
+    ctx.lineTo(legL - 4, -6);
+    ctx.stroke();
+  } else if (isSumo) {
+    // Sumo squat: knees bowed outward past the hips, feet planted beneath.
+    ctx.beginPath();
+    ctx.moveTo(legL, -18);
+    ctx.lineTo(legL - 5, -9 + walkCycle * 1.5);
+    ctx.lineTo(legL - 2 + walkCycle * 3, 0);
+    ctx.moveTo(legR, -18);
+    ctx.lineTo(legR + 5, -9 - walkCycle * 1.5);
+    ctx.lineTo(legR + 2 - walkCycle * 3, 0);
     ctx.stroke();
   } else {
+    // Standing/walking: vertical lines; the stride only swings the feet.
     ctx.beginPath();
-    ctx.moveTo(0, -20);
-    ctx.lineTo(-6 * bw + walkCycle * 4, 0);
-    ctx.moveTo(0, -20);
-    ctx.lineTo(7 * bw - walkCycle * 4, 0);
+    ctx.moveTo(legL, -18);
+    ctx.lineTo(legL + walkCycle * 4, 0);
+    ctx.moveTo(legR, -18);
+    ctx.lineTo(legR - walkCycle * 4, 0);
     ctx.stroke();
   }
 
@@ -328,16 +349,20 @@ export function drawFighter(
   ctx.fillStyle = v.trim;
   ctx.fillRect(-halfW, -30 * bh + (bh - 1) * -6, halfW * 2, 3);
 
-  // ---- Arms ----
+  // ---- Arms (anchored at the torso's top corners) ----
   ctx.strokeStyle = v.build === 'wide' || v.build === 'huge' ? v.skin : v.body;
   ctx.lineWidth = 5 * Math.max(1, bw * 0.85);
   const fist = v.gloves ? '#c9302c' : v.skin;
   const fistR = v.gloves ? 4.4 : 3.2;
+  const shTop = -44 * bh + 2; // shoulder height (just below the torso's top edge)
+  const shL = -(halfW - 1.5);
+  const shR = halfW - 1.5;
   if (f.state === 'block') {
+    // Both arms cross up in front from their corners.
     ctx.beginPath();
-    ctx.moveTo(2, -40);
+    ctx.moveTo(shR, shTop);
     ctx.lineTo(10, -30);
-    ctx.moveTo(2, -34);
+    ctx.moveTo(shL, shTop);
     ctx.lineTo(10, -24);
     ctx.stroke();
   } else if ((move === 'punch' && active) || move === 'superCombo') {
@@ -345,9 +370,9 @@ export function drawFighter(
     const flurry = move === 'superCombo' ? Math.sin(now / 45) * 6 : 0;
     const reachX = v.build === 'thin' ? 36 : 30; // lanky arms reach farther
     ctx.beginPath();
-    ctx.moveTo(0, -40);
+    ctx.moveTo(shR, shTop);
     ctx.lineTo(reachX + flurry, -38);
-    ctx.moveTo(-2, -38);
+    ctx.moveTo(shL, shTop);
     ctx.lineTo(reachX - 6 - flurry, -32);
     ctx.stroke();
     ctx.fillStyle = fist;
@@ -367,10 +392,10 @@ export function drawFighter(
     }
   } else if (move === 'shoryuken') {
     ctx.beginPath();
-    ctx.moveTo(2, -40);
+    ctx.moveTo(shR, shTop);
     ctx.lineTo(12, -60);
-    ctx.moveTo(-2, -38);
-    ctx.lineTo(-8, -30);
+    ctx.moveTo(shL, shTop);
+    ctx.lineTo(shL - 5, shTop + 10);
     ctx.stroke();
     ctx.fillStyle = fist;
     ctx.beginPath();
@@ -379,9 +404,9 @@ export function drawFighter(
   } else if (move === 'hadoken' || move === 'superFireball') {
     const big = move === 'superFireball';
     ctx.beginPath();
-    ctx.moveTo(2, -38);
+    ctx.moveTo(shR, shTop);
     ctx.lineTo(16, -34);
-    ctx.moveTo(2, -32);
+    ctx.moveTo(shL, shTop);
     ctx.lineTo(16, -30);
     ctx.stroke();
     if (f.movePhase === 'windup') {
@@ -395,19 +420,20 @@ export function drawFighter(
       ctx.fill();
     }
   } else {
+    // Relaxed guard: arms hang from the shoulder corners.
     ctx.beginPath();
-    ctx.moveTo(2, -40);
-    ctx.lineTo(9, -30);
-    ctx.moveTo(-3, -40);
-    ctx.lineTo(-9, -30);
+    ctx.moveTo(shR, shTop);
+    ctx.lineTo(shR + 3, shTop + 11);
+    ctx.moveTo(shL, shTop);
+    ctx.lineTo(shL - 3, shTop + 11);
     ctx.stroke();
     if (v.gloves) {
       ctx.fillStyle = fist;
       ctx.beginPath();
-      ctx.arc(10, -29, fistR, 0, Math.PI * 2);
+      ctx.arc(shR + 4, shTop + 12, fistR, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(-10, -29, fistR, 0, Math.PI * 2);
+      ctx.arc(shL - 4, shTop + 12, fistR, 0, Math.PI * 2);
       ctx.fill();
     }
   }

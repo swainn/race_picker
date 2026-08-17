@@ -498,9 +498,25 @@ export function DuelGame(props: Props) {
       else loser = f1.hp < f2.hp ? f1 : f2.hp < f1.hp ? f2 : Math.random() < 0.5 ? f1 : f2;
       const winner = loser === f1 ? f2 : f1;
       loser.state = 'ko';
+      loser.currentMove = null;
+      loser.movePhase = null;
+      loser.superVx = 0;
       winner.state = 'win';
       winner.currentMove = null;
       winner.movePhase = null;
+      winner.superVx = 0;
+      // Stand the winner clear of the prone body (it sprawls ~50px toward its
+      // facing), off to their own side — flipping sides if the stage edge is
+      // too close.
+      {
+        const sgn = winner.x >= loser.x ? 1 : -1;
+        let wx = loser.x + sgn * 70;
+        if (wx < DL.STAGE_L || wx > DL.STAGE_R) wx = loser.x - sgn * 70;
+        winner.x = clamp(wx, DL.STAGE_L, DL.STAGE_R);
+        winner.facing = loser.x >= winner.x ? 1 : -1;
+        winner.air = 0;
+        winner.vy = 0;
+      }
       loserRef.current = loser;
       winnerRef.current = winner;
       fxRef.current.push({ x: loser.x, y: DL.GROUND_Y - 40, life: 0.6, maxLife: 0.6, radius: 12, growth: 120, color: '#ff5a3c', kind: 'ring' });
