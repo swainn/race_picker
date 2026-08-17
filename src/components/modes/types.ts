@@ -7,11 +7,15 @@ export type GameMode =
   | 'plinko'
   | 'wall-climber'
   | 'battleship'
-  | 'wheel';
+  | 'wheel'
+  | 'kung-fu'
+  | 'space-invaders'
+  | 'space-defenders'
+  | 'street-duel';
 
 /** Per-mode metadata that gets stashed on a winner record. */
 export interface ModeWinnerExtras {
-  killerInfo?: { name: string; weapon: string };
+  killerInfo?: { name: string; weapon: string; icon?: string; ability?: string };
   effects?: { fire: boolean; ice: boolean; green: boolean; lightning: boolean };
 }
 

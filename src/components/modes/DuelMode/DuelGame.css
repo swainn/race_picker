@@ -1,0 +1,53 @@
+.duel-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.duel-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  position: relative;
+}
+
+.duel-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 480 / 600;
+  width: min(
+    100%,
+    calc((100svh - 240px) * (480 / 600)),
+    calc(100vw - 64px)
+  );
+  max-width: 560px;
+}
+
+.duel-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  image-rendering: auto;
+  border: 3px solid #2a1e40;
+  background-color: #241a3a;
+  border-radius: 8px;
+  display: block;
+}
+
+/* Damage-based standings extras. */
+.duel-standings-note {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.duel-standing-damage {
+  margin-left: auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

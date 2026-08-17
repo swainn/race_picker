@@ -6,6 +6,10 @@ import {
   battleshipTheme,
   lightCyclesTheme,
   plinkoTheme,
+  kungFuTheme,
+  invadersTheme,
+  defendersTheme,
+  duelTheme,
   racingTheme,
   wallClimberTheme,
   wheelTheme,
@@ -21,6 +25,14 @@ import { BattleshipMode } from './BattleshipMode/BattleshipMode';
 import { BattleshipSettings } from './BattleshipMode/BattleshipSettings';
 import { WheelMode } from './WheelMode/WheelMode';
 import { WheelSettings } from './WheelMode/WheelSettings';
+import { KungFuMode } from './KungFuMode/KungFuMode';
+import { KungFuSettings } from './KungFuMode/KungFuSettings';
+import { InvadersMode } from './SpaceInvadersMode/InvadersMode';
+import { InvadersSettings } from './SpaceInvadersMode/InvadersSettings';
+import { DefendersMode } from './SpaceInvadersMode/DefendersMode';
+import { DefendersSettings } from './SpaceInvadersMode/DefendersSettings';
+import { DuelMode } from './DuelMode/DuelMode';
+import { DuelSettings } from './DuelMode/DuelSettings';
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -40,6 +52,10 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   'wall-climber': { View: WallClimberMode, Settings: WallClimberSettings, theme: wallClimberTheme, label: '🧗 Wall Climber' },
   battleship:     { View: BattleshipMode,  Settings: BattleshipSettings, theme: battleshipTheme,  label: '🚢 Battleship', survivalOrder: true },
   wheel:          { View: WheelMode,       Settings: WheelSettings,      theme: wheelTheme,       label: '🎡 Wheel' },
+  'kung-fu':      { View: KungFuMode,      Settings: KungFuSettings, theme: kungFuTheme, label: '🥋 Kung Fu', survivalOrder: true },
+  'space-invaders':  { View: InvadersMode,  Settings: InvadersSettings,  theme: invadersTheme,  label: '👾 Space Invaders', survivalOrder: true },
+  'space-defenders': { View: DefendersMode, Settings: DefendersSettings, theme: defendersTheme, label: '🛡️ Space Defenders', survivalOrder: true },
+  'street-duel':     { View: DuelMode,      Settings: DuelSettings,      theme: duelTheme,      label: '🥊 Street Duel', survivalOrder: true },
 };
 
 export const MODE_LIST: { value: GameMode; label: string }[] =

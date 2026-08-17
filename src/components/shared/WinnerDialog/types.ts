@@ -50,4 +50,7 @@ export interface WinnerDialogProps {
   onReplayStart?: () => void;
   /** Auto-minimize delay in ms. Defaults to 3000. */
   autoMinimizeMs?: number;
+  /** When false, the dialog never auto-minimizes (stays expanded until the user
+   *  minimizes or acts). Defaults to true. */
+  autoMinimize?: boolean;
 }

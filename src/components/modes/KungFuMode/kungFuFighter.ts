@@ -1,0 +1,468 @@
+/**
+ * Pure canvas-drawing helpers for Kung Fu mode: the shrinking pillar platform,
+ * the drawn kung-fu figures (posed per state/move), projectiles, and impact FX.
+ *
+ * These are pure functions over a passed-in view of the world — no React, no
+ * mutable module state — so the live game loop and the slow-mo replay renderer
+ * can both call them with either live refs or a recorded frame.
+ *
+ * Figure style is modeled on WallClimberGame's `drawClimber`: simple primitives,
+ * body in the participant color, white limb strokes.
+ */
+import { KF, MOVES, type MoveId } from './kungFuMoves';
+
+export type FighterState =
+  | 'idle'
+  | 'approach'
+  | 'attack'
+  | 'blocking'
+  | 'shielding'
+  | 'jumping'
+  | 'dodging'
+  | 'hitstun'
+  | 'knockback'
+  | 'falling'
+  | 'out';
+
+/** The minimal read-only view of a fighter needed to draw it. Both the live
+ *  Fighter and a recorded replay-frame fighter satisfy this shape. */
+export interface FighterView {
+  x: number;
+  y: number;
+  facing: 1 | -1;
+  state: FighterState;
+  color: string;
+  currentMove: MoveId | null;
+  movePhase: 'windup' | 'active' | 'recover' | null;
+  /** 1 while on the platform; lerps 1→0 while falling off (shrink + fade). */
+  fallScale: number;
+  blocking: boolean;
+  /** Super-meter fill 0..CHARGE_MAX (drawn as a bar); optional for basic views. */
+  charge?: number;
+  /** The fighter's assigned signature special (drives the meter badge). */
+  signature?: MoveId | null;
+  /** Jump arc height 0 (grounded) → 1 (peak); drives the airborne lift. */
+  airProgress?: number;
+  /** Normalized dodge dash direction, for the motion afterimage. */
+  dashDx?: number;
+  dashDy?: number;
+}
+
+export interface FxView {
+  x: number;
+  y: number;
+  alpha: number;
+  radius: number;
+  color: string;
+  kind: 'hit' | 'block' | 'ringout' | 'star';
+  text?: string;
+}
+
+/** Draw the background gradient once per frame. */
+export function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, '#1a1a2e');
+  grad.addColorStop(1, '#16213e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/**
+ * Draw the circular platform as the top of a tall stone pillar. `dangerPulse`
+ * (0..1) warms the rim toward red while the platform is actively shrinking.
+ */
+export function drawPlatform(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  dangerPulse: number
+): void {
+  const sideDrop = r * 0.5;
+  const ry = r * KF.PLATFORM_SQUASH; // vertical squash for the perspective ellipse
+
+  // Pillar side: bottom ellipse + connecting band.
+  ctx.fillStyle = '#241f33';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + sideDrop, r, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(cx - r, cy, r * 2, sideDrop);
+
+  // Faint danger ring just outside the rim when shrinking.
+  if (dangerPulse > 0.01) {
+    ctx.strokeStyle = `rgba(255,80,60,${0.25 * dangerPulse})`;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r + 6, ry + 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Platform top.
+  const top = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
+  top.addColorStop(0, '#6b6480');
+  top.addColorStop(1, '#403a55');
+  ctx.fillStyle = top;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Bright rim (warms toward red while shrinking).
+  const rimR = Math.round(120 + 135 * dangerPulse);
+  const rimG = Math.round(120 + 40 * (1 - dangerPulse));
+  ctx.strokeStyle = `rgba(${rimR},${rimG},130,0.85)`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Inner dojo-mat ring.
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r * 0.62, ry * 0.62, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+/** Soft contact shadow under a fighter, on the platform plane. */
+function drawShadow(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number): void {
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + 14 * scale, 9 * scale, 3.5 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/**
+ * Draw a kung-fu fighter at its position, posed by state/move. Limb geometry is
+ * computed in a local frame (origin at the fighter center, +x = facing forward)
+ * and the whole figure is flipped via scale(facing,1). The caller draws name
+ * labels separately, OUTSIDE this transform, so text never mirrors.
+ */
+export function drawFighter(ctx: CanvasRenderingContext2D, f: FighterView, now: number): void {
+  if (f.state === 'out') return;
+
+  const fall = f.state === 'falling' ? Math.max(0, f.fallScale) : 1;
+  const air = f.state === 'jumping' ? (f.airProgress ?? 0) : 0;
+  drawShadow(ctx, f.x, f.y, fall * (1 - air * 0.55));
+
+  // Dodge afterimage: faint trailing silhouettes opposite the dash direction.
+  if (f.state === 'dodging' && (f.dashDx || f.dashDy)) {
+    for (let g = 1; g <= 2; g++) {
+      const gx = f.x - (f.dashDx ?? 0) * 10 * g;
+      const gy = f.y - (f.dashDy ?? 0) * 10 * g;
+      ctx.save();
+      ctx.globalAlpha = 0.2 / g;
+      ctx.fillStyle = f.color;
+      ctx.beginPath();
+      ctx.ellipse(gx, gy - 4, 6, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  ctx.save();
+  ctx.translate(f.x, f.y - air * KF.JUMP_LIFT);
+  if (f.state === 'falling') {
+    ctx.rotate((1 - fall) * 2.4 * f.facing);
+    ctx.scale(fall, fall);
+    ctx.globalAlpha = fall;
+  } else if (f.state === 'jumping') {
+    ctx.scale(1 + air * 0.12, 1 + air * 0.12);
+  }
+
+  // Signature-special aura — a symmetric glow, drawn before the mirror/spin.
+  const specialActive =
+    !!f.currentMove &&
+    !!MOVES[f.currentMove].isSpecial &&
+    (f.movePhase === 'windup' || f.movePhase === 'active');
+  if (specialActive) {
+    const aura = ctx.createRadialGradient(0, -2, 2, 0, -2, 22);
+    aura.addColorStop(0, f.color);
+    aura.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(0, -2, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Hurricane kick spins the whole figure.
+  if (f.currentMove === 'hurricane' && f.movePhase === 'active') {
+    ctx.rotate((now / 40) % (Math.PI * 2));
+  }
+  ctx.scale(f.facing, 1);
+
+  // Cyclic bob / step phase (cosmetic; based on wall-clock so replay matches).
+  const moving = f.state === 'approach';
+  const cycle = Math.sin(now / 110);
+  const bob = moving ? Math.abs(cycle) * 2 : 0;
+  const lean =
+    f.state === 'knockback' ? -4 :
+    f.state === 'hitstun' ? -2 :
+    f.currentMove === 'flyingKick' ? 5 : 0;
+
+  const cx = lean;
+  const cy = -bob;
+
+  // Legs (white strokes).
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = 'round';
+  if (f.currentMove === 'kick' && f.movePhase === 'active') {
+    // Extended front kick.
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx + 18, cy + 2);
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx - 4, cy + 14);
+    ctx.stroke();
+  } else if (f.currentMove === 'flyingKick' && (f.movePhase === 'active' || f.movePhase === 'windup')) {
+    // Both legs forward, body airborne.
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx + 16, cy + 1);
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx + 12, cy + 9);
+    ctx.stroke();
+  } else if (f.currentMove === 'hurricane') {
+    // Legs extended outward for the spinning kick.
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 4);
+    ctx.lineTo(cx + 17, cy + 6);
+    ctx.moveTo(cx, cy + 4);
+    ctx.lineTo(cx - 15, cy + 8);
+    ctx.stroke();
+  } else if (f.currentMove === 'shoryuken') {
+    // Leaping upward: legs tucked and trailing.
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx - 6, cy + 13);
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx + 4, cy + 12);
+    ctx.stroke();
+  } else if (moving) {
+    // Walking: legs splay from the hip with a stride cycle.
+    const stride = cycle * 4;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx - 4 + stride, cy + 14);
+    ctx.moveTo(cx, cy + 6);
+    ctx.lineTo(cx + 4 + stride * 0.5, cy + 14);
+    ctx.stroke();
+  } else {
+    // Idle/ready: straight vertical legs on either side (capital-H stance).
+    ctx.beginPath();
+    ctx.moveTo(cx - 3, cy + 6);
+    ctx.lineTo(cx - 3, cy + 14);
+    ctx.moveTo(cx + 3, cy + 6);
+    ctx.lineTo(cx + 3, cy + 14);
+    ctx.stroke();
+  }
+
+  // Gi torso in white with a colored belt.
+  ctx.fillStyle = '#F2F2F2';
+  ctx.beginPath();
+  ctx.roundRect(cx - 5, cy - 8, 10, 15, 3);
+  ctx.fill();
+  // Lapel.
+  ctx.fillStyle = '#dfe3ea';
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, cy - 8);
+  ctx.lineTo(cx, cy - 2);
+  ctx.lineTo(cx + 5, cy - 8);
+  ctx.closePath();
+  ctx.fill();
+  // Belt = participant color.
+  ctx.fillStyle = f.color;
+  ctx.fillRect(cx - 5, cy + 3, 10, 3);
+
+  // Arms.
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2.4;
+  if (f.blocking || f.state === 'blocking' || f.state === 'shielding') {
+    // Crossed forearms guard.
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, cy - 4);
+    ctx.lineTo(cx + 5, cy + 1);
+    ctx.moveTo(cx + 4, cy - 4);
+    ctx.lineTo(cx - 5, cy + 1);
+    ctx.stroke();
+  } else if (f.currentMove === 'punch' && f.movePhase === 'active') {
+    // Lead punch extended.
+    ctx.beginPath();
+    ctx.moveTo(cx + 2, cy - 4);
+    ctx.lineTo(cx + 16, cy - 3);
+    ctx.moveTo(cx - 3, cy - 4);
+    ctx.lineTo(cx - 7, cy + 1);
+    ctx.stroke();
+    // Fist.
+    ctx.fillStyle = '#FFD9B3';
+    ctx.beginPath();
+    ctx.arc(cx + 17, cy - 3, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (f.currentMove === 'shoryuken') {
+    // Rising uppercut: lead arm punches upward.
+    ctx.beginPath();
+    ctx.moveTo(cx + 1, cy - 4);
+    ctx.lineTo(cx + 8, cy - 16);
+    ctx.moveTo(cx - 3, cy - 3);
+    ctx.lineTo(cx - 7, cy + 2);
+    ctx.stroke();
+    ctx.fillStyle = '#FFD9B3';
+    ctx.beginPath();
+    ctx.arc(cx + 9, cy - 18, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (f.currentMove === 'throw') {
+    // Both arms forward to grab.
+    ctx.beginPath();
+    ctx.moveTo(cx + 1, cy - 3);
+    ctx.lineTo(cx + 14, cy - 4);
+    ctx.moveTo(cx + 1, cy + 1);
+    ctx.lineTo(cx + 14, cy + 2);
+    ctx.stroke();
+  } else if (f.currentMove === 'chiBlast' || f.currentMove === 'hadoken' || f.currentMove === 'getOverHere') {
+    // Palms forward; glowing orb during windup (color per move).
+    ctx.beginPath();
+    ctx.moveTo(cx + 1, cy - 4);
+    ctx.lineTo(cx + 11, cy - 1);
+    ctx.moveTo(cx + 1, cy);
+    ctx.lineTo(cx + 11, cy + 2);
+    ctx.stroke();
+    if (f.movePhase === 'windup') {
+      const rgb =
+        f.currentMove === 'hadoken' ? '255,150,40'
+        : f.currentMove === 'getOverHere' ? '160,255,150'
+        : '160,230,255';
+      const orb = ctx.createRadialGradient(cx + 14, cy, 0, cx + 14, cy, 7);
+      orb.addColorStop(0, `rgba(${rgb},0.95)`);
+      orb.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.fillStyle = orb;
+      ctx.beginPath();
+      ctx.arc(cx + 14, cy, 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    // Relaxed guard.
+    ctx.beginPath();
+    ctx.moveTo(cx - 4, cy - 4);
+    ctx.lineTo(cx - 8, cy + 2);
+    ctx.moveTo(cx + 4, cy - 4);
+    ctx.lineTo(cx + 8, cy + 1);
+    ctx.stroke();
+  }
+
+  // Head.
+  ctx.fillStyle = '#FFD9B3';
+  ctx.beginPath();
+  ctx.arc(cx, cy - 12, 4.2, 0, Math.PI * 2);
+  ctx.fill();
+  // Headband in participant color with two trailing tails (the identity cue).
+  ctx.strokeStyle = f.color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 4.5, cy - 13);
+  ctx.lineTo(cx + 4.5, cy - 13);
+  ctx.stroke();
+  const flick = Math.sin(now / 90) * 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 4, cy - 13);
+  ctx.quadraticCurveTo(cx - 9, cy - 12 + flick, cx - 11, cy - 9 - flick);
+  ctx.moveTo(cx - 4, cy - 12);
+  ctx.quadraticCurveTo(cx - 9, cy - 9 + flick, cx - 10, cy - 5 - flick);
+  ctx.stroke();
+
+  // Shield dome — a glowing protective bubble while shielding.
+  if (f.state === 'shielding') {
+    const pulse = 0.55 + 0.25 * Math.abs(Math.sin(now / 90));
+    const dome = ctx.createRadialGradient(0, -3, 4, 0, -3, 20);
+    dome.addColorStop(0, 'rgba(150,220,255,0.05)');
+    dome.addColorStop(0.7, 'rgba(150,220,255,0.16)');
+    dome.addColorStop(1, 'rgba(120,190,255,0.30)');
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = dome;
+    ctx.beginPath();
+    ctx.arc(0, -3, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(190,235,255,0.9)';
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.restore();
+
+  // Super meter bar (world coords, unmirrored) — fills in the fighter color and
+  // glows gold when a signature special is ready.
+  if (f.signature && f.charge !== undefined && f.state !== 'falling') {
+    const full = f.charge >= KF.CHARGE_MAX;
+    const w = 20;
+    const h = 3;
+    const bx = f.x - w / 2;
+    const by = f.y + 17;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(bx - 1, by - 1, w + 2, h + 2);
+    ctx.fillStyle = full ? '#ffe66d' : f.color;
+    ctx.fillRect(bx, by, w * Math.max(0, Math.min(1, f.charge / KF.CHARGE_MAX)), h);
+    if (full) {
+      ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(now / 120));
+      ctx.strokeStyle = '#fff2a8';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx - 1.5, by - 1.5, w + 3, h + 3);
+    }
+    ctx.restore();
+  }
+}
+
+/** Draw a chi-blast projectile (glowing orb). */
+export function drawProjectile(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  color: string
+): void {
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, radius * 2);
+  grad.addColorStop(0, '#eafaff');
+  grad.addColorStop(0.5, color);
+  grad.addColorStop(1, 'rgba(120,180,255,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** Draw an impact / block / ring-out effect. */
+export function drawFx(ctx: CanvasRenderingContext2D, fx: FxView): void {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, fx.alpha));
+  if (fx.text) {
+    ctx.font = 'bold 18px "Comic Sans MS", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.strokeText(fx.text, fx.x, fx.y);
+    ctx.fillStyle = fx.color;
+    ctx.fillText(fx.text, fx.x, fx.y);
+  } else if (fx.kind === 'star') {
+    ctx.strokeStyle = fx.color;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI * 2 * i) / 6;
+      ctx.beginPath();
+      ctx.moveTo(fx.x + Math.cos(a) * fx.radius * 0.4, fx.y + Math.sin(a) * fx.radius * 0.4);
+      ctx.lineTo(fx.x + Math.cos(a) * fx.radius, fx.y + Math.sin(a) * fx.radius);
+      ctx.stroke();
+    }
+  } else {
+    ctx.strokeStyle = fx.color;
+    ctx.lineWidth = fx.kind === 'ringout' ? 4 : 2.5;
+    ctx.beginPath();
+    ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}

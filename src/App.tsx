@@ -57,6 +57,7 @@ function App() {
   );
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [gameMode, setGameMode] = useState<GameMode>(() =>
     loadFromStorage<GameMode>(MODE_STORAGE_KEY, 'racing')
@@ -229,8 +230,7 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="header-title">
-            <h1>🎮 Aquaveo Picker 🎮</h1>
-            <p>The Random Selection Tool for Winners!</p>
+            <h1>🎮 Aquaveo Picker</h1>
           </div>
           <div className="header-controls">
             <div className="mode-select">
@@ -256,24 +256,52 @@ function App() {
                 🎲
               </button>
             </div>
-            {ActiveSettings && (
+            <div className="header-menu">
               <button
                 type="button"
-                onClick={() => setShowSettingsModal(true)}
-                className="header-settings-button"
-                aria-label="Mode settings"
+                onClick={() => setShowHeaderMenu((v) => !v)}
+                className="header-menu-button"
+                aria-label="Menu"
+                aria-expanded={showHeaderMenu}
+                aria-haspopup="true"
               >
-                🎛 Settings
+                ☰
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowManagementModal(true)}
-              className="header-management-button"
-              aria-label="Manage participants and groups"
-            >
-              ⚙️ Participants ({entries.length})
-            </button>
+              {showHeaderMenu && (
+                <>
+                  <div
+                    className="header-menu-backdrop"
+                    onClick={() => setShowHeaderMenu(false)}
+                  />
+                  <div className="header-menu-dropdown" role="menu">
+                    {ActiveSettings && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="header-menu-item"
+                        onClick={() => {
+                          setShowHeaderMenu(false);
+                          setShowSettingsModal(true);
+                        }}
+                      >
+                        🎛 Settings
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="header-menu-item"
+                      onClick={() => {
+                        setShowHeaderMenu(false);
+                        setShowManagementModal(true);
+                      }}
+                    >
+                      ⚙️ Participants ({entries.length})
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
