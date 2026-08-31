@@ -135,6 +135,66 @@ const TRACKS: Record<StageId, Track> = {
     lead: [69, 0, 70, 73, 74, 0, 73, 70, 69, 0, 77, 76, 74, 73, 70, 69],
     bass: [45, 0, 45, 0, 41, 0, 41, 0, 40, 0, 40, 0, 41, 0, 41, 0],
   },
+  dojo: {
+    bpm: 96, leadWave: 'triangle', bassWave: 'sine', hats: false, leadGain: 0.06,
+    lead: [74, 0, 76, 0, 81, 0, 79, 76, 74, 0, 71, 0, 69, 0, 71, 0],
+    bass: [50, 0, 0, 0, 45, 0, 0, 0, 43, 0, 0, 0, 45, 0, 0, 0],
+  },
+  harbor: {
+    bpm: 128, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.055,
+    lead: [72, 0, 76, 79, 0, 76, 72, 0, 74, 0, 77, 81, 0, 77, 74, 0],
+    bass: [48, 0, 52, 0, 55, 0, 52, 0, 50, 0, 53, 0, 55, 0, 53, 0],
+  },
+  market: {
+    bpm: 148, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.06,
+    lead: [81, 79, 81, 84, 81, 79, 76, 79, 81, 79, 81, 84, 86, 84, 81, 79],
+    bass: [45, 45, 0, 45, 0, 45, 45, 0, 41, 41, 0, 41, 43, 43, 0, 43],
+  },
+  casino: {
+    bpm: 132, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.055,
+    lead: [72, 0, 75, 76, 79, 0, 76, 72, 70, 0, 73, 74, 77, 0, 74, 70],
+    bass: [48, 0, 55, 0, 46, 0, 53, 0, 44, 0, 51, 0, 43, 0, 50, 0],
+  },
+  arena: {
+    bpm: 138, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.065,
+    lead: [76, 0, 0, 76, 79, 0, 76, 0, 74, 0, 0, 74, 76, 0, 74, 0],
+    bass: [40, 40, 0, 40, 40, 40, 0, 40, 38, 38, 0, 38, 43, 43, 0, 43],
+  },
+  volcano: {
+    bpm: 120, leadWave: 'square', bassWave: 'sine', hats: true, leadGain: 0.055,
+    lead: [64, 0, 65, 64, 0, 62, 64, 0, 64, 0, 65, 67, 65, 64, 62, 0],
+    bass: [40, 0, 0, 40, 39, 0, 0, 39, 38, 0, 0, 38, 39, 0, 0, 39],
+  },
+  frozen: {
+    bpm: 130, leadWave: 'triangle', bassWave: 'sine', hats: false, leadGain: 0.055,
+    lead: [81, 84, 88, 93, 88, 84, 81, 84, 79, 83, 86, 91, 86, 83, 79, 83],
+    bass: [45, 0, 0, 0, 52, 0, 0, 0, 43, 0, 0, 0, 50, 0, 0, 0],
+  },
+  beach: {
+    bpm: 104, leadWave: 'triangle', bassWave: 'triangle', hats: true, leadGain: 0.06,
+    lead: [77, 0, 81, 0, 84, 81, 0, 77, 0, 79, 0, 82, 0, 79, 77, 0],
+    bass: [41, 0, 48, 0, 46, 0, 48, 0, 39, 0, 46, 0, 41, 0, 48, 0],
+  },
+  waterfall: {
+    bpm: 112, leadWave: 'triangle', bassWave: 'sine', hats: false, leadGain: 0.055,
+    lead: [79, 81, 84, 81, 86, 84, 81, 79, 76, 79, 81, 79, 74, 76, 79, 0],
+    bass: [43, 0, 0, 50, 0, 0, 43, 0, 41, 0, 0, 48, 0, 0, 41, 0],
+  },
+  train: {
+    bpm: 150, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.055,
+    lead: [74, 74, 77, 74, 79, 74, 77, 74, 74, 74, 77, 74, 81, 79, 77, 74],
+    bass: [38, 50, 38, 50, 38, 50, 38, 50, 36, 48, 36, 48, 38, 50, 38, 50],
+  },
+  alley: {
+    bpm: 110, leadWave: 'sawtooth', bassWave: 'triangle', hats: true, leadGain: 0.045,
+    lead: [69, 0, 0, 72, 0, 71, 0, 69, 0, 0, 67, 0, 69, 0, 71, 72],
+    bass: [33, 0, 45, 0, 33, 0, 45, 0, 31, 0, 43, 0, 32, 0, 44, 0],
+  },
+  graveyard: {
+    bpm: 90, leadWave: 'triangle', bassWave: 'sine', hats: false, leadGain: 0.055,
+    lead: [74, 0, 77, 0, 74, 0, 73, 0, 74, 0, 70, 0, 69, 0, 0, 0],
+    bass: [38, 0, 0, 45, 0, 0, 38, 0, 0, 43, 0, 0, 37, 0, 0, 0],
+  },
 };
 
 let musicMaster: GainNode | null = null;

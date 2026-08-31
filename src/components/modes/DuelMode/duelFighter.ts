@@ -49,8 +49,9 @@ function floor(ctx: CanvasRenderingContext2D, top: string, bottom: string, edge:
   ctx.stroke();
 }
 
-/** Draw the arena backdrop for the given stage. */
-export function drawStage(ctx: CanvasRenderingContext2D, stage: StageId): void {
+/** Draw the arena backdrop for the given stage. `now` drives ambient motion
+ *  (embers, snow, rain, waves, scrolling scenery, crowd waves…). */
+export function drawStage(ctx: CanvasRenderingContext2D, stage: StageId, now = 0): void {
   if (stage === 'city') {
     sky(ctx, '#241a3a', '#3a2a56');
     ctx.fillStyle = 'rgba(18,12,32,0.7)';
@@ -146,32 +147,563 @@ export function drawStage(ctx: CanvasRenderingContext2D, stage: StageId): void {
     return;
   }
 
-  // desert
-  sky(ctx, '#f2a65a', '#f9d98a');
-  ctx.fillStyle = 'rgba(255,250,210,0.9)';
-  ctx.beginPath();
-  ctx.arc(DL.CANVAS_W * 0.3, 96, 40, 0, Math.PI * 2);
-  ctx.fill();
-  // Distant pyramids.
-  ctx.fillStyle = 'rgba(190,130,70,0.7)';
-  const pyr = [[120, 150], [230, 200], [360, 130]];
-  for (const [px, ph] of pyr) {
+  if (stage === 'desert') {
+    sky(ctx, '#f2a65a', '#f9d98a');
+    ctx.fillStyle = 'rgba(255,250,210,0.9)';
     ctx.beginPath();
-    ctx.moveTo(px, DL.GROUND_Y - 30);
-    ctx.lineTo(px + ph * 0.9, DL.GROUND_Y - 30);
-    ctx.lineTo(px + ph * 0.45, DL.GROUND_Y - 30 - ph);
+    ctx.arc(DL.CANVAS_W * 0.3, 96, 40, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(190,130,70,0.7)';
+    const pyr = [[120, 150], [230, 200], [360, 130]];
+    for (const [px, ph] of pyr) {
+      ctx.beginPath();
+      ctx.moveTo(px, DL.GROUND_Y - 30);
+      ctx.lineTo(px + ph * 0.9, DL.GROUND_Y - 30);
+      ctx.lineTo(px + ph * 0.45, DL.GROUND_Y - 30 - ph);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(210,150,80,0.55)';
+    ctx.beginPath();
+    ctx.moveTo(0, DL.GROUND_Y - 18);
+    for (let x = 0; x <= DL.CANVAS_W; x += 40) ctx.quadraticCurveTo(x + 20, DL.GROUND_Y - 34, x + 40, DL.GROUND_Y - 18);
+    ctx.lineTo(DL.CANVAS_W, DL.GROUND_Y);
+    ctx.lineTo(0, DL.GROUND_Y);
+    ctx.fill();
+    floor(ctx, '#d9a35a', '#a06f34', 'rgba(255,240,180,0.5)');
+    return;
+  }
+
+  if (stage === 'dojo') {
+    // Warm wooden hall with paper screens, a scroll, and a gong.
+    sky(ctx, '#5a4030', '#3a2818');
+    ctx.fillStyle = 'rgba(240,230,200,0.85)';
+    for (const px of [70, 200, 330]) {
+      ctx.fillRect(px, 90, 80, DL.GROUND_Y - 150);
+      ctx.strokeStyle = 'rgba(90,64,40,0.8)';
+      ctx.lineWidth = 3;
+      for (let gy = 90; gy <= DL.GROUND_Y - 60; gy += 42) {
+        ctx.beginPath(); ctx.moveTo(px, gy); ctx.lineTo(px + 80, gy); ctx.stroke();
+      }
+      ctx.beginPath(); ctx.moveTo(px + 40, 90); ctx.lineTo(px + 40, DL.GROUND_Y - 60); ctx.stroke();
+    }
+    // Pillars.
+    ctx.fillStyle = '#2e1f12';
+    for (const px of [40, 160, 290, 420]) ctx.fillRect(px, 60, 18, DL.GROUND_Y - 60);
+    // Header beam + gong.
+    ctx.fillStyle = '#2e1f12';
+    ctx.fillRect(0, 52, DL.CANVAS_W, 16);
+    const gongG = ctx.createRadialGradient(240, 130, 4, 240, 130, 26);
+    gongG.addColorStop(0, '#f0d070');
+    gongG.addColorStop(1, '#8a6a20');
+    ctx.fillStyle = gongG;
+    ctx.beginPath();
+    ctx.arc(240, 130, 26, 0, Math.PI * 2);
+    ctx.fill();
+    floor(ctx, '#8a7448', '#5c4c2c', 'rgba(255,235,180,0.4)');
+    // Tatami seams.
+    ctx.strokeStyle = 'rgba(60,48,24,0.5)';
+    ctx.lineWidth = 2;
+    for (let x = 40; x < DL.CANVAS_W; x += 80) {
+      ctx.beginPath(); ctx.moveTo(x, DL.GROUND_Y); ctx.lineTo(x - 30, DL.CANVAS_H); ctx.stroke();
+    }
+    return;
+  }
+
+  if (stage === 'harbor') {
+    // Sunset docks: ship, cranes, drifting gulls.
+    sky(ctx, '#f2915a', '#f9c98a');
+    ctx.fillStyle = 'rgba(255,240,200,0.95)';
+    ctx.beginPath();
+    ctx.arc(DL.CANVAS_W * 0.68, 120, 34, 0, Math.PI * 2);
+    ctx.fill();
+    // Sea band.
+    ctx.fillStyle = 'rgba(150,90,80,0.7)';
+    ctx.fillRect(0, DL.GROUND_Y - 60, DL.CANVAS_W, 60);
+    // Ship hull + containers.
+    ctx.fillStyle = 'rgba(60,34,40,0.9)';
+    ctx.fillRect(50, DL.GROUND_Y - 108, 250, 52);
+    ctx.beginPath();
+    ctx.moveTo(50, DL.GROUND_Y - 56); ctx.lineTo(30, DL.GROUND_Y - 80); ctx.lineTo(50, DL.GROUND_Y - 80);
+    ctx.fill();
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = ['#a04a3a', '#3a6a8a', '#7a8a3a'][i % 3];
+      ctx.fillRect(70 + i * 44, DL.GROUND_Y - 126, 38, 18);
+    }
+    // Crane.
+    ctx.strokeStyle = 'rgba(50,30,36,0.9)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(380, DL.GROUND_Y - 60); ctx.lineTo(380, 130); ctx.lineTo(300, 150);
+    ctx.stroke();
+    // Gulls drifting.
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = 2;
+    for (let g = 0; g < 3; g++) {
+      const gx = ((now / (26 + g * 7)) + g * 190) % (DL.CANVAS_W + 60) - 30;
+      const gy = 90 + g * 34 + Math.sin(now / 300 + g) * 5;
+      ctx.beginPath();
+      ctx.moveTo(gx - 6, gy); ctx.quadraticCurveTo(gx - 2, gy - 5, gx, gy);
+      ctx.quadraticCurveTo(gx + 2, gy - 5, gx + 6, gy);
+      ctx.stroke();
+    }
+    floor(ctx, '#6a5030', '#463420', 'rgba(255,220,160,0.45)');
+    return;
+  }
+
+  if (stage === 'market') {
+    // Neon night market with bobbing lantern strings.
+    sky(ctx, '#1c1230', '#33204a');
+    ctx.fillStyle = 'rgba(14,8,26,0.85)';
+    for (const [bx, bw2, bh2] of [[0, 90, 200], [100, 120, 260], [240, 100, 230], [350, 130, 210]]) {
+      ctx.fillRect(bx, DL.GROUND_Y - bh2, bw2, bh2);
+    }
+    // Neon signs.
+    const neon = [['#ff4a8a', 120, 200], ['#4affd0', 270, 240], ['#ffd24a', 380, 220]] as const;
+    for (const [col, nx, ny] of neon) {
+      ctx.fillStyle = col;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 12;
+      ctx.fillRect(nx, DL.GROUND_Y - ny, 26, 54);
+      ctx.shadowBlur = 0;
+    }
+    // Lantern string.
+    ctx.strokeStyle = 'rgba(200,180,160,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 90);
+    ctx.quadraticCurveTo(DL.CANVAS_W / 2, 140, DL.CANVAS_W, 84);
+    ctx.stroke();
+    for (let i = 0; i < 7; i++) {
+      const t = (i + 0.5) / 7;
+      const lx = t * DL.CANVAS_W;
+      const ly = 90 + Math.sin(Math.PI * t) * 46 + Math.sin(now / 400 + i * 1.7) * 4;
+      ctx.fillStyle = '#ff5a3c';
+      ctx.shadowColor = '#ff8a5c';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.ellipse(lx, ly, 7, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffd24a';
+      ctx.fillRect(lx - 2, ly + 9, 4, 3);
+    }
+    floor(ctx, '#3c3048', '#241c30', 'rgba(255,150,190,0.4)');
+    return;
+  }
+
+  if (stage === 'casino') {
+    // Night strip: twinkling marquee arch, dice and card silhouettes.
+    sky(ctx, '#160f26', '#2c1a3e');
+    // Marquee arch of bulbs.
+    for (let i = 0; i < 15; i++) {
+      const a = Math.PI * (1 + i / 14);
+      const bx2 = DL.CANVAS_W / 2 + Math.cos(a) * 190;
+      const by = 260 + Math.sin(a) * 190;
+      const on = (i + Math.floor(now / 220)) % 3 !== 0;
+      ctx.fillStyle = on ? '#ffd24a' : 'rgba(255,210,74,0.25)';
+      ctx.shadowColor = '#ffd24a';
+      ctx.shadowBlur = on ? 10 : 0;
+      ctx.beginPath();
+      ctx.arc(bx2, by, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    // Giant die.
+    ctx.save();
+    ctx.translate(96, DL.GROUND_Y - 74);
+    ctx.rotate(-0.18);
+    ctx.fillStyle = '#e8e4f2';
+    ctx.fillRect(-34, -34, 68, 68);
+    ctx.fillStyle = '#26203a';
+    for (const [dx, dy] of [[-15, -15], [15, 15], [0, 0], [-15, 15], [15, -15]]) {
+      ctx.beginPath(); ctx.arc(dx, dy, 5.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+    // Card.
+    ctx.save();
+    ctx.translate(388, DL.GROUND_Y - 66);
+    ctx.rotate(0.14);
+    ctx.fillStyle = '#f2eee6';
+    ctx.fillRect(-26, -38, 52, 76);
+    ctx.fillStyle = '#c02a3a';
+    ctx.font = 'bold 30px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('♥', 0, 2);
+    ctx.restore();
+    floor(ctx, '#8a6a2a', '#5a4418', 'rgba(255,220,120,0.5)');
+    return;
+  }
+
+  if (stage === 'arena') {
+    // Wrestling arena: waving crowd rows, sweeping spotlights, ring ropes.
+    sky(ctx, '#12101e', '#241e34');
+    // Crowd rows doing the wave.
+    const rowCols = ['#5a4a7a', '#6a5a8a', '#7a6a9a'];
+    for (let r = 0; r < 3; r++) {
+      const y0 = 150 + r * 46;
+      for (let x = 14; x < DL.CANVAS_W; x += 24) {
+        const bob = Math.sin(now / 260 + x / 46 + r) * 6;
+        ctx.fillStyle = rowCols[r];
+        ctx.beginPath();
+        ctx.arc(x, y0 + bob, 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // Spotlight cones.
+    for (const s of [-1, 1]) {
+      const ang = Math.sin(now / 900 + (s === 1 ? 1.6 : 0)) * 0.5;
+      ctx.save();
+      ctx.translate(DL.CANVAS_W / 2 + s * 160, 30);
+      ctx.rotate(ang * s);
+      const grad = ctx.createLinearGradient(0, 0, 0, 360);
+      grad.addColorStop(0, 'rgba(255,255,220,0.30)');
+      grad.addColorStop(1, 'rgba(255,255,220,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(-58, 380); ctx.lineTo(58, 380);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    floor(ctx, '#c8c2d8', '#8a84a0', 'rgba(255,255,255,0.6)');
+    // Ring ropes + posts on the apron.
+    ctx.fillStyle = '#c02a3a';
+    ctx.fillRect(6, DL.GROUND_Y - 92, 10, 92);
+    ctx.fillRect(DL.CANVAS_W - 16, DL.GROUND_Y - 92, 10, 92);
+    for (let rp = 0; rp < 3; rp++) {
+      ctx.strokeStyle = ['#e8e4f2', '#4a8ae8', '#c02a3a'][rp];
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(10, DL.GROUND_Y - 78 + rp * 26);
+      ctx.lineTo(DL.CANVAS_W - 10, DL.GROUND_Y - 78 + rp * 26);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (stage === 'volcano') {
+    // Volcano rim: lava river, drifting embers.
+    sky(ctx, '#1c0806', '#4a1408');
+    ctx.fillStyle = 'rgba(16,6,6,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(0, DL.GROUND_Y - 30);
+    ctx.lineTo(90, 150); ctx.lineTo(190, DL.GROUND_Y - 90);
+    ctx.lineTo(300, 110); ctx.lineTo(420, DL.GROUND_Y - 60);
+    ctx.lineTo(DL.CANVAS_W, DL.GROUND_Y - 110); ctx.lineTo(DL.CANVAS_W, DL.GROUND_Y);
+    ctx.lineTo(0, DL.GROUND_Y);
+    ctx.fill();
+    // Lava river.
+    const lg = ctx.createLinearGradient(0, DL.GROUND_Y - 44, 0, DL.GROUND_Y);
+    lg.addColorStop(0, '#ffb02a');
+    lg.addColorStop(1, '#c22a08');
+    ctx.fillStyle = lg;
+    ctx.beginPath();
+    ctx.moveTo(0, DL.GROUND_Y - 26);
+    for (let x = 0; x <= DL.CANVAS_W; x += 32) {
+      ctx.quadraticCurveTo(x + 16, DL.GROUND_Y - 26 + Math.sin(now / 500 + x / 40) * 7 - 8, x + 32, DL.GROUND_Y - 26);
+    }
+    ctx.lineTo(DL.CANVAS_W, DL.GROUND_Y);
+    ctx.lineTo(0, DL.GROUND_Y);
+    ctx.fill();
+    // Rising embers (seeded, looping upward).
+    const re = seeded(77);
+    for (let e = 0; e < 14; e++) {
+      const ex = re() * DL.CANVAS_W;
+      const speed = 26 + re() * 40;
+      const ey = DL.GROUND_Y - ((now / 1000) * speed + re() * 300) % 320;
+      ctx.globalAlpha = 0.35 + re() * 0.5;
+      ctx.fillStyle = re() > 0.5 ? '#ffb02a' : '#ff5a2a';
+      ctx.fillRect(ex + Math.sin(now / 300 + e) * 6, ey, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+    floor(ctx, '#2c1410', '#180a08', 'rgba(255,120,50,0.5)');
+    return;
+  }
+
+  if (stage === 'frozen') {
+    // Frozen peak: aurora ribbons, ice crags, falling snow.
+    sky(ctx, '#0a1430', '#1c3054');
+    for (let a = 0; a < 3; a++) {
+      ctx.beginPath();
+      ctx.moveTo(0, 80 + a * 40);
+      for (let x = 0; x <= DL.CANVAS_W; x += 24) {
+        ctx.lineTo(x, 80 + a * 40 + Math.sin(now / 1400 + x / 60 + a * 2) * 22);
+      }
+      ctx.strokeStyle = ['rgba(120,255,190,0.25)', 'rgba(120,190,255,0.22)', 'rgba(190,120,255,0.18)'][a];
+      ctx.lineWidth = 14;
+      ctx.stroke();
+    }
+    // Ice crags.
+    ctx.fillStyle = 'rgba(170,200,235,0.55)';
+    for (const [cx2, cw, ch] of [[60, 90, 140], [200, 70, 180], [330, 110, 150]]) {
+      ctx.beginPath();
+      ctx.moveTo(cx2 - cw / 2, DL.GROUND_Y);
+      ctx.lineTo(cx2, DL.GROUND_Y - ch);
+      ctx.lineTo(cx2 + cw / 2, DL.GROUND_Y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Snow.
+    const rs2 = seeded(4242);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (let s = 0; s < 26; s++) {
+      const sx = (rs2() * DL.CANVAS_W + Math.sin(now / 700 + s) * 18 + DL.CANVAS_W) % DL.CANVAS_W;
+      const sy = ((now / 1000) * (24 + rs2() * 30) + rs2() * 600) % DL.CANVAS_H;
+      ctx.fillRect(sx, sy, 2.4, 2.4);
+    }
+    floor(ctx, '#dce8f4', '#9ab4cc', 'rgba(255,255,255,0.8)');
+    return;
+  }
+
+  if (stage === 'beach') {
+    // Dusk beach: palms, rolling wave line, sailboat.
+    sky(ctx, '#e86a8a', '#f9c98a');
+    ctx.fillStyle = 'rgba(255,240,220,0.9)';
+    ctx.beginPath();
+    ctx.arc(DL.CANVAS_W * 0.34, 110, 30, 0, Math.PI * 2);
+    ctx.fill();
+    // Sea with animated shoreline.
+    ctx.fillStyle = 'rgba(60,90,140,0.8)';
+    ctx.beginPath();
+    ctx.moveTo(0, DL.GROUND_Y - 64);
+    for (let x = 0; x <= DL.CANVAS_W; x += 40) {
+      ctx.quadraticCurveTo(x + 20, DL.GROUND_Y - 64 + Math.sin(now / 600 + x / 50) * 6, x + 40, DL.GROUND_Y - 64);
+    }
+    ctx.lineTo(DL.CANVAS_W, DL.GROUND_Y - 8);
+    ctx.lineTo(0, DL.GROUND_Y - 8);
+    ctx.fill();
+    // Foam line.
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, DL.GROUND_Y - 10 + Math.sin(now / 800) * 3);
+    ctx.lineTo(DL.CANVAS_W, DL.GROUND_Y - 10 + Math.cos(now / 800) * 3);
+    ctx.stroke();
+    // Sailboat.
+    const bx3 = 330 + Math.sin(now / 2200) * 14;
+    ctx.fillStyle = '#3a2a20';
+    ctx.fillRect(bx3 - 18, DL.GROUND_Y - 86, 36, 7);
+    ctx.fillStyle = '#f2eee6';
+    ctx.beginPath();
+    ctx.moveTo(bx3, DL.GROUND_Y - 86); ctx.lineTo(bx3, DL.GROUND_Y - 122); ctx.lineTo(bx3 + 20, DL.GROUND_Y - 90);
     ctx.closePath();
     ctx.fill();
+    // Palms.
+    for (const [px2, lean2] of [[52, 1], [430, -1]] as const) {
+      ctx.strokeStyle = '#4a3222';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(px2, DL.GROUND_Y);
+      ctx.quadraticCurveTo(px2 + lean2 * 14, DL.GROUND_Y - 70, px2 + lean2 * 26, DL.GROUND_Y - 118);
+      ctx.stroke();
+      ctx.strokeStyle = '#2c6a3c';
+      ctx.lineWidth = 5;
+      for (let fr = 0; fr < 5; fr++) {
+        const fa = -Math.PI / 2 + (fr - 2) * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(px2 + lean2 * 26, DL.GROUND_Y - 118);
+        ctx.quadraticCurveTo(
+          px2 + lean2 * 26 + Math.cos(fa) * 30, DL.GROUND_Y - 118 + Math.sin(fa) * 30 - 8,
+          px2 + lean2 * 26 + Math.cos(fa) * 52, DL.GROUND_Y - 118 + Math.sin(fa) * 40 + 10
+        );
+        ctx.stroke();
+      }
+    }
+    floor(ctx, '#e8c98a', '#b89658', 'rgba(255,240,200,0.6)');
+    return;
   }
-  // Dune ridges.
-  ctx.fillStyle = 'rgba(210,150,80,0.55)';
+
+  if (stage === 'waterfall') {
+    // Gorge with a shimmering waterfall column and mist.
+    sky(ctx, '#2c4a3c', '#446a50');
+    ctx.fillStyle = 'rgba(30,46,38,0.9)';
+    ctx.fillRect(0, 80, 150, DL.GROUND_Y - 80);
+    ctx.fillRect(330, 60, 150, DL.GROUND_Y - 60);
+    // Waterfall column with moving shimmer.
+    const wf = ctx.createLinearGradient(150, 0, 330, 0);
+    wf.addColorStop(0, 'rgba(150,210,235,0.85)');
+    wf.addColorStop(0.5, 'rgba(200,240,255,0.95)');
+    wf.addColorStop(1, 'rgba(150,210,235,0.85)');
+    ctx.fillStyle = wf;
+    ctx.fillRect(170, 60, 140, DL.GROUND_Y - 60);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 3;
+    for (let st = 0; st < 5; st++) {
+      const sy2 = ((now / 4) + st * 80) % (DL.GROUND_Y - 80);
+      ctx.beginPath();
+      ctx.moveTo(184 + st * 24, 70 + sy2);
+      ctx.lineTo(184 + st * 24, 70 + sy2 + 34);
+      ctx.stroke();
+    }
+    // Mist at the base.
+    ctx.fillStyle = 'rgba(230,245,255,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(240, DL.GROUND_Y - 8, 130 + Math.sin(now / 900) * 12, 26, 0, 0, Math.PI * 2);
+    ctx.fill();
+    floor(ctx, '#5a6a58', '#38443a', 'rgba(200,240,255,0.5)');
+    return;
+  }
+
+  if (stage === 'train') {
+    // Fighting on a speeding train roof — everything scrolls.
+    sky(ctx, '#7ab0d8', '#c8e0ee');
+    // Clouds whipping past.
+    const rc = seeded(303);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (let c = 0; c < 5; c++) {
+      const cw2 = 60 + rc() * 60;
+      const cy2 = 60 + rc() * 120;
+      const cx3 = DL.CANVAS_W - (((now / 3) + rc() * 900) % (DL.CANVAS_W + cw2 * 2)) + cw2;
+      ctx.beginPath();
+      ctx.ellipse(cx3, cy2, cw2, 14 + rc() * 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Distant hills scrolling slower.
+    ctx.fillStyle = 'rgba(90,130,90,0.8)';
+    for (let h = 0; h < 4; h++) {
+      const hw = 190;
+      const hx2 = DL.CANVAS_W - (((now / 14) + h * 160) % (DL.CANVAS_W + hw * 2)) + hw;
+      ctx.beginPath();
+      ctx.ellipse(hx2, DL.GROUND_Y - 30, hw, 70, 0, Math.PI, 0);
+      ctx.fill();
+    }
+    // Telegraph poles whipping by.
+    ctx.fillStyle = 'rgba(60,44,30,0.9)';
+    const px3 = DL.CANVAS_W - ((now / 1.4) % (DL.CANVAS_W + 60)) + 30;
+    ctx.fillRect(px3, DL.GROUND_Y - 190, 8, 160);
+    ctx.fillRect(px3 - 16, DL.GROUND_Y - 182, 40, 6);
+    // Train roof: metal with scrolling panel seams.
+    floor(ctx, '#8a8f9c', '#5a6070', 'rgba(220,230,255,0.7)');
+    ctx.strokeStyle = 'rgba(40,46,60,0.7)';
+    ctx.lineWidth = 3;
+    for (let k = 0; k < 7; k++) {
+      const sx2 = DL.CANVAS_W - (((now / 1.4) + k * 90) % (DL.CANVAS_W + 40)) + 20;
+      ctx.beginPath();
+      ctx.moveTo(sx2, DL.GROUND_Y);
+      ctx.lineTo(sx2 - 26, DL.CANVAS_H);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  if (stage === 'alley') {
+    // Rainy cyberpunk alley: fire escapes, flickering neon, puddles.
+    sky(ctx, '#101624', '#1e2a3e');
+    ctx.fillStyle = 'rgba(8,12,22,0.9)';
+    ctx.fillRect(0, 60, 120, DL.GROUND_Y - 60);
+    ctx.fillRect(360, 40, 120, DL.GROUND_Y - 40);
+    // Fire escapes.
+    ctx.strokeStyle = 'rgba(90,110,140,0.7)';
+    ctx.lineWidth = 3;
+    for (const ex of [24, 396]) {
+      for (let fy = 110; fy < DL.GROUND_Y - 60; fy += 70) {
+        ctx.strokeRect(ex, fy, 72, 8);
+        ctx.beginPath();
+        ctx.moveTo(ex + 62, fy + 8); ctx.lineTo(ex + 30, fy + 60);
+        ctx.stroke();
+      }
+    }
+    // Neon signs (one flickers).
+    const flick = Math.floor(now / 90) % 11 !== 0;
+    ctx.fillStyle = flick ? '#ff2a8a' : 'rgba(255,42,138,0.2)';
+    ctx.shadowColor = '#ff2a8a';
+    ctx.shadowBlur = flick ? 16 : 0;
+    ctx.fillRect(140, 120, 14, 80);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#2ae8d8';
+    ctx.shadowColor = '#2ae8d8';
+    ctx.shadowBlur = 14;
+    ctx.fillRect(326, 150, 14, 64);
+    ctx.shadowBlur = 0;
+    // Rain streaks.
+    const rr2 = seeded(555);
+    ctx.strokeStyle = 'rgba(180,210,255,0.35)';
+    ctx.lineWidth = 1.4;
+    for (let r = 0; r < 30; r++) {
+      const rx = (rr2() * DL.CANVAS_W + now / 6) % DL.CANVAS_W;
+      const ry = ((now / 2.4) * (0.8 + rr2() * 0.5) + rr2() * 600) % DL.CANVAS_H;
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(rx - 4, ry + 14);
+      ctx.stroke();
+    }
+    floor(ctx, '#242c3c', '#141a26', 'rgba(120,180,255,0.5)');
+    // Puddle glints.
+    ctx.fillStyle = 'rgba(42,232,216,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(150, DL.GROUND_Y + 40, 60, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,42,138,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(330, DL.GROUND_Y + 70, 70, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
+  // graveyard (default/final stage)
+  sky(ctx, '#0c101e', '#1c2434');
+  // Full moon + glow.
+  const moonG = ctx.createRadialGradient(360, 100, 8, 360, 100, 60);
+  moonG.addColorStop(0, 'rgba(240,240,220,1)');
+  moonG.addColorStop(0.5, 'rgba(240,240,220,0.25)');
+  moonG.addColorStop(1, 'rgba(240,240,220,0)');
+  ctx.fillStyle = moonG;
   ctx.beginPath();
-  ctx.moveTo(0, DL.GROUND_Y - 18);
-  for (let x = 0; x <= DL.CANVAS_W; x += 40) ctx.quadraticCurveTo(x + 20, DL.GROUND_Y - 34, x + 40, DL.GROUND_Y - 18);
-  ctx.lineTo(DL.CANVAS_W, DL.GROUND_Y);
-  ctx.lineTo(0, DL.GROUND_Y);
+  ctx.arc(360, 100, 60, 0, Math.PI * 2);
   ctx.fill();
-  floor(ctx, '#d9a35a', '#a06f34', 'rgba(255,240,180,0.5)');
+  ctx.fillStyle = '#ece8d8';
+  ctx.beginPath();
+  ctx.arc(360, 100, 26, 0, Math.PI * 2);
+  ctx.fill();
+  // Dead tree.
+  ctx.strokeStyle = 'rgba(30,26,40,0.95)';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(70, DL.GROUND_Y);
+  ctx.quadraticCurveTo(60, DL.GROUND_Y - 90, 78, DL.GROUND_Y - 150);
+  ctx.stroke();
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(74, DL.GROUND_Y - 110); ctx.lineTo(110, DL.GROUND_Y - 150);
+  ctx.moveTo(76, DL.GROUND_Y - 140); ctx.lineTo(50, DL.GROUND_Y - 180);
+  ctx.stroke();
+  // Tombstones.
+  ctx.fillStyle = 'rgba(120,124,140,0.8)';
+  for (const [tx2, tilt] of [[170, -0.06], [260, 0.09], [400, -0.1]] as const) {
+    ctx.save();
+    ctx.translate(tx2, DL.GROUND_Y);
+    ctx.rotate(tilt);
+    ctx.beginPath();
+    ctx.moveTo(-16, 0);
+    ctx.lineTo(-16, -36);
+    ctx.arc(0, -36, 16, Math.PI, 0);
+    ctx.lineTo(16, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  // Bats crossing.
+  ctx.fillStyle = 'rgba(20,18,30,0.95)';
+  for (let b = 0; b < 3; b++) {
+    const btx = ((now / (16 + b * 6)) + b * 240) % (DL.CANVAS_W + 80) - 40;
+    const bty = 120 + b * 40 + Math.sin(now / 180 + b * 2) * 10;
+    const wing = Math.sin(now / 90 + b) * 5;
+    ctx.beginPath();
+    ctx.moveTo(btx - 10, bty - wing);
+    ctx.quadraticCurveTo(btx - 4, bty + 3, btx, bty);
+    ctx.quadraticCurveTo(btx + 4, bty + 3, btx + 10, bty - wing);
+    ctx.quadraticCurveTo(btx + 4, bty + 6, btx, bty + 3);
+    ctx.quadraticCurveTo(btx - 4, bty + 6, btx - 10, bty - wing);
+    ctx.fill();
+  }
+  // Drifting fog band.
+  ctx.fillStyle = 'rgba(190,200,220,0.16)';
+  ctx.beginPath();
+  ctx.ellipse(DL.CANVAS_W / 2 + Math.sin(now / 2400) * 60, DL.GROUND_Y - 14, 240, 22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  floor(ctx, '#2a3024', '#181c14', 'rgba(160,180,150,0.4)');
 }
 
 /** Bobbing spectator heads along the crowd band. */

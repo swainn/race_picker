@@ -37,8 +37,29 @@ export const DL = {
 } as const;
 
 /** Cycling arena backdrops, each with its own 8-bit track. */
-export type StageId = 'city' | 'jungle' | 'space' | 'desert';
-export const STAGE_IDS: StageId[] = ['city', 'jungle', 'space', 'desert'];
+export type StageId =
+  | 'city'
+  | 'jungle'
+  | 'space'
+  | 'desert'
+  | 'dojo'
+  | 'harbor'
+  | 'market'
+  | 'casino'
+  | 'arena'
+  | 'volcano'
+  | 'frozen'
+  | 'beach'
+  | 'waterfall'
+  | 'train'
+  | 'alley'
+  | 'graveyard';
+export const STAGE_IDS: StageId[] = [
+  'city', 'jungle', 'space', 'desert',
+  'dojo', 'harbor', 'market', 'casino',
+  'arena', 'volcano', 'frozen', 'beach',
+  'waterfall', 'train', 'alley', 'graveyard',
+];
 
 export type DuelMoveId =
   | 'punch'

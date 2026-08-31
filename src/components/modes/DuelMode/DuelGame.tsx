@@ -554,7 +554,7 @@ export function DuelGame(props: Props) {
 
   // ---- Rendering --------------------------------------------------------
   const drawScene = (ctx: CanvasRenderingContext2D, now: number, withBars: boolean) => {
-    drawStage(ctx, stageRef.current);
+    drawStage(ctx, stageRef.current, now);
     for (const pr of projRef.current) drawDuelProjectile(ctx, pr);
     const f1 = f1Ref.current;
     const f2 = f2Ref.current;
@@ -607,7 +607,7 @@ export function DuelGame(props: Props) {
     ctx.translate(DL.CANVAS_W / 2, DL.CANVAS_H / 2);
     ctx.scale(zoom, zoom);
     ctx.translate(-fx, -fy);
-    drawStage(ctx, stageRef.current);
+    drawStage(ctx, stageRef.current, wallNow);
     for (const pr of frame.projectiles) drawDuelProjectile(ctx, pr);
     const order = frame.f1.x <= frame.f2.x ? [frame.f1, frame.f2] : [frame.f2, frame.f1];
     for (const f of order) drawFighter(ctx, f, imgOf(f.entry), wallNow);
@@ -645,7 +645,7 @@ export function DuelGame(props: Props) {
 
       switch (phaseRef.current) {
         case 'ready': {
-          drawStage(ctx, stageRef.current);
+          drawStage(ctx, stageRef.current, now);
           crowdRef.current = p.entries.map((e) => ({ color: colorOf(e), name: e.name }));
           drawCrowd(ctx, crowdRef.current, now);
           drawAnnounce(ctx, 'READY?', '#ffd23a', 0.8);
