@@ -13,10 +13,11 @@ npm run dev      # Vite dev server — see note below
 npm run build    # tsc -b (typecheck) then vite build
 npm run lint     # eslint . (flat config, TS + react-hooks + react-refresh)
 npm run preview  # serve the production build
+npm run test     # vitest — unit tests for pure engine/util logic (fairness, shuffle bags, tuning invariants)
 ```
 
 - **Always start the dev server on port 5174**, not Vite's default 5173: `npm run dev -- --port 5174`.
-- There is **no test framework** configured. "Verification" means `npm run build` (typecheck) + `npm run lint`, then manual testing in the browser.
+- **Vitest** covers only pure logic (`*.test.ts` beside the source: engines, pickers, utils) — canvas/UI has no test coverage. "Verification" means `npm run build` (typecheck) + `npm run lint` + `npm run test`, then manual testing in the browser. Fairness-critical pick functions must keep a uniformity test.
 - The build runs `tsc -b` first, so a type error fails the build. Strict TypeScript is enforced.
 
 ## Architecture

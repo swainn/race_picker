@@ -1,9 +1,31 @@
-import type { CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { useWinnerLifecycle } from '../../../hooks/useWinnerLifecycle';
 import type { WinnerDialogProps } from './types';
 import './WinnerDialog.css';
 
 const DEFAULT_AUTO_MINIMIZE_MS = 3000;
+
+const CONFETTI_COLORS = ['#ffd23a', '#ff5a3c', '#4ad0ff', '#7dff8a', '#ff6bd0', '#c9a2ff'];
+
+interface ConfettiPiece {
+  left: number; // %
+  delay: number; // s
+  dur: number; // s
+  drift: number; // px of horizontal sway
+  color: string;
+  spin: number; // deg
+}
+
+function makeConfetti(count: number): ConfettiPiece[] {
+  return Array.from({ length: count }, () => ({
+    left: Math.random() * 100,
+    delay: Math.random() * 2.4,
+    dur: 2.2 + Math.random() * 1.8,
+    drift: (Math.random() - 0.5) * 90,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    spin: 360 + Math.random() * 540,
+  }));
+}
 
 export function WinnerDialog(props: WinnerDialogProps) {
   const {
@@ -33,6 +55,8 @@ export function WinnerDialog(props: WinnerDialogProps) {
     autoMinimize,
     onMinimize: onReplayStart,
   });
+
+  const confetti = useMemo(() => makeConfetti(42), []);
 
   if (phase === 'hidden') return null;
 
@@ -98,6 +122,24 @@ export function WinnerDialog(props: WinnerDialogProps) {
       data-gold={gold}
       style={themeStyle}
     >
+      {gold && (
+        <div className="winner-dialog__confetti" aria-hidden="true">
+          {confetti.map((p, i) => (
+            <span
+              key={i}
+              className="winner-dialog__confetti-piece"
+              style={{
+                left: `${p.left}%`,
+                background: p.color,
+                animationDelay: `${p.delay}s`,
+                animationDuration: `${p.dur}s`,
+                '--cf-drift': `${p.drift}px`,
+                '--cf-spin': `${p.spin}deg`,
+              } as CSSProperties}
+            />
+          ))}
+        </div>
+      )}
       <div className="winner-dialog__banner">
         <button
           type="button"

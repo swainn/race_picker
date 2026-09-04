@@ -414,3 +414,14 @@
   border-radius: 12px;
   margin: 20px;
 }
+
+/* Suspense fallback while a code-split mode chunk loads. */
+.mode-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  color: #888;
+  font-size: 15px;
+  letter-spacing: 1px;
+}

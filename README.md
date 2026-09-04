@@ -1,6 +1,6 @@
 # 🎮 Aquaveo Picker
 
-A gamified random-selection tool with ten game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, a battleship grid, a spinning wheel, a kung-fu brawl, or a retro Space Invaders assault (as the invaders or the defenders) — all sharing the same participant list.
+A gamified random-selection tool with eleven game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, a battleship grid, a spinning wheel, a kung-fu brawl, a retro Space Invaders assault (as the invaders or the defenders), or a one-on-one Street Duel — all sharing the same participant list.
 
 ## Game Modes
 
@@ -16,8 +16,9 @@ Pick a mode from the dropdown at the top of the page (use the 🎲 button next t
 - **🥋 Kung Fu** — Fighters brawl on a platform, throwing punches, kicks, flying kicks, and chi blasts to knock opponents off the edge, with instant replays and an optional shrinking sudden-death platform. Last fighter standing wins.
 - **👾 Space Invaders** — Participants are the alien formation; an auto-cannon locks on with a target-lock drumroll and picks one off per wave. Features synth arcade sound, an accelerating march that continues across the whole session, and random theatrical powers/protections (shield, blink, rapid-fire, cloak) that never bias the fair pick. Last invader standing wins.
 - **🛡️ Space Defenders** — The same engine flipped: participants are the defender cannons along the bottom while a descending alien horde bombs one base per wave. Last defender standing wins.
+- **🥊 Street Duel** — Two participants are drawn at random each round for a Street Fighter-style 1v1 while everyone else watches from the crowd; the KO'd fighter is the pick. Each duelist is assigned a character from an 11-strong roster of original archetypes (Yogi, Sumo, Beast, Grappler, Boxer, General, Claw, Lightning, Commando, Kunoichi, Luchadora), each with a signature super unleashed from a fill-up meter — fireballs, flurries, piledrivers, spiral drills, kunai volleys, and more. Rounds cycle through 16 animated stages (city, jungle, space station, desert, dojo, harbor, night market, casino, wrestling arena, volcano, frozen peak, beach, waterfall, train roof, rainy alley, graveyard), each with its own 8-bit chiptune. KOs get an instant replay, and the final leaderboard ranks everyone by total damage inflicted across the session.
 
-All modes share the same participant list and saved groups. Modes with a 🎛 Settings button (Racing, Wall Climber, Battleship, Wheel, Kung Fu, Space Invaders, Space Defenders) expose extra per-mode options. Switching modes mid-race prompts a confirmation and resets the current race.
+All modes share the same participant list and saved groups. Modes with a 🎛 Settings button (Racing, Wall Climber, Battleship, Wheel, Kung Fu, Space Invaders, Space Defenders, Street Duel) expose extra per-mode options in the ☰ header menu, which also holds the participant manager and a global sound mute. Switching modes mid-race prompts a confirmation and resets the current race.
 
 ## Screenshots
 
@@ -152,6 +153,7 @@ npm run build
   - `WheelMode/` — spin-the-wheel picker with leaderboard and selectable sounds
   - `KungFuMode/` — platform brawler (moves, knock-offs, instant replay, optional shrinking platform)
   - `SpaceInvadersMode/` — retro Space Invaders family: **Space Invaders** (participants are the aliens) and **Space Defenders** (participants are the cannons) share one canvas engine, `SpaceGame`, parameterized by variant — target-lock suspense, synth sound, an escalating session-long march, and random powers
+  - `DuelMode/` — Street Fighter-style 1v1 (11-character roster with signature supers, 16 chiptune-scored stages drawn from a no-repeat shuffle bag, instant replay, damage-based final standings)
 - **components/modes/types.ts** — `ModeViewProps` contract every mode implements
 - **components/modes/registry.ts** — `MODE_REGISTRY` wires each mode's view, optional settings panel, winner theme, label, and `survivalOrder` flag in one place
 - **components/modes/themes.ts** — Per-mode `WinnerTheme` color/typography tokens
@@ -163,7 +165,6 @@ Each mode keeps its own persisted settings in a `*SettingsStore.ts` module (a si
 
 ## Future Enhancements
 
-- Sound effects for races and winners
 - Customizable race parameters
 - Export results functionality
 - Multiplayer network support

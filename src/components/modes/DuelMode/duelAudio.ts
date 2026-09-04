@@ -1,34 +1,22 @@
-/** Tiny synth SFX + an 8-bit chiptune soundtrack for Street Duel — no asset
- *  files. One shared AudioContext, resumed on the first user gesture. */
+/** Synth SFX + an 8-bit chiptune soundtrack for Street Duel — no asset files,
+ *  built on the shared synth foundation (`utils/synth`). The mode's own
+ *  sound/music settings are enforced here; the app-wide mute is enforced
+ *  inside the synth (and checked directly for the music scheduler). */
 import type { StageId } from './duelEngine';
+import { isGlobalMuted } from '../../../utils/globalAudioStore';
+import {
+  createBus,
+  getAudioContext,
+  getNoiseBuffer,
+  resumeAudio,
+  tone as synthTone,
+  noise as synthNoise,
+} from '../../../utils/synth';
 
-let ctx: AudioContext | null = null;
-let master: GainNode | null = null;
-let noiseBuffer: AudioBuffer | null = null;
 let muted = false;
 
-type WindowWithWebkit = Window & { webkitAudioContext?: typeof AudioContext };
-
-function ensure(): AudioContext | null {
-  if (typeof window === 'undefined') return null;
-  if (!ctx) {
-    const Ctor = window.AudioContext ?? (window as WindowWithWebkit).webkitAudioContext;
-    if (!Ctor) return null;
-    ctx = new Ctor();
-    master = ctx.createGain();
-    master.gain.value = 0.35;
-    master.connect(ctx.destination);
-    const len = Math.floor(ctx.sampleRate * 0.4);
-    noiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-  }
-  return ctx;
-}
-
 export function resumeDuelAudio(): void {
-  const c = ensure();
-  if (c && c.state === 'suspended') void c.resume();
+  resumeAudio();
 }
 
 export function setDuelMuted(m: boolean): void {
@@ -37,42 +25,12 @@ export function setDuelMuted(m: boolean): void {
 
 function tone(freq: number, dur: number, type: OscillatorType, gain: number, slideTo?: number): void {
   if (muted) return;
-  const c = ensure();
-  if (!c || !master) return;
-  const t0 = c.currentTime;
-  const osc = c.createOscillator();
-  const g = c.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t0);
-  if (slideTo !== undefined) osc.frequency.exponentialRampToValueAtTime(Math.max(1, slideTo), t0 + dur);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.008);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  osc.connect(g);
-  g.connect(master);
-  osc.start(t0);
-  osc.stop(t0 + dur + 0.02);
+  synthTone(freq, dur, type, gain, slideTo);
 }
 
 function noise(dur: number, gain: number, lowFrom: number, lowTo: number): void {
   if (muted) return;
-  const c = ensure();
-  if (!c || !master || !noiseBuffer) return;
-  const t0 = c.currentTime;
-  const src = c.createBufferSource();
-  src.buffer = noiseBuffer;
-  const filt = c.createBiquadFilter();
-  filt.type = 'lowpass';
-  filt.frequency.setValueAtTime(lowFrom, t0);
-  filt.frequency.exponentialRampToValueAtTime(Math.max(60, lowTo), t0 + dur);
-  const g = c.createGain();
-  g.gain.setValueAtTime(gain, t0);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  src.connect(filt);
-  filt.connect(g);
-  g.connect(master);
-  src.start(t0);
-  src.stop(t0 + dur + 0.02);
+  synthNoise(dur, gain, lowFrom, lowTo);
 }
 
 export function playHit(): void {
@@ -209,18 +167,13 @@ function mtof(m: number): number {
 }
 
 function musicBus(): GainNode | null {
-  const c = ensure();
-  if (!c) return null;
-  if (!musicMaster) {
-    musicMaster = c.createGain();
-    musicMaster.gain.value = 0.42;
-    musicMaster.connect(c.destination);
-  }
+  if (!musicMaster) musicMaster = createBus(0.42);
   return musicMaster;
 }
 
 function playNoteAt(midi: number, wave: OscillatorType, time: number, dur: number, gain: number): void {
-  const c = ensure();
+  if (isGlobalMuted()) return; // scheduler keeps running; music resumes on unmute
+  const c = getAudioContext();
   const bus = musicBus();
   if (!c || !bus) return;
   const osc = c.createOscillator();
@@ -237,11 +190,13 @@ function playNoteAt(midi: number, wave: OscillatorType, time: number, dur: numbe
 }
 
 function playHatAt(time: number): void {
-  const c = ensure();
+  if (isGlobalMuted()) return;
+  const c = getAudioContext();
   const bus = musicBus();
-  if (!c || !bus || !noiseBuffer) return;
+  const buf = getNoiseBuffer();
+  if (!c || !bus || !buf) return;
   const src = c.createBufferSource();
-  src.buffer = noiseBuffer;
+  src.buffer = buf;
   const filt = c.createBiquadFilter();
   filt.type = 'highpass';
   filt.frequency.value = 6500;
@@ -256,7 +211,7 @@ function playHatAt(time: number): void {
 }
 
 function scheduler(): void {
-  const c = ensure();
+  const c = getAudioContext();
   const t = currentTrack;
   if (!c || !t) return;
   const stepDur = 60 / t.bpm / 4; // sixteenth note
@@ -273,7 +228,7 @@ function scheduler(): void {
 
 export function startTrack(stage: StageId): void {
   if (musicMuted) return;
-  const c = ensure();
+  const c = getAudioContext();
   if (!c) return;
   stopTrack();
   currentTrack = TRACKS[stage];

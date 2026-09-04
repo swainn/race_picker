@@ -30,7 +30,12 @@ import {
 } from './duelFighter';
 import { useDuelSettings, duelSpeedFactor } from './duelSettingsStore';
 import * as audio from './duelAudio';
+import { createShuffleBag } from '../../../utils/shuffleBag';
 import './DuelGame.css';
+
+// Stages cycle through all 16 before any repeats (module-level so the bag
+// survives round-to-round remounts within a session).
+const drawNextStage = createShuffleBag(STAGE_IDS);
 
 export interface DuelWinnerDisplay {
   name: string;
@@ -181,7 +186,7 @@ export function DuelGame(props: Props) {
     crowdRef.current = p.entries
       .filter((e) => e.id !== a.id && e.id !== b.id)
       .map((e) => ({ color: colorOf(e), name: e.name }));
-    stageRef.current = STAGE_IDS[Math.floor(Math.random() * STAGE_IDS.length)];
+    stageRef.current = drawNextStage();
     introUntilRef.current = now + DL.INTRO_MS;
     phaseRef.current = 'intro';
     clear();

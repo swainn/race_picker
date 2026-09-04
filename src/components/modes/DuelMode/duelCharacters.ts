@@ -5,6 +5,7 @@
  *
  * Original archetypes — no trademarked names or art.
  */
+import { createShuffleBag } from '../../../utils/shuffleBag';
 
 export type Build = 'thin' | 'normal' | 'wide' | 'huge';
 export type Headgear =
@@ -117,14 +118,16 @@ export const DUEL_CHARACTERS: DuelCharacter[] = [
   },
 ];
 
+// Characters come from a shuffle bag so the whole roster appears before anyone
+// repeats across a session. Consecutive draws are never equal, so the two
+// duelists are always distinct (no mirror matches).
+const drawCharacter = createShuffleBag(DUEL_CHARACTERS);
+
 export function pickCharacter(): DuelCharacter {
-  return DUEL_CHARACTERS[Math.floor(Math.random() * DUEL_CHARACTERS.length)];
+  return drawCharacter();
 }
 
 /** Two distinct random characters for a duel (SF-style: no mirror matches). */
 export function pickTwoCharacters(): [DuelCharacter, DuelCharacter] {
-  const i = Math.floor(Math.random() * DUEL_CHARACTERS.length);
-  let j = Math.floor(Math.random() * (DUEL_CHARACTERS.length - 1));
-  if (j >= i) j++;
-  return [DUEL_CHARACTERS[i], DUEL_CHARACTERS[j]];
+  return [drawCharacter(), drawCharacter()];
 }

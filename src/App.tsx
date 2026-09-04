@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import type { Entry } from './types';
 import { FinalStandingsDialog } from './components/FinalStandingsDialog';
 import { ManagementDialog } from './components/ManagementDialog';
@@ -6,6 +6,7 @@ import { SettingsModal } from './components/shared/SettingsModal/SettingsModal';
 import { MODE_LIST, MODE_REGISTRY } from './components/modes/registry';
 import type { GameMode, ModeWinnerExtras } from './components/modes/types';
 import { loadFromStorage } from './utils/storage';
+import { useGlobalMuted, setGlobalMuted } from './utils/globalAudioStore';
 import './App.css';
 
 const STORAGE_KEY = 'gamified_picker_entries';
@@ -58,6 +59,7 @@ function App() {
   const [showManagementModal, setShowManagementModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const globalMuted = useGlobalMuted();
   const [groupNameInput, setGroupNameInput] = useState('');
   const [gameMode, setGameMode] = useState<GameMode>(() =>
     loadFromStorage<GameMode>(MODE_STORAGE_KEY, 'racing')
@@ -298,6 +300,15 @@ function App() {
                     >
                       ⚙️ Participants ({entries.length})
                     </button>
+                    <button
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={!globalMuted}
+                      className="header-menu-item"
+                      onClick={() => setGlobalMuted(!globalMuted)}
+                    >
+                      {globalMuted ? '🔇 Sound: Off' : '🔊 Sound: On'}
+                    </button>
                   </div>
                 </>
               )}
@@ -309,7 +320,9 @@ function App() {
       <div className="app-container">
         <div className="main-content">
           <div key={`${gameMode}-${resetKey}`} style={{ width: '100%' }}>
-            <ActiveMode {...modeProps} />
+            <Suspense fallback={<div className="mode-loading">Loading…</div>}>
+              <ActiveMode {...modeProps} />
+            </Suspense>
           </div>
 
           {showFinalStandings && (

@@ -1,87 +1,32 @@
 /**
- * Tiny Web Audio synth for the Space Invaders family — all sounds are generated
- * (no asset files). One shared AudioContext, created lazily and resumed on the
- * first user gesture (the Start button click satisfies the autoplay policy).
+ * Synth SFX for the Space Invaders family — all sounds are generated (no asset
+ * files) on the shared synth foundation (`utils/synth`). The mode's own sound
+ * setting is enforced here; the app-wide mute is enforced inside the synth.
  */
+import {
+  resumeAudio as resumeSharedAudio,
+  tone as synthTone,
+  noise as synthNoise,
+} from '../../../utils/synth';
 
-let ctx: AudioContext | null = null;
-let master: GainNode | null = null;
-let noiseBuffer: AudioBuffer | null = null;
 let muted = false;
 
-type WindowWithWebkit = Window & { webkitAudioContext?: typeof AudioContext };
-
-function ensure(): AudioContext | null {
-  if (typeof window === 'undefined') return null;
-  if (!ctx) {
-    const Ctor = window.AudioContext ?? (window as WindowWithWebkit).webkitAudioContext;
-    if (!Ctor) return null;
-    ctx = new Ctor();
-    master = ctx.createGain();
-    master.gain.value = 0.35;
-    master.connect(ctx.destination);
-    // Pre-bake a short white-noise buffer for explosions.
-    const len = Math.floor(ctx.sampleRate * 0.5);
-    noiseBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-  }
-  return ctx;
-}
-
 export function resumeAudio(): void {
-  const c = ensure();
-  if (c && c.state === 'suspended') void c.resume();
+  resumeSharedAudio();
 }
 
 export function setMuted(m: boolean): void {
   muted = m;
 }
 
-function tone(
-  freq: number,
-  dur: number,
-  type: OscillatorType,
-  gain: number,
-  slideTo?: number
-): void {
+function tone(freq: number, dur: number, type: OscillatorType, gain: number, slideTo?: number): void {
   if (muted) return;
-  const c = ensure();
-  if (!c || !master) return;
-  const t0 = c.currentTime;
-  const osc = c.createOscillator();
-  const g = c.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t0);
-  if (slideTo !== undefined) osc.frequency.exponentialRampToValueAtTime(Math.max(1, slideTo), t0 + dur);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.008);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  osc.connect(g);
-  g.connect(master);
-  osc.start(t0);
-  osc.stop(t0 + dur + 0.02);
+  synthTone(freq, dur, type, gain, slideTo);
 }
 
 function noise(dur: number, gain: number, lowpassFrom: number, lowpassTo: number): void {
   if (muted) return;
-  const c = ensure();
-  if (!c || !master || !noiseBuffer) return;
-  const t0 = c.currentTime;
-  const src = c.createBufferSource();
-  src.buffer = noiseBuffer;
-  const filt = c.createBiquadFilter();
-  filt.type = 'lowpass';
-  filt.frequency.setValueAtTime(lowpassFrom, t0);
-  filt.frequency.exponentialRampToValueAtTime(Math.max(60, lowpassTo), t0 + dur);
-  const g = c.createGain();
-  g.gain.setValueAtTime(gain, t0);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  src.connect(filt);
-  filt.connect(g);
-  g.connect(master);
-  src.start(t0);
-  src.stop(t0 + dur + 0.02);
+  synthNoise(dur, gain, lowpassFrom, lowpassTo);
 }
 
 export function playLaser(): void {
@@ -133,8 +78,6 @@ export function playHordeHit(): void {
 
 export function playFanfare(): void {
   if (muted) return;
-  const c = ensure();
-  if (!c) return;
   const notes = [523, 659, 784, 1047];
   notes.forEach((f, i) => setTimeout(() => tone(f, 0.22, 'square', 0.13), i * 130));
 }

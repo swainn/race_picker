@@ -1,3 +1,6 @@
+import { isGlobalMuted } from '../../../utils/globalAudioStore';
+import { getAudioContext as getSharedAudioContext } from '../../../utils/synth';
+
 export type SoundType =
   | 'classic'
   | 'beep'
@@ -21,19 +24,13 @@ export const NAMED_SOUNDS: ReadonlyArray<Exclude<SoundType, 'random' | 'cycle'>>
   'drum',
 ];
 
-let audioContext: AudioContext | null = null;
 let muted = false;
 let cycleIndex = 0;
 let warned = false;
 
 function getAudioContext(): AudioContext | null {
-  if (audioContext) return audioContext;
   try {
-    const Ctor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return null;
-    audioContext = new Ctor();
+    return getSharedAudioContext();
   } catch (e) {
     if (!warned) {
       console.warn('Web Audio API not supported:', e);
@@ -41,7 +38,6 @@ function getAudioContext(): AudioContext | null {
     }
     return null;
   }
-  return audioContext;
 }
 
 function resolveSoundType(type: SoundType): Exclude<SoundType, 'random' | 'cycle'> {
@@ -57,7 +53,7 @@ function resolveSoundType(type: SoundType): Exclude<SoundType, 'random' | 'cycle
 }
 
 export function playTick(type: SoundType): void {
-  if (muted) return;
+  if (muted || isGlobalMuted()) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 

@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import { lazy, type ComponentType } from 'react';
 import type { GameMode, ModeViewProps } from './types';
 import type { WinnerTheme } from './themes';
 import {
@@ -14,25 +14,30 @@ import {
   wallClimberTheme,
   wheelTheme,
 } from './themes';
-import { RacingMode } from './RacingMode/RacingMode';
 import { RacingSettings } from './RacingMode/RacingSettings';
-import { BattleBotsMode } from './BattleBotsMode/BattleBotsMode';
-import { LightCyclesMode } from './LightCyclesMode/LightCyclesMode';
-import { PlinkoMode } from './PlinkoMode/PlinkoMode';
-import { WallClimberMode } from './WallClimberMode/WallClimberMode';
 import { WallClimberSettings } from './WallClimberMode/WallClimberSettings';
-import { BattleshipMode } from './BattleshipMode/BattleshipMode';
 import { BattleshipSettings } from './BattleshipMode/BattleshipSettings';
-import { WheelMode } from './WheelMode/WheelMode';
 import { WheelSettings } from './WheelMode/WheelSettings';
-import { KungFuMode } from './KungFuMode/KungFuMode';
 import { KungFuSettings } from './KungFuMode/KungFuSettings';
-import { InvadersMode } from './SpaceInvadersMode/InvadersMode';
 import { InvadersSettings } from './SpaceInvadersMode/InvadersSettings';
-import { DefendersMode } from './SpaceInvadersMode/DefendersMode';
 import { DefendersSettings } from './SpaceInvadersMode/DefendersSettings';
-import { DuelMode } from './DuelMode/DuelMode';
 import { DuelSettings } from './DuelMode/DuelSettings';
+
+// Mode views are code-split: each mode's chunk (engine, drawing, audio, CSS)
+// loads on first use instead of in the initial bundle. Settings panels stay
+// static — they're tiny and must render inside the shared SettingsModal
+// without a suspense boundary.
+const RacingMode = lazy(() => import('./RacingMode/RacingMode').then((m) => ({ default: m.RacingMode })));
+const BattleBotsMode = lazy(() => import('./BattleBotsMode/BattleBotsMode').then((m) => ({ default: m.BattleBotsMode })));
+const LightCyclesMode = lazy(() => import('./LightCyclesMode/LightCyclesMode').then((m) => ({ default: m.LightCyclesMode })));
+const PlinkoMode = lazy(() => import('./PlinkoMode/PlinkoMode').then((m) => ({ default: m.PlinkoMode })));
+const WallClimberMode = lazy(() => import('./WallClimberMode/WallClimberMode').then((m) => ({ default: m.WallClimberMode })));
+const BattleshipMode = lazy(() => import('./BattleshipMode/BattleshipMode').then((m) => ({ default: m.BattleshipMode })));
+const WheelMode = lazy(() => import('./WheelMode/WheelMode').then((m) => ({ default: m.WheelMode })));
+const KungFuMode = lazy(() => import('./KungFuMode/KungFuMode').then((m) => ({ default: m.KungFuMode })));
+const InvadersMode = lazy(() => import('./SpaceInvadersMode/InvadersMode').then((m) => ({ default: m.InvadersMode })));
+const DefendersMode = lazy(() => import('./SpaceInvadersMode/DefendersMode').then((m) => ({ default: m.DefendersMode })));
+const DuelMode = lazy(() => import('./DuelMode/DuelMode').then((m) => ({ default: m.DuelMode })));
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
