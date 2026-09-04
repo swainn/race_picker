@@ -4,14 +4,21 @@ import { useSyncExternalStore } from 'react';
 const STORAGE_KEY = 'gamified_picker_duel_settings';
 
 export type DuelSpeed = 'slow' | 'normal' | 'fast';
+export type DuelGraphics = 'vector' | 'pixel';
 
 export interface DuelSettings {
   speed: DuelSpeed;
   sound: boolean;
   music: boolean;
+  graphics: DuelGraphics;
 }
 
-const DEFAULT_SETTINGS: DuelSettings = { speed: 'normal', sound: true, music: true };
+const DEFAULT_SETTINGS: DuelSettings = {
+  speed: 'normal',
+  sound: true,
+  music: true,
+  graphics: 'vector',
+};
 
 function loadSettings(): DuelSettings {
   try {
@@ -20,7 +27,8 @@ function loadSettings(): DuelSettings {
     const parsed = JSON.parse(raw) as Partial<DuelSettings>;
     const speed: DuelSpeed =
       parsed.speed === 'slow' || parsed.speed === 'fast' ? parsed.speed : 'normal';
-    return { speed, sound: parsed.sound ?? true, music: parsed.music ?? true };
+    const graphics: DuelGraphics = parsed.graphics === 'pixel' ? 'pixel' : 'vector';
+    return { speed, sound: parsed.sound ?? true, music: parsed.music ?? true, graphics };
   } catch {
     return DEFAULT_SETTINGS;
   }

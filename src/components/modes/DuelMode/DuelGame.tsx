@@ -29,6 +29,7 @@ import {
   drawVsSplash,
 } from './duelFighter';
 import { useDuelSettings, duelSpeedFactor } from './duelSettingsStore';
+import { drawPixelFighter, LOWRES_FACTOR } from './duelPixelArt';
 import * as audio from './duelAudio';
 import { createShuffleBag } from '../../../utils/shuffleBag';
 import './DuelGame.css';
@@ -88,6 +89,10 @@ export function DuelGame(props: Props) {
   }, [settings.music]);
   const speedRef = useRef(settings.speed);
   speedRef.current = settings.speed;
+  const graphicsRef = useRef(settings.graphics);
+  graphicsRef.current = settings.graphics;
+  // Low-res offscreen canvas for the pixel-art pass (created lazily).
+  const lowResRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<StageId>('city');
 
   // Instant replay: slow-mo playback of the final moments, zoomed on the loser.
@@ -558,7 +563,14 @@ export function DuelGame(props: Props) {
   };
 
   // ---- Rendering --------------------------------------------------------
+  // Fighter painter dispatch: vector art or hand-authored pixel sprites.
+  const paintFighter = (ctx: CanvasRenderingContext2D, f: DuelFighter, now: number) => {
+    if (graphicsRef.current === 'pixel') drawPixelFighter(ctx, f, now);
+    else drawFighter(ctx, f, imgOf(f.entry), now);
+  };
+
   const drawScene = (ctx: CanvasRenderingContext2D, now: number, withBars: boolean) => {
+    const pixelFonts = graphicsRef.current === 'pixel';
     drawStage(ctx, stageRef.current, now);
     for (const pr of projRef.current) drawDuelProjectile(ctx, pr);
     const f1 = f1Ref.current;
@@ -566,9 +578,9 @@ export function DuelGame(props: Props) {
     if (f1 && f2) {
       // Draw the far fighter first for simple depth.
       const order = f1.x <= f2.x ? [f1, f2] : [f2, f1];
-      for (const f of order) drawFighter(ctx, f, imgOf(f.entry), now);
+      for (const f of order) paintFighter(ctx, f, now);
     }
-    for (const fx of fxRef.current) drawDuelFx(ctx, fx);
+    for (const fx of fxRef.current) drawDuelFx(ctx, fx, pixelFonts);
     // Super activation flash.
     if (now < superFlashUntilRef.current) {
       const a = (superFlashUntilRef.current - now) / 260;
@@ -578,10 +590,10 @@ export function DuelGame(props: Props) {
       ctx.fillRect(0, 0, DL.CANVAS_W, DL.GROUND_Y);
       ctx.restore();
     }
-    drawCrowd(ctx, crowdRef.current, now);
+    drawCrowd(ctx, crowdRef.current, now, pixelFonts);
     if (withBars && f1 && f2) {
       const timer = Math.max(0, DL.ROUND_TIME_S - (now - fightStartRef.current) / 1000);
-      drawHealthBars(ctx, f1, f2, imgOf(f1.entry), imgOf(f2.entry), timer);
+      drawHealthBars(ctx, f1, f2, imgOf(f1.entry), imgOf(f2.entry), timer, pixelFonts);
     }
   };
 
@@ -615,8 +627,8 @@ export function DuelGame(props: Props) {
     drawStage(ctx, stageRef.current, wallNow);
     for (const pr of frame.projectiles) drawDuelProjectile(ctx, pr);
     const order = frame.f1.x <= frame.f2.x ? [frame.f1, frame.f2] : [frame.f2, frame.f1];
-    for (const f of order) drawFighter(ctx, f, imgOf(f.entry), wallNow);
-    for (const e of frame.fx) drawDuelFx(ctx, e);
+    for (const f of order) paintFighter(ctx, f, wallNow);
+    for (const e of frame.fx) drawDuelFx(ctx, e, graphicsRef.current === 'pixel');
     ctx.restore();
     // Banner (unzoomed).
     ctx.save();
@@ -640,8 +652,26 @@ export function DuelGame(props: Props) {
       lastFrameRef.current = now;
       const dt = rawDt * duelSpeedFactor(speedRef.current);
       const p = propsRef.current;
-      const ctx = canvasRef.current?.getContext('2d');
-      if (!ctx) { raf = requestAnimationFrame(loop); return; }
+      const visCtx = canvasRef.current?.getContext('2d');
+      if (!visCtx) { raf = requestAnimationFrame(loop); return; }
+
+      // Lo-fi mode: paint the whole frame onto a low-res canvas (existing
+      // painters draw at 1/LOWRES_FACTOR scale), then blit up smoothing-off.
+      let ctx = visCtx;
+      if (graphicsRef.current === 'pixel') {
+        if (!lowResRef.current) {
+          const c = document.createElement('canvas');
+          c.width = DL.CANVAS_W / LOWRES_FACTOR;
+          c.height = DL.CANVAS_H / LOWRES_FACTOR;
+          lowResRef.current = c;
+        }
+        const octx = lowResRef.current.getContext('2d');
+        if (octx) {
+          ctx = octx;
+          ctx.save();
+          ctx.scale(1 / LOWRES_FACTOR, 1 / LOWRES_FACTOR);
+        }
+      }
 
       const canStart =
         (phaseRef.current === 'ready' || phaseRef.current === 'finished') &&
@@ -652,13 +682,20 @@ export function DuelGame(props: Props) {
         case 'ready': {
           drawStage(ctx, stageRef.current, now);
           crowdRef.current = p.entries.map((e) => ({ color: colorOf(e), name: e.name }));
-          drawCrowd(ctx, crowdRef.current, now);
+          drawCrowd(ctx, crowdRef.current, now, graphicsRef.current === 'pixel');
           drawAnnounce(ctx, 'READY?', '#ffd23a', 0.8);
           break;
         }
         case 'intro': {
           drawScene(ctx, now, false);
-          drawVsSplash(ctx, f1Ref.current!, f2Ref.current!, imgOf(f1Ref.current!.entry), imgOf(f2Ref.current!.entry));
+          drawVsSplash(
+            ctx,
+            f1Ref.current!,
+            f2Ref.current!,
+            imgOf(f1Ref.current!.entry),
+            imgOf(f2Ref.current!.entry),
+            graphicsRef.current === 'pixel'
+          );
           if (now >= introUntilRef.current) {
             phaseRef.current = 'announce';
             announceUntilRef.current = now + DL.ANNOUNCE_MS;
@@ -714,6 +751,12 @@ export function DuelGame(props: Props) {
           break;
         }
       }
+
+      if (ctx !== visCtx && lowResRef.current) {
+        ctx.restore();
+        visCtx.imageSmoothingEnabled = false;
+        visCtx.drawImage(lowResRef.current, 0, 0, DL.CANVAS_W, DL.CANVAS_H);
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -736,7 +779,12 @@ export function DuelGame(props: Props) {
   return (
     <div className="duel-game">
       <div className="duel-canvas-host">
-        <canvas ref={canvasRef} width={DL.CANVAS_W} height={DL.CANVAS_H} className="game-canvas" />
+        <canvas
+          ref={canvasRef}
+          width={DL.CANVAS_W}
+          height={DL.CANVAS_H}
+          className={`game-canvas${settings.graphics === 'pixel' ? ' pixel-art' : ''}`}
+        />
       </div>
 
       <WinnerDialog

@@ -1,10 +1,15 @@
-import type { DuelSpeed } from './duelSettingsStore';
+import type { DuelGraphics, DuelSpeed } from './duelSettingsStore';
 import { useDuelSettings, updateDuelSettings } from './duelSettingsStore';
 
 const SPEEDS: { value: DuelSpeed; label: string }[] = [
   { value: 'slow', label: 'Slow' },
   { value: 'normal', label: 'Normal' },
   { value: 'fast', label: 'Fast' },
+];
+
+const GRAPHICS: { value: DuelGraphics; label: string }[] = [
+  { value: 'vector', label: 'Vector' },
+  { value: 'pixel', label: 'Lo-fi' },
 ];
 
 export function DuelSettings() {
@@ -22,6 +27,20 @@ export function DuelSettings() {
               onChange={() => updateDuelSettings({ speed: s.value })}
             />
             <span>{s.label}</span>
+          </label>
+        ))}
+      </fieldset>
+      <fieldset>
+        <legend>Graphics</legend>
+        {GRAPHICS.map((g) => (
+          <label key={g.value}>
+            <input
+              type="radio"
+              name="duel-graphics"
+              checked={settings.graphics === g.value}
+              onChange={() => updateDuelSettings({ graphics: g.value })}
+            />
+            <span>{g.label}</span>
           </label>
         ))}
       </fieldset>

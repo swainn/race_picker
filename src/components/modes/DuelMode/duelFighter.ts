@@ -710,7 +710,8 @@ export function drawStage(ctx: CanvasRenderingContext2D, stage: StageId, now = 0
 export function drawCrowd(
   ctx: CanvasRenderingContext2D,
   crowd: { color: string; name: string }[],
-  now: number
+  now: number,
+  pixelFonts = false
 ): void {
   if (crowd.length === 0) return;
   const bandY = DL.CANVAS_H - 74;
@@ -732,11 +733,14 @@ export function drawCrowd(
     ctx.beginPath();
     ctx.arc(x, y - 5, 6, 0, Math.PI * 2);
     ctx.fill();
-    // Name.
-    ctx.font = 'bold 8px system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    const label = c.name.length > 7 ? c.name.slice(0, 6) + '…' : c.name;
-    ctx.fillText(label, x, y + 36);
+    // Name — 8px text can't survive the pixel mode's 1/3 downscale, so the
+    // crowd goes label-free there (colors still identify spectators).
+    if (!pixelFonts) {
+      ctx.font = 'bold 8px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      const label = c.name.length > 7 ? c.name.slice(0, 6) + '…' : c.name;
+      ctx.fillText(label, x, y + 36);
+    }
   }
   ctx.restore();
 }
@@ -1302,12 +1306,14 @@ export function drawDuelProjectile(ctx: CanvasRenderingContext2D, p: DuelProject
   ctx.fill();
 }
 
-export function drawDuelFx(ctx: CanvasRenderingContext2D, fx: DuelFx): void {
+export function drawDuelFx(ctx: CanvasRenderingContext2D, fx: DuelFx, pixelFonts = false): void {
   const alpha = Math.max(0, fx.life / fx.maxLife);
   ctx.save();
   ctx.globalAlpha = alpha;
   if (fx.text) {
-    ctx.font = 'bold 20px "Comic Sans MS", system-ui, sans-serif';
+    ctx.font = pixelFonts
+      ? 'bold 24px system-ui, sans-serif'
+      : 'bold 20px "Comic Sans MS", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 3;
@@ -1342,7 +1348,8 @@ export function drawHealthBars(
   f2: DuelFighter,
   img1: HTMLImageElement | null,
   img2: HTMLImageElement | null,
-  timerSec: number
+  timerSec: number,
+  pixelFonts = false
 ): void {
   const pad = 8;
   const pSize = 34;
@@ -1399,7 +1406,7 @@ export function drawHealthBars(
       ctx.lineWidth = 1;
       roundRect(ctx, x - 1, superY - 1, superW + 2, superH + 2, 3);
       ctx.stroke();
-      ctx.font = 'bold 8px system-ui, sans-serif';
+      ctx.font = pixelFonts ? 'bold 15px system-ui, sans-serif' : 'bold 8px system-ui, sans-serif';
       ctx.fillStyle = '#ffe66d';
       ctx.textBaseline = 'middle';
       ctx.textAlign = anchorRight ? 'right' : 'left';
@@ -1411,18 +1418,19 @@ export function drawHealthBars(
   drawSuper(barR - superW, true, f2.meter);
 
   ctx.save();
-  ctx.font = 'bold 11px system-ui, sans-serif';
+  // Pixel mode: floor the name font so it survives the 1/3 downscale.
+  ctx.font = pixelFonts ? 'bold 18px system-ui, sans-serif' : 'bold 11px system-ui, sans-serif';
   ctx.fillStyle = '#fff';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
   ctx.fillText(
     `${f1.entry.name.toUpperCase()} · ${f1.character.name.toUpperCase()}`,
-    barL, superY + superH + 8
+    barL, superY + superH + (pixelFonts ? 12 : 8)
   );
   ctx.textAlign = 'right';
   ctx.fillText(
     `${f2.entry.name.toUpperCase()} · ${f2.character.name.toUpperCase()}`,
-    barR, superY + superH + 8
+    barR, superY + superH + (pixelFonts ? 12 : 8)
   );
 
   // Round timer.
@@ -1458,7 +1466,8 @@ export function drawVsSplash(
   f1: DuelFighter,
   f2: DuelFighter,
   img1: HTMLImageElement | null,
-  img2: HTMLImageElement | null
+  img2: HTMLImageElement | null,
+  pixelFonts = false
 ): void {
   void img1;
   void img2;
@@ -1481,14 +1490,15 @@ export function drawVsSplash(
 
   const x1 = DL.CANVAS_W * 0.5 - s / 2 - 30;
   const x2 = DL.CANVAS_W * 0.5 + s / 2 + 30;
-  ctx.font = 'bold 16px system-ui, sans-serif';
+  // Pixel mode: floor the fonts so they survive the 1/3 downscale.
+  ctx.font = pixelFonts ? 'bold 21px system-ui, sans-serif' : 'bold 16px system-ui, sans-serif';
   ctx.fillStyle = f1.color;
   ctx.fillText(f1.entry.name, x1, cy + s / 2 + 18);
   ctx.fillStyle = f2.color;
   ctx.fillText(f2.entry.name, x2, cy + s / 2 + 18);
-  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.font = pixelFonts ? 'bold 18px system-ui, sans-serif' : 'bold 12px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.fillText(`as ${f1.character.name.toUpperCase()}`, x1, cy + s / 2 + 35);
-  ctx.fillText(`as ${f2.character.name.toUpperCase()}`, x2, cy + s / 2 + 35);
+  ctx.fillText(`as ${f1.character.name.toUpperCase()}`, x1, cy + s / 2 + (pixelFonts ? 39 : 35));
+  ctx.fillText(`as ${f2.character.name.toUpperCase()}`, x2, cy + s / 2 + (pixelFonts ? 39 : 35));
   ctx.restore();
 }

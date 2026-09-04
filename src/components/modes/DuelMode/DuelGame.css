@@ -51,3 +51,9 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* Pixel-art graphics mode: nearest-neighbor CSS upscale of the blitted frame. */
+.duel-canvas-host .game-canvas.pixel-art {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
