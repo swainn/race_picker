@@ -618,8 +618,12 @@ export function DuelGame(props: Props) {
     const zoom = 1 + 0.9 * Math.min(1, (wallNow - replayStartedAtRef.current) / 1100);
     const loser = loserRef.current;
     const target = loser && frame.f1.side === loser.side ? frame.f1 : frame.f2;
-    const fx = target.x;
-    const fy = DL.GROUND_Y - 40;
+    // Clamp the camera so the zoomed window never leaves the 480×600 world —
+    // otherwise a loser near an edge exposes stale pixels beside the stage.
+    const halfW = DL.CANVAS_W / 2 / zoom;
+    const halfH = DL.CANVAS_H / 2 / zoom;
+    const fx = clamp(target.x, halfW, DL.CANVAS_W - halfW);
+    const fy = clamp(DL.GROUND_Y - 40, halfH, DL.CANVAS_H - halfH);
     ctx.save();
     ctx.translate(DL.CANVAS_W / 2, DL.CANVAS_H / 2);
     ctx.scale(zoom, zoom);
