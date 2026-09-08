@@ -1406,11 +1406,13 @@ export function drawHealthBars(
       ctx.lineWidth = 1;
       roundRect(ctx, x - 1, superY - 1, superW + 2, superH + 2, 3);
       ctx.stroke();
+      // Label sits just past the bar's inner end (toward center screen), on
+      // the bar's line — the row below belongs to the name labels.
       ctx.font = pixelFonts ? 'bold 15px system-ui, sans-serif' : 'bold 8px system-ui, sans-serif';
       ctx.fillStyle = '#ffe66d';
       ctx.textBaseline = 'middle';
       ctx.textAlign = anchorRight ? 'right' : 'left';
-      ctx.fillText('SUPER', anchorRight ? x + superW : x, superY + superH + 7);
+      ctx.fillText('SUPER', anchorRight ? x - 4 : x + superW + 4, superY + superH / 2 + 1);
       ctx.restore();
     }
   };
