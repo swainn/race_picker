@@ -1418,19 +1418,22 @@ export function drawHealthBars(
   drawSuper(barR - superW, true, f2.meter);
 
   ctx.save();
-  // Pixel mode: floor the name font so it survives the 1/3 downscale.
-  ctx.font = pixelFonts ? 'bold 18px system-ui, sans-serif' : 'bold 11px system-ui, sans-serif';
+  // Lo-fi mode: floor the name font so it survives the downscale — modestly,
+  // so long names on both sides don't meet in the middle. maxWidth condenses
+  // extreme names into their own half rather than letting them overlap.
+  ctx.font = pixelFonts ? 'bold 13px system-ui, sans-serif' : 'bold 11px system-ui, sans-serif';
+  const nameMaxW = DL.CANVAS_W / 2 - barL - 8;
   ctx.fillStyle = '#fff';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
   ctx.fillText(
     `${f1.entry.name.toUpperCase()} · ${f1.character.name.toUpperCase()}`,
-    barL, superY + superH + (pixelFonts ? 12 : 8)
+    barL, superY + superH + (pixelFonts ? 10 : 8), nameMaxW
   );
   ctx.textAlign = 'right';
   ctx.fillText(
     `${f2.entry.name.toUpperCase()} · ${f2.character.name.toUpperCase()}`,
-    barR, superY + superH + (pixelFonts ? 12 : 8)
+    barR, superY + superH + (pixelFonts ? 10 : 8), nameMaxW
   );
 
   // Round timer.
