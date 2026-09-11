@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DUEL_CHARACTERS } from './duelCharacters';
 import { DUEL_MOVE_IDS, type DuelMoveId, type DuelState } from './duelEngine';
+import { DUEL_THEMES } from './duelThemes';
 import {
   BODY_SPRITES,
   CAPE_SPRITE,
@@ -11,6 +11,9 @@ import {
   type PoseInput,
   type SpriteGrid,
 } from './duelPixelArt';
+
+// Both rosters must satisfy the palette/pose contracts.
+const ALL_CHARACTERS = [...DUEL_THEMES.street.roster, ...DUEL_THEMES.galaxy.roster];
 
 const CHAR_SET = new Set<string>(PALETTE_CHARS);
 
@@ -70,7 +73,7 @@ describe('sprite grid integrity', () => {
 
 describe('resolvePalette', () => {
   it('maps every non-transparent char to a color for all roster characters', () => {
-    for (const c of DUEL_CHARACTERS) {
+    for (const c of ALL_CHARACTERS) {
       const palette = resolvePalette(c.visual);
       for (const ch of PALETTE_CHARS) {
         if (ch === '.') {
@@ -89,7 +92,7 @@ describe('poseFor', () => {
   const PHASES: PoseInput['movePhase'][] = [null, 'windup', 'active', 'recover'];
 
   it('always returns a defined pose for every reachable combination', () => {
-    for (const character of DUEL_CHARACTERS) {
+    for (const character of ALL_CHARACTERS) {
       for (const state of STATES) {
         for (const currentMove of MOVES) {
           for (const movePhase of PHASES) {
@@ -115,7 +118,7 @@ describe('poseFor', () => {
   });
 
   it('KO always wins over any move', () => {
-    const c = DUEL_CHARACTERS[0];
+    const c = ALL_CHARACTERS[0];
     const { pose } = poseFor(
       { state: 'ko', air: 0, currentMove: 'superCombo', movePhase: 'active', character: c },
       0
@@ -124,8 +127,8 @@ describe('poseFor', () => {
   });
 
   it('drill super rotates, other supers do not', () => {
-    const drill = DUEL_CHARACTERS.find((c) => c.superKind === 'drill')!;
-    const flurry = DUEL_CHARACTERS.find((c) => c.superKind === 'flurry')!;
+    const drill = ALL_CHARACTERS.find((c) => c.superKind === 'drill')!;
+    const flurry = ALL_CHARACTERS.find((c) => c.superKind === 'flurry')!;
     const base: Omit<PoseInput, 'character'> = {
       state: 'attack',
       air: 0,

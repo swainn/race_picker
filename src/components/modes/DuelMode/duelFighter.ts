@@ -1,4 +1,5 @@
 import { DL, type DuelFighter, type DuelFx, type DuelProjectile, type StageId } from './duelEngine';
+import type { WeaponKind } from './duelCharacters';
 
 /* Deterministic star/detail field so backdrops don't twinkle. */
 function seeded(n: number): () => number {
@@ -49,9 +50,111 @@ function floor(ctx: CanvasRenderingContext2D, top: string, bottom: string, edge:
   ctx.stroke();
 }
 
+const HILT = '#3a3a44';
+const METAL = '#8a8f9c';
+
+/**
+ * Draw a held weapon in the fighter's local space (origin = feet, +x forward).
+ * `angle` points the weapon: 0 = straight forward, negative = tilted upward.
+ * Energy blades are two strokes — a soft wide glow under a bright core — so
+ * they read at both full res and through the lo-fi downscale.
+ */
+function drawWeapon(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angle: number,
+  weapon: WeaponKind,
+  color: string
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.lineCap = 'round';
+
+  const blade = (from: number, to: number) => {
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.4;
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(from, 0);
+    ctx.lineTo(to, 0);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(from, 0);
+    ctx.lineTo(to, 0);
+    ctx.stroke();
+  };
+
+  switch (weapon) {
+    case 'saber':
+      ctx.fillStyle = HILT;
+      ctx.fillRect(-5, -2, 12, 4);
+      ctx.fillStyle = METAL;
+      ctx.fillRect(4, -2, 3, 4);
+      blade(8, 38);
+      break;
+    case 'saberDouble':
+      ctx.fillStyle = HILT;
+      ctx.fillRect(-9, -2, 18, 4);
+      blade(10, 34);
+      blade(-10, -34);
+      break;
+    case 'blaster':
+      ctx.fillStyle = HILT;
+      ctx.fillRect(-4, -2.5, 16, 5); // body + barrel
+      ctx.fillRect(-3, 1, 4, 7); // grip
+      ctx.fillStyle = METAL;
+      ctx.fillRect(9, -1.5, 4, 3);
+      ctx.fillStyle = color;
+      ctx.fillRect(13, -1, 2, 2); // muzzle
+      break;
+    case 'bowcaster':
+      ctx.fillStyle = HILT;
+      ctx.fillRect(-6, -2, 18, 4);
+      ctx.strokeStyle = METAL;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(8, 0, 10, -1.9, 1.9); // limbs
+      ctx.stroke();
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.8;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(4.5, -9.4);
+      ctx.lineTo(4.5, 9.4); // string
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      break;
+    case 'prod':
+      ctx.fillStyle = HILT;
+      ctx.fillRect(-3, -1.5, 14, 3);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.8;
+      for (let k = -1; k <= 1; k++) {
+        ctx.beginPath();
+        ctx.moveTo(11, 0);
+        ctx.lineTo(17, k * 4);
+        ctx.stroke();
+      }
+      break;
+  }
+  ctx.restore();
+}
+
 /** Draw the arena backdrop for the given stage. `now` drives ambient motion
- *  (embers, snow, rain, waves, scrolling scenery, crowd waves…). */
-export function drawStage(ctx: CanvasRenderingContext2D, stage: StageId, now = 0): void {
+ *  (embers, snow, rain, waves, scrolling scenery, crowd waves…).
+ *  `spaceOpera` re-dresses the handful of stages that read differently under
+ *  the galaxy roster (the desert's pyramids become twin suns + farm domes). */
+export function drawStage(
+  ctx: CanvasRenderingContext2D,
+  stage: StageId,
+  now = 0,
+  spaceOpera = false
+): void {
   if (stage === 'city') {
     sky(ctx, '#241a3a', '#3a2a56');
     ctx.fillStyle = 'rgba(18,12,32,0.7)';
@@ -153,15 +256,30 @@ export function drawStage(ctx: CanvasRenderingContext2D, stage: StageId, now = 0
     ctx.beginPath();
     ctx.arc(DL.CANVAS_W * 0.3, 96, 40, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(190,130,70,0.7)';
-    const pyr = [[120, 150], [230, 200], [360, 130]];
-    for (const [px, ph] of pyr) {
+    if (spaceOpera) {
+      // Twin suns over moisture-farm domes instead of pyramids.
+      ctx.fillStyle = 'rgba(255,235,190,0.85)';
       ctx.beginPath();
-      ctx.moveTo(px, DL.GROUND_Y - 30);
-      ctx.lineTo(px + ph * 0.9, DL.GROUND_Y - 30);
-      ctx.lineTo(px + ph * 0.45, DL.GROUND_Y - 30 - ph);
-      ctx.closePath();
+      ctx.arc(DL.CANVAS_W * 0.3 + 58, 122, 24, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = 'rgba(190,130,70,0.7)';
+      for (const [dx, dr] of [[110, 30], [250, 22], [370, 26]] as const) {
+        ctx.beginPath();
+        ctx.arc(dx, DL.GROUND_Y - 30, dr, Math.PI, 0);
+        ctx.fill();
+        ctx.fillRect(dx - dr, DL.GROUND_Y - 32, dr * 2, 4);
+      }
+    } else {
+      ctx.fillStyle = 'rgba(190,130,70,0.7)';
+      const pyr = [[120, 150], [230, 200], [360, 130]];
+      for (const [px, ph] of pyr) {
+        ctx.beginPath();
+        ctx.moveTo(px, DL.GROUND_Y - 30);
+        ctx.lineTo(px + ph * 0.9, DL.GROUND_Y - 30);
+        ctx.lineTo(px + ph * 0.45, DL.GROUND_Y - 30 - ph);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
     ctx.fillStyle = 'rgba(210,150,80,0.55)';
     ctx.beginPath();
@@ -909,6 +1027,9 @@ export function drawFighter(
   const shTop = -44 * bh + 2; // shoulder height (just below the torso's top edge)
   const shL = -(halfW - 1.5);
   const shR = halfW - 1.5;
+  // Held weapon (galaxy roster); `wpn` null for bare-handed fighters.
+  const wpn = v.weapon ?? null;
+  const wpnColor = v.weaponColor ?? '#ffffff';
   if (f.state === 'block') {
     // Both arms cross up in front from their corners.
     ctx.beginPath();
@@ -917,6 +1038,8 @@ export function drawFighter(
     ctx.moveTo(shL, shTop);
     ctx.lineTo(10, -24);
     ctx.stroke();
+    // Saber guard: blade raised vertically in front.
+    if (wpn) drawWeapon(ctx, 11, -28, -1.45, wpn, wpnColor);
   } else if ((move === 'punch' && active) || (move === 'superCombo' && f.character.flurryStyle !== 'kick')) {
     // Punch — or the rapid flurry during a multi-hit super.
     const flurry = move === 'superCombo' ? Math.sin(now / 45) * 6 : 0;
@@ -942,6 +1065,8 @@ export function drawFighter(
         ctx.stroke();
       }
     }
+    // Slash/shot: the weapon swings through with the lead hand.
+    if (wpn) drawWeapon(ctx, reachX + 1 + flurry, -38, -0.18 + flurry * 0.03, wpn, wpnColor);
   } else if (move === 'shoryuken') {
     ctx.beginPath();
     ctx.moveTo(shR, shTop);
@@ -953,6 +1078,8 @@ export function drawFighter(
     ctx.beginPath();
     ctx.arc(13, -62, fistR, 0, Math.PI * 2);
     ctx.fill();
+    // Rising slash: blade sweeps up with the uppercut.
+    if (wpn) drawWeapon(ctx, 13, -62, -1.25, wpn, wpnColor);
   } else if (move === 'hadoken' || move === 'superFireball') {
     const big = move === 'superFireball';
     ctx.beginPath();
@@ -971,6 +1098,11 @@ export function drawFighter(
       ctx.arc(20, -32, rr, 0, Math.PI * 2);
       ctx.fill();
     }
+    // Gunners aim forward; blades stay raised while the free hand pushes.
+    if (wpn) {
+      const gun = wpn === 'blaster' || wpn === 'bowcaster' || wpn === 'prod';
+      drawWeapon(ctx, 20, -32, gun ? 0 : -0.5, wpn, wpnColor);
+    }
   } else {
     // Relaxed guard: arms hang from the shoulder corners.
     ctx.beginPath();
@@ -987,6 +1119,11 @@ export function drawFighter(
       ctx.beginPath();
       ctx.arc(shL - 4, shTop + 12, fistR, 0, Math.PI * 2);
       ctx.fill();
+    }
+    // Ready stance: blade angled up-forward, gun held low.
+    if (wpn) {
+      const gun = wpn === 'blaster' || wpn === 'bowcaster' || wpn === 'prod';
+      drawWeapon(ctx, shR + 4, shTop + 12, gun ? 0.35 : -0.85, wpn, wpnColor);
     }
   }
   ctx.restore();
@@ -1142,6 +1279,143 @@ export function drawFighter(
       ctx.fill();
       break;
     }
+    // ---- Galaxy roster ----
+    case 'jediHair': {
+      // Simple swept hair with a side part.
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1.5, 7.3, Math.PI * 1.02, Math.PI * 2.02);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(hx + 4.5, hy - 5, 3.6, 2.4, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'vaderMask': {
+      // Domed helmet with flared cheek panels and a pale eye lens.
+      ctx.fillStyle = '#16161c';
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1.5, 8.4, Math.PI, 0);
+      ctx.fill();
+      ctx.fillRect(hx - 8.4, hy - 1.5, 16.8, 6);
+      // Flared lower jaw.
+      ctx.beginPath();
+      ctx.moveTo(hx - 8.4, hy + 4.5);
+      ctx.lineTo(hx - 6, hy + 9);
+      ctx.lineTo(hx + 6, hy + 9);
+      ctx.lineTo(hx + 8.4, hy + 4.5);
+      ctx.closePath();
+      ctx.fill();
+      // Eye lens + breather grille.
+      ctx.fillStyle = '#5a5a68';
+      ctx.fillRect(hx + 1, hy - 3, 5.5, 3);
+      ctx.fillStyle = '#2a2a34';
+      ctx.fillRect(hx + 1.5, hy + 3, 5, 3.5);
+      break;
+    }
+    case 'hood': {
+      // Deep cowl: the face falls into shadow.
+      ctx.fillStyle = v.body;
+      ctx.beginPath();
+      ctx.moveTo(hx - 9, hy + 8);
+      ctx.quadraticCurveTo(hx - 10, hy - 11, hx, hy - 10.5);
+      ctx.quadraticCurveTo(hx + 10, hy - 11, hx + 9, hy + 8);
+      ctx.lineTo(hx + 5, hy + 8);
+      ctx.quadraticCurveTo(hx + 6.5, hy - 6, hx, hy - 6.5);
+      ctx.quadraticCurveTo(hx - 6.5, hy - 6, hx - 5, hy + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 5.6, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'horns': {
+      // Crown of short horns around a bare skull.
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7.1, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = '#1a1a20';
+      for (let k = -2; k <= 2; k++) {
+        const bx = hx + k * 3.2;
+        ctx.beginPath();
+        ctx.moveTo(bx - 1.4, hy - 6.5);
+        ctx.lineTo(bx + (k * 0.6), hy - 12.5);
+        ctx.lineTo(bx + 1.4, hy - 6.5);
+        ctx.closePath();
+        ctx.fill();
+      }
+      break;
+    }
+    case 'bigEars': {
+      // Wide swept-back ears and a wisp of white hair.
+      ctx.fillStyle = v.skin;
+      ctx.beginPath();
+      ctx.moveTo(hx - 5, hy - 3.5);
+      ctx.lineTo(hx - 17, hy - 5.5);
+      ctx.lineTo(hx - 5, hy + 2.5);
+      ctx.closePath();
+      ctx.moveTo(hx + 5, hy - 3.5);
+      ctx.lineTo(hx + 17, hy - 5.5);
+      ctx.lineTo(hx + 5, hy + 2.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = v.hair;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(hx - 4, hy - 6.5);
+      ctx.lineTo(hx - 5.5, hy - 9.5);
+      ctx.moveTo(hx + 4, hy - 6.5);
+      ctx.lineTo(hx + 5.5, hy - 9.5);
+      ctx.stroke();
+      break;
+    }
+    case 'fettHelmet': {
+      // Visor slit + range-finder antenna.
+      ctx.fillStyle = v.body;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 8, Math.PI, 0);
+      ctx.fill();
+      ctx.fillRect(hx - 8, hy - 1, 16, 7.5);
+      ctx.fillStyle = '#1a2a38';
+      ctx.beginPath();
+      ctx.moveTo(hx - 1, hy - 3.5);
+      ctx.lineTo(hx + 7, hy - 2.5);
+      ctx.lineTo(hx + 7, hy + 2.5);
+      ctx.lineTo(hx - 1, hy + 1.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = v.trim;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(hx - 6, hy - 7);
+      ctx.lineTo(hx - 6, hy - 13);
+      ctx.stroke();
+      break;
+    }
+    case 'trooperHelmet': {
+      // White shell, dark brow band and twin eye lenses.
+      ctx.fillStyle = '#f2f2f6';
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 8.2, Math.PI, 0);
+      ctx.fill();
+      ctx.fillRect(hx - 8.2, hy - 1, 16.4, 8);
+      ctx.fillStyle = '#1a1a24';
+      ctx.fillRect(hx - 7.5, hy - 3.5, 15, 2.4);
+      ctx.beginPath();
+      ctx.ellipse(hx + 3.6, hy + 0.5, 2.6, 3, 0, 0, Math.PI * 2);
+      ctx.ellipse(hx - 3.6, hy + 0.5, 2.6, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Breather vents.
+      ctx.fillStyle = '#3a3a44';
+      ctx.fillRect(hx - 2, hy + 4.5, 4, 3);
+      break;
+    }
+    default:
+      // Exhaustiveness guard: a new Headgear member must be drawn here.
+      ((_: never) => _)(v.headgear);
   }
 
   ctx.restore();
@@ -1284,6 +1558,127 @@ export function drawCharacterMug(
       ctx.ellipse(hx + 8, hy - 4, 3, 5.5, 0.5, 0, Math.PI * 2);
       ctx.fill();
       break;
+    // ---- Galaxy roster ----
+    case 'jediHair':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1.5, 7.3, Math.PI * 1.02, Math.PI * 2.02);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(hx + 4.5, hy - 5, 3.6, 2.4, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'vaderMask':
+      ctx.fillStyle = '#16161c';
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1.5, 8.4, Math.PI, 0);
+      ctx.fill();
+      ctx.fillRect(hx - 8.4, hy - 1.5, 16.8, 6);
+      ctx.beginPath();
+      ctx.moveTo(hx - 8.4, hy + 4.5);
+      ctx.lineTo(hx - 6, hy + 9);
+      ctx.lineTo(hx + 6, hy + 9);
+      ctx.lineTo(hx + 8.4, hy + 4.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#5a5a68';
+      ctx.fillRect(hx - 6.5, hy - 3, 5.5, 3);
+      ctx.fillRect(hx + 1, hy - 3, 5.5, 3);
+      ctx.fillStyle = '#2a2a34';
+      ctx.fillRect(hx - 2.5, hy + 3, 5, 3.5);
+      break;
+    case 'hood':
+      ctx.fillStyle = v.body;
+      ctx.beginPath();
+      ctx.moveTo(hx - 9, hy + 8);
+      ctx.quadraticCurveTo(hx - 10, hy - 11, hx, hy - 10.5);
+      ctx.quadraticCurveTo(hx + 10, hy - 11, hx + 9, hy + 8);
+      ctx.lineTo(hx + 5, hy + 8);
+      ctx.quadraticCurveTo(hx + 6.5, hy - 6, hx, hy - 6.5);
+      ctx.quadraticCurveTo(hx - 6.5, hy - 6, hx - 5, hy + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 5.6, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'horns':
+      ctx.fillStyle = v.hair;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 2, 7.1, Math.PI, 0);
+      ctx.fill();
+      ctx.fillStyle = '#1a1a20';
+      for (let k = -2; k <= 2; k++) {
+        const bx = hx + k * 3.2;
+        ctx.beginPath();
+        ctx.moveTo(bx - 1.4, hy - 6.5);
+        ctx.lineTo(bx + k * 0.6, hy - 12.5);
+        ctx.lineTo(bx + 1.4, hy - 6.5);
+        ctx.closePath();
+        ctx.fill();
+      }
+      break;
+    case 'bigEars':
+      ctx.fillStyle = v.skin;
+      ctx.beginPath();
+      ctx.moveTo(hx - 5, hy - 3.5);
+      ctx.lineTo(hx - 17, hy - 5.5);
+      ctx.lineTo(hx - 5, hy + 2.5);
+      ctx.closePath();
+      ctx.moveTo(hx + 5, hy - 3.5);
+      ctx.lineTo(hx + 17, hy - 5.5);
+      ctx.lineTo(hx + 5, hy + 2.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = v.hair;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(hx - 4, hy - 6.5);
+      ctx.lineTo(hx - 5.5, hy - 9.5);
+      ctx.moveTo(hx + 4, hy - 6.5);
+      ctx.lineTo(hx + 5.5, hy - 9.5);
+      ctx.stroke();
+      break;
+    case 'fettHelmet':
+      ctx.fillStyle = v.body;
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 8, Math.PI, 0);
+      ctx.fill();
+      ctx.fillRect(hx - 8, hy - 1, 16, 7.5);
+      ctx.fillStyle = '#1a2a38';
+      ctx.beginPath();
+      ctx.moveTo(hx - 4, hy - 3.5);
+      ctx.lineTo(hx + 4, hy - 3.5);
+      ctx.lineTo(hx + 4, hy + 2);
+      ctx.lineTo(hx - 4, hy + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = v.trim;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(hx - 6, hy - 7);
+      ctx.lineTo(hx - 6, hy - 13);
+      ctx.stroke();
+      break;
+    case 'trooperHelmet':
+      ctx.fillStyle = '#f2f2f6';
+      ctx.beginPath();
+      ctx.arc(hx, hy - 1, 8.2, Math.PI, 0);
+      ctx.fill();
+      ctx.fillRect(hx - 8.2, hy - 1, 16.4, 8);
+      ctx.fillStyle = '#1a1a24';
+      ctx.fillRect(hx - 7.5, hy - 3.5, 15, 2.4);
+      ctx.beginPath();
+      ctx.ellipse(hx + 3.6, hy + 0.5, 2.6, 3, 0, 0, Math.PI * 2);
+      ctx.ellipse(hx - 3.6, hy + 0.5, 2.6, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3a3a44';
+      ctx.fillRect(hx - 2, hy + 4.5, 4, 3);
+      break;
+    default:
+      // Exhaustiveness guard: a new Headgear member must be drawn here too.
+      ((_: never) => _)(v.headgear);
   }
   ctx.restore();
   // Frame.
@@ -1296,6 +1691,47 @@ export function drawCharacterMug(
 
 export function drawDuelProjectile(ctx: CanvasRenderingContext2D, p: DuelProjectile): void {
   const r = p.radius;
+  const dir = Math.sign(p.vx) || 1;
+
+  if (p.shape === 'bolt') {
+    // Blaster bolt: a stretched glowing capsule trailing behind its travel.
+    const len = r * 2.6;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = r * 1.1;
+    ctx.beginPath();
+    ctx.moveTo(p.x - dir * len, p.y);
+    ctx.lineTo(p.x + dir * r * 0.5, p.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(2, r * 0.42);
+    ctx.beginPath();
+    ctx.moveTo(p.x - dir * len * 0.8, p.y);
+    ctx.lineTo(p.x + dir * r * 0.4, p.y);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (p.shape === 'wave') {
+    // Force push: a translucent expanding arc pushing outward.
+    ctx.save();
+    ctx.strokeStyle = p.color;
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 3; k++) {
+      ctx.globalAlpha = 0.55 - k * 0.15;
+      ctx.lineWidth = 4 - k;
+      ctx.beginPath();
+      ctx.arc(p.x - dir * k * 7, p.y, r * (0.9 - k * 0.12), -0.9 * dir + (dir < 0 ? Math.PI : 0), 0.9 * dir + (dir < 0 ? Math.PI : 0), dir < 0);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
   const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
   grad.addColorStop(0, '#ffffff');
   grad.addColorStop(0.5, p.big ? '#ffcf5d' : p.color);

@@ -1,26 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { DUEL_CHARACTERS, pickTwoCharacters } from './duelCharacters';
+import { DUEL_THEMES, DUEL_THEME_IDS, pickTwoFrom } from './duelThemes';
 
-describe('DUEL_CHARACTERS roster', () => {
+// Every roster theme must satisfy the same invariants, so the suite runs once
+// per theme rather than hardcoding the default cast.
+describe.each(DUEL_THEME_IDS)('%s roster', (themeId) => {
+  const theme = DUEL_THEMES[themeId];
+
   it('has unique ids and names', () => {
-    const ids = DUEL_CHARACTERS.map((c) => c.id);
-    const names = DUEL_CHARACTERS.map((c) => c.name);
+    const ids = theme.roster.map((c) => c.id);
+    const names = theme.roster.map((c) => c.name);
     expect(new Set(ids).size).toBe(ids.length);
     expect(new Set(names).size).toBe(names.length);
   });
 
+  it('has at least two characters (required for mirror-free duels)', () => {
+    expect(theme.roster.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('every character has a super callout and color', () => {
-    for (const c of DUEL_CHARACTERS) {
+    for (const c of theme.roster) {
       expect(c.superCallout.length).toBeGreaterThan(0);
       expect(c.superColor).toMatch(/^#/);
     }
   });
-});
 
-describe('pickTwoCharacters', () => {
+  it('every armed character also declares a weapon color', () => {
+    for (const c of theme.roster) {
+      if (c.visual.weapon) expect(c.visual.weaponColor, `${c.id}`).toMatch(/^#/);
+    }
+  });
+
   it('never produces a mirror match', () => {
     for (let t = 0; t < 2000; t++) {
-      const [a, b] = pickTwoCharacters();
+      const [a, b] = pickTwoFrom(theme);
       expect(a.id).not.toBe(b.id);
     }
   });
@@ -30,12 +42,11 @@ describe('pickTwoCharacters', () => {
     // draw two full cycles' worth — that must contain at least one complete
     // cycle and therefore the entire roster.
     const seen = new Set<string>();
-    const calls = DUEL_CHARACTERS.length; // 2 draws per call = 2 cycles
-    for (let d = 0; d < calls; d++) {
-      const [a, b] = pickTwoCharacters();
+    for (let d = 0; d < theme.roster.length; d++) {
+      const [a, b] = pickTwoFrom(theme); // 2 draws per call = 2 cycles
       seen.add(a.id);
       seen.add(b.id);
     }
-    expect(seen.size).toBe(DUEL_CHARACTERS.length);
+    expect(seen.size).toBe(theme.roster.length);
   });
 });

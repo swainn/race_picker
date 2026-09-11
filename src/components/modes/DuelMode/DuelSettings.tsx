@@ -1,5 +1,6 @@
 import type { DuelGraphics, DuelSpeed } from './duelSettingsStore';
 import { useDuelSettings, updateDuelSettings } from './duelSettingsStore';
+import { DUEL_THEMES, DUEL_THEME_IDS } from './duelThemes';
 
 const SPEEDS: { value: DuelSpeed; label: string }[] = [
   { value: 'slow', label: 'Slow' },
@@ -27,6 +28,20 @@ export function DuelSettings() {
               onChange={() => updateDuelSettings({ speed: s.value })}
             />
             <span>{s.label}</span>
+          </label>
+        ))}
+      </fieldset>
+      <fieldset>
+        <legend>Roster</legend>
+        {DUEL_THEME_IDS.map((id) => (
+          <label key={id}>
+            <input
+              type="radio"
+              name="duel-theme"
+              checked={settings.theme === id}
+              onChange={() => updateDuelSettings({ theme: id })}
+            />
+            <span>{DUEL_THEMES[id].label}</span>
           </label>
         ))}
       </fieldset>

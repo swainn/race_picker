@@ -57,7 +57,7 @@ export function bodyKindFor(build: CharacterVisual['build']): BodyKind {
   return build === 'wide' || build === 'huge' ? 'heavy' : 'standard';
 }
 
-export const PALETTE_CHARS = ['.', 'S', 'B', 'T', 'H', 'W', 'K', 'L', 'G', 'Y'] as const;
+export const PALETTE_CHARS = ['.', 'S', 'B', 'T', 'H', 'W', 'K', 'L', 'G', 'Y', 'E', 'M'] as const;
 
 /** Resolve the palette chars to concrete colors for one character. */
 export function resolvePalette(v: CharacterVisual): Record<string, string | null> {
@@ -72,6 +72,8 @@ export function resolvePalette(v: CharacterVisual): Record<string, string | null
     L: v.build === 'wide' ? v.skin : '#3a2f4a',
     G: v.gloves ? '#c9302c' : v.skin,
     Y: v.build === 'wide' ? v.skin : v.body,
+    E: v.weaponColor ?? '#f2f2f6', // weapon energy (blade / bolt)
+    M: '#8a8f9c', // weapon metal (hilt / barrel)
   };
 }
 
@@ -118,6 +120,7 @@ const STANDARD: Record<PoseId, SpriteGrid> = {
     rows: [...STD_HEAD, ...STD_TORSO, ...STD_LEGS_IDLE],
     anchorX: 6,
     head: [0, 6],
+    hand: [11, 10],
   },
   walkA: {
     rows: [
@@ -174,6 +177,7 @@ const STANDARD: Record<PoseId, SpriteGrid> = {
     ],
     anchorX: 6,
     head: [0, 6],
+    hand: [6, 10],
   },
   hurt: {
     rows: [
@@ -257,6 +261,7 @@ const STANDARD: Record<PoseId, SpriteGrid> = {
     ],
     anchorX: 6,
     head: [0, 6],
+    hand: [11, 10],
   },
   kickAlt: {
     rows: [
@@ -279,6 +284,7 @@ const STANDARD: Record<PoseId, SpriteGrid> = {
     ],
     anchorX: 6,
     head: [0, 6],
+    hand: [9, 10],
   },
   shoryuken: {
     rows: [
@@ -301,6 +307,7 @@ const STANDARD: Record<PoseId, SpriteGrid> = {
     ],
     anchorX: 6,
     head: [2, 6],
+    hand: [0, 9],
   },
   hadoken: {
     rows: [
@@ -356,6 +363,7 @@ const HEAVY: Record<PoseId, SpriteGrid> = {
     rows: [...HVY_HEAD, ...HVY_TORSO, ...HVY_LEGS_IDLE],
     anchorX: 8,
     head: [0, 7],
+    hand: [10, 14],
   },
   walkA: {
     rows: [
@@ -412,6 +420,7 @@ const HEAVY: Record<PoseId, SpriteGrid> = {
     ],
     anchorX: 8,
     head: [0, 7],
+    hand: [5, 12],
   },
   hurt: {
     rows: [
@@ -495,6 +504,7 @@ const HEAVY: Record<PoseId, SpriteGrid> = {
     ],
     anchorX: 8,
     head: [0, 7],
+    hand: [10, 14],
   },
   kickAlt: {
     rows: [
@@ -517,6 +527,7 @@ const HEAVY: Record<PoseId, SpriteGrid> = {
     ],
     anchorX: 8,
     head: [0, 7],
+    hand: [8, 14],
   },
   shoryuken: {
     rows: [
@@ -532,6 +543,7 @@ const HEAVY: Record<PoseId, SpriteGrid> = {
     ],
     anchorX: 8,
     head: [2, 7],
+    hand: [0, 12],
   },
   hadoken: {
     rows: [
@@ -667,6 +679,87 @@ export const HEADGEAR_SPRITES: Record<Headgear, SpriteGrid> = {
     anchorX: 5,
     head: [1, 5],
   },
+  // ---- Galaxy roster ----
+  jediHair: {
+    rows: [
+      '.HHHHH.',
+      'HHHHHHH',
+      'HH...HH',
+    ],
+    anchorX: 3,
+    head: [1, 3],
+  },
+  vaderMask: {
+    rows: [
+      '..KKKKK..',
+      '.KKKKKKK.',
+      'KKKKKKKKK',
+      'KKKMMMKKK',
+      'KKKKKKKKK',
+      '.KKKKKKK.',
+      '..KK.KK..',
+    ],
+    anchorX: 4,
+    head: [2, 4],
+  },
+  hood: {
+    rows: [
+      '..BBBBB..',
+      '.BBBBBBB.',
+      'BBBKKKBBB',
+      'BBKKKKKBB',
+      'BBKKKKKBB',
+      'BB.KKK.BB',
+      'BB.....BB',
+    ],
+    anchorX: 4,
+    head: [2, 4],
+  },
+  horns: {
+    rows: [
+      'K.K.K.K.K',
+      'K.K.K.K.K',
+      '.KKHHHKK.',
+      '.HHHHHHH.',
+    ],
+    anchorX: 4,
+    head: [3, 4],
+  },
+  bigEars: {
+    rows: [
+      '..H...H..',
+      'S.HHHHH.S',
+      'SSHHHHHSS',
+      'SS.....SS',
+    ],
+    anchorX: 4,
+    head: [2, 4],
+  },
+  fettHelmet: {
+    rows: [
+      'T........',
+      'T.BBBBB..',
+      'TBBBBBBB.',
+      '.BBKKKKB.',
+      '.BBKKKKB.',
+      '.BBBBBBB.',
+    ],
+    anchorX: 4,
+    head: [2, 4],
+  },
+  trooperHelmet: {
+    rows: [
+      '..WWWWW..',
+      '.WWWWWWW.',
+      'WWWWWWWWW',
+      'WKKKKKKKW',
+      'WKWWWWWKW',
+      'WWWKKKWWW',
+      '.WWWWWWW.',
+    ],
+    anchorX: 4,
+    head: [2, 4],
+  },
 };
 
 /** Cape (General) — drawn behind the body, hanging down the back (left). */
@@ -783,6 +876,84 @@ function drawOverlay(
   }
 }
 
+/** Which way a held weapon points in each pose: [dx, dy] in cells. */
+const WEAPON_DIR: Record<PoseId, [number, number]> = {
+  idle: [1, -1],
+  walkA: [1, -1],
+  walkB: [1, -1],
+  jump: [1, -1],
+  block: [0, -1],
+  hurt: [1, 1],
+  ko: [1, 0],
+  punch: [1, 0],
+  punchAlt: [1, 0],
+  kick: [1, 0],
+  kickAlt: [1, 0],
+  shoryuken: [0, -1],
+  hadoken: [1, 0],
+};
+
+/**
+ * Draw the held weapon as sprite cells from the body grid's `hand` anchor.
+ * Blades and barrels are straight lines of cells, so they're generated rather
+ * than authored — the same trick the `claw` trait already uses.
+ */
+function drawPixelWeapon(
+  ctx: CanvasRenderingContext2D,
+  grid: SpriteGrid,
+  pose: PoseId,
+  v: CharacterVisual,
+  palette: Record<string, string | null>
+): void {
+  const weapon = v.weapon;
+  if (!weapon || !grid.hand) return;
+  const [hr, hc] = grid.hand;
+  const [dx, dy] = WEAPON_DIR[pose];
+  const h = grid.rows.length;
+  const energy = palette.E ?? '#f2f2f6';
+  const metal = palette.M ?? '#8a8f9c';
+
+  const cell = (k: number, color: string, side = 1) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(
+      (hc + dx * k * side - grid.anchorX) * CELL,
+      (hr + dy * k * side - h) * CELL,
+      CELL,
+      CELL
+    );
+  };
+
+  switch (weapon) {
+    case 'saber':
+      cell(0, metal);
+      for (let k = 1; k <= 10; k++) cell(k, energy);
+      break;
+    case 'saberDouble':
+      cell(0, metal);
+      for (let k = 1; k <= 7; k++) {
+        cell(k, energy);
+        cell(k, energy, -1);
+      }
+      break;
+    case 'blaster':
+      cell(0, metal);
+      cell(1, metal);
+      cell(2, energy);
+      break;
+    case 'bowcaster':
+      cell(0, metal);
+      cell(1, metal);
+      cell(2, metal);
+      cell(3, energy);
+      break;
+    case 'prod':
+      cell(0, metal);
+      cell(1, metal);
+      cell(2, energy);
+      break;
+  }
+}
+
 /** Pixel-art counterpart of drawFighter — same origin/facing conventions. */
 export function drawPixelFighter(
   ctx: CanvasRenderingContext2D,
@@ -860,6 +1031,9 @@ export function drawPixelFighter(
   if (grid.head) {
     drawOverlay(ctx, grid, HEADGEAR_SPRITES[v.headgear], palette);
   }
+
+  // Held weapon (galaxy roster), drawn from the grid's hand anchor.
+  if (pose !== 'ko') drawPixelWeapon(ctx, grid, pose, v, palette);
 
   // Claw slash cells on the lead hand during punches.
   if (v.claw && grid.hand && (pose === 'punch' || pose === 'punchAlt')) {

@@ -9,7 +9,6 @@ import {
   DL,
   DUEL_MOVES,
   DUEL_MOVE_IDS,
-  STAGE_IDS,
   pickDuelists,
   type DuelFighter,
   type DuelMoveId,
@@ -17,7 +16,8 @@ import {
   type DuelFx,
   type StageId,
 } from './duelEngine';
-import { pickTwoCharacters, type DuelCharacter } from './duelCharacters';
+import type { DuelCharacter } from './duelCharacters';
+import { DUEL_THEMES, pickTwoFrom } from './duelThemes';
 import {
   drawStage,
   drawCrowd,
@@ -31,12 +31,10 @@ import {
 import { useDuelSettings, duelSpeedFactor } from './duelSettingsStore';
 import { drawPixelFighter, LOWRES_FACTOR } from './duelPixelArt';
 import * as audio from './duelAudio';
-import { createShuffleBag } from '../../../utils/shuffleBag';
 import './DuelGame.css';
 
-// Stages cycle through all 16 before any repeats (module-level so the bag
-// survives round-to-round remounts within a session).
-const drawNextStage = createShuffleBag(STAGE_IDS);
+// Stage and character rotations live on each roster theme (duelThemes.ts), so
+// every theme cycles its own casts and arenas independently across a session.
 
 export interface DuelWinnerDisplay {
   name: string;
@@ -69,7 +67,15 @@ interface DuelFrame {
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-const HIT_WORDS = ['POW!', 'WHAM!', 'BAM!', 'KAPOW!', 'BOOM!'];
+
+/** How a character's ranged attacks look: gunners fire bolts, Force users
+ *  push a shockwave, everyone else throws the classic energy ball. */
+function projectileShape(c: DuelCharacter): DuelProjectile['shape'] {
+  const w = c.visual.weapon;
+  if (w === 'blaster' || w === 'bowcaster' || w === 'prod') return 'bolt';
+  if (w === 'saber' || w === 'saberDouble') return 'wave';
+  return 'ball';
+}
 
 type Phase = 'ready' | 'intro' | 'announce' | 'fight' | 'ko' | 'finished';
 
@@ -91,6 +97,8 @@ export function DuelGame(props: Props) {
   speedRef.current = settings.speed;
   const graphicsRef = useRef(settings.graphics);
   graphicsRef.current = settings.graphics;
+  const themeRef = useRef(settings.theme);
+  themeRef.current = settings.theme;
   // Low-res offscreen canvas for the pixel-art pass (created lazily).
   const lowResRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<StageId>('city');
@@ -180,8 +188,9 @@ export function DuelGame(props: Props) {
   const startDuel = (now: number) => {
     const p = propsRef.current;
     audio.resumeDuelAudio();
+    const theme = DUEL_THEMES[themeRef.current];
     const [a, b] = pickDuelists(p.entries);
-    const [ca, cb] = pickTwoCharacters();
+    const [ca, cb] = pickTwoFrom(theme);
     f1Ref.current = makeFighter(a, 1, ca);
     f2Ref.current = makeFighter(b, -1, cb);
     projRef.current = [];
@@ -191,7 +200,7 @@ export function DuelGame(props: Props) {
     crowdRef.current = p.entries
       .filter((e) => e.id !== a.id && e.id !== b.id)
       .map((e) => ({ color: colorOf(e), name: e.name }));
-    stageRef.current = drawNextStage();
+    stageRef.current = theme.drawStage();
     introUntilRef.current = now + DL.INTRO_MS;
     phaseRef.current = 'intro';
     clear();
@@ -210,9 +219,10 @@ export function DuelGame(props: Props) {
     f.movePhaseUntil = now + DUEL_MOVES[m].windupMs;
     f.state = 'attack';
     f.hitReg = false;
-    if (DUEL_MOVES[m].callout) {
-      fxRef.current.push({ x: f.x, y: DL.GROUND_Y - 78, life: 0.8, maxLife: 0.8, radius: 0, growth: 0, color: f.color, kind: 'spark', text: DUEL_MOVES[m].callout });
-      if (m === 'hadoken') audio.playFireball();
+    const callout = DUEL_THEMES[themeRef.current].moveCallout(m, f.character);
+    if (callout) {
+      fxRef.current.push({ x: f.x, y: DL.GROUND_Y - 78, life: 0.8, maxLife: 0.8, radius: 0, growth: 0, color: f.color, kind: 'spark', text: callout });
+      if (m === 'hadoken') audio.playRangedShot(f.character.visual.weapon);
     }
   };
 
@@ -238,7 +248,7 @@ export function DuelGame(props: Props) {
     f.superVx = 0;
     superFlashUntilRef.current = now + 260;
     fxRef.current.push({ x: DL.CANVAS_W / 2, y: DL.GROUND_Y * 0.42, life: 1, maxLife: 1, radius: 0, growth: 0, color: f.character.superColor, kind: 'spark', text: f.character.superCallout });
-    audio.playFireball();
+    audio.playSuperCue(kind, f.character.visual.weapon);
   };
 
   const decide = (self: DuelFighter, opp: DuelFighter, now: number) => {
@@ -336,7 +346,8 @@ export function DuelGame(props: Props) {
     gainMeter(d, DL.METER_ON_TAKEN);
     if (!zsuper) gainMeter(a, DL.METER_ON_HIT);
     const sparkCol = zsuper ? a.character.superColor : '#fff2a8';
-    spawnSpark(d.x + d.facing * 10, DL.GROUND_Y - 42, sparkCol, zsuper ? undefined : HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)]);
+    const words = DUEL_THEMES[themeRef.current].hitWords;
+    spawnSpark(d.x + d.facing * 10, DL.GROUND_Y - 42, sparkCol, zsuper ? undefined : words[Math.floor(Math.random() * words.length)]);
     // Electric super: extra shock rings around the victim.
     if (zsuper && a.character.superKind === 'electric') {
       fxRef.current.push({ x: d.x, y: DL.GROUND_Y - 40, life: 0.35, maxLife: 0.35, radius: 6, growth: 110, color: a.character.superColor, kind: 'ring' });
@@ -350,14 +361,15 @@ export function DuelGame(props: Props) {
     if (now >= f.movePhaseUntil) {
       if (f.movePhase === 'windup') {
         if (m.isProjectile) {
+          const shape = projectileShape(f.character);
           if (f.currentMove === 'superFireball' && f.character.superKind === 'volley') {
-            // Kunai storm: three thrown blades at staggered speeds.
+            // Volley: three shots at staggered speeds.
             for (let k = 0; k < 3; k++) {
               projRef.current.push({
                 x: f.x + f.facing * (18 + k * 6), y: DL.GROUND_Y - 40,
                 vx: f.facing * DL.HADOKEN_SPEED * (1.1 + k * 0.28),
                 ownerSide: f.side, color: f.character.superColor, traveled: 0,
-                radius: 10, dmg: 9, chip: 2, big: false,
+                radius: 10, dmg: 9, chip: 2, big: false, shape,
               });
             }
           } else {
@@ -366,7 +378,7 @@ export function DuelGame(props: Props) {
               x: f.x + f.facing * 22, y: DL.GROUND_Y - 40,
               vx: f.facing * DL.HADOKEN_SPEED * (big ? 1.15 : 1),
               ownerSide: f.side, color: big ? f.character.superColor : f.color, traveled: 0,
-              radius: big ? 30 : 16, dmg: m.dmg, chip: m.chip ?? 0, big,
+              radius: big ? 30 : 16, dmg: m.dmg, chip: m.chip ?? 0, big, shape,
             });
           }
           f.movePhase = 'recover';
@@ -388,8 +400,8 @@ export function DuelGame(props: Props) {
               f.superVx = f.facing * 200;
             } else if (f.character.dashing) f.superVx = f.facing * 160;
           }
-          if (m.launch) { f.vy = DL.JUMP_VY * 0.6; f.air = Math.max(f.air, 1); audio.playPunch(); }
-          else audio.playPunch();
+          if (m.launch) { f.vy = DL.JUMP_VY * 0.6; f.air = Math.max(f.air, 1); }
+          audio.playSwing(f.character.visual.weapon);
         }
       } else if (f.movePhase === 'active') {
         f.movePhase = 'recover';
@@ -571,7 +583,7 @@ export function DuelGame(props: Props) {
 
   const drawScene = (ctx: CanvasRenderingContext2D, now: number, withBars: boolean) => {
     const pixelFonts = graphicsRef.current === 'pixel';
-    drawStage(ctx, stageRef.current, now);
+    drawStage(ctx, stageRef.current, now, themeRef.current === 'galaxy');
     for (const pr of projRef.current) drawDuelProjectile(ctx, pr);
     const f1 = f1Ref.current;
     const f2 = f2Ref.current;
@@ -628,7 +640,7 @@ export function DuelGame(props: Props) {
     ctx.translate(DL.CANVAS_W / 2, DL.CANVAS_H / 2);
     ctx.scale(zoom, zoom);
     ctx.translate(-fx, -fy);
-    drawStage(ctx, stageRef.current, wallNow);
+    drawStage(ctx, stageRef.current, wallNow, themeRef.current === 'galaxy');
     for (const pr of frame.projectiles) drawDuelProjectile(ctx, pr);
     const order = frame.f1.x <= frame.f2.x ? [frame.f1, frame.f2] : [frame.f2, frame.f1];
     for (const f of order) paintFighter(ctx, f, wallNow);
@@ -684,7 +696,7 @@ export function DuelGame(props: Props) {
 
       switch (phaseRef.current) {
         case 'ready': {
-          drawStage(ctx, stageRef.current, now);
+          drawStage(ctx, stageRef.current, now, themeRef.current === 'galaxy');
           crowdRef.current = p.entries.map((e) => ({ color: colorOf(e), name: e.name }));
           drawCrowd(ctx, crowdRef.current, now, graphicsRef.current === 'pixel');
           drawAnnounce(ctx, 'READY?', '#ffd23a', 0.8);
@@ -709,7 +721,8 @@ export function DuelGame(props: Props) {
         case 'announce': {
           drawScene(ctx, now, true);
           const half = announceUntilRef.current - DL.ANNOUNCE_MS / 2;
-          drawAnnounce(ctx, now < half ? 'ROUND 1' : 'FIGHT!', now < half ? '#fff' : '#ff5a3c');
+          const ann = DUEL_THEMES[themeRef.current].announce;
+          drawAnnounce(ctx, now < half ? ann.round : ann.fight, now < half ? '#fff' : '#ff5a3c');
           if (now >= announceUntilRef.current) {
             phaseRef.current = 'fight';
             fightStartRef.current = now;
@@ -724,7 +737,7 @@ export function DuelGame(props: Props) {
           recordFrame();
           drawScene(ctx, now, true);
           // "FIGHT!" lingers briefly.
-          if (now - fightStartRef.current < 500) drawAnnounce(ctx, 'FIGHT!', '#ff5a3c');
+          if (now - fightStartRef.current < 500) drawAnnounce(ctx, DUEL_THEMES[themeRef.current].announce.fight, '#ff5a3c');
           break;
         }
         case 'ko': {
@@ -735,7 +748,7 @@ export function DuelGame(props: Props) {
           recordFrame();
           drawScene(ctx, now, true);
           const winner = winnerRef.current!;
-          if (now - koStartRef.current < 900) drawAnnounce(ctx, 'K.O.!', '#ff3b3b', 1.15);
+          if (now - koStartRef.current < 900) drawAnnounce(ctx, DUEL_THEMES[themeRef.current].announce.ko, '#ff3b3b', 1.15);
           else drawAnnounce(ctx, `${winner.entry.name.toUpperCase()} WINS!`, winner.color, 0.72);
           if (now >= koUntilRef.current) {
             phaseRef.current = 'finished';
@@ -772,11 +785,13 @@ export function DuelGame(props: Props) {
   }, []);
 
   const cw = props.currentWinner;
+  // Read from settings (not the ref) so the dialog re-renders on a theme switch.
+  const themeDialog = DUEL_THEMES[settings.theme].dialog;
   const details =
     cw && !cw.isLastPlayer && cw.beatenBy ? (
       <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.3, gap: 1 }}>
         <span style={{ fontSize: '0.8em', opacity: 0.75, letterSpacing: '0.06em' }}>💥 DEFEATED BY</span>
-        <span style={{ fontSize: '1.35em', fontWeight: 800 }}>🥊 {cw.beatenBy}</span>
+        <span style={{ fontSize: '1.35em', fontWeight: 800 }}>{themeDialog.byIcon} {cw.beatenBy}</span>
       </span>
     ) : undefined;
 
@@ -796,9 +811,9 @@ export function DuelGame(props: Props) {
         show={!!cw && !props.isRacing}
         isFinals={cw?.isLastPlayer ?? props.entries.length === 0}
         winner={{ name: cw?.name ?? '', imageDataUrl: cw?.imageDataUrl, allImages: cw?.allImages }}
-        headline="K.O.!"
-        finalsHeadline="🥊 CHAMPION 🥊"
-        nextLabel="🥊 Next Duel"
+        headline={themeDialog.headline}
+        finalsHeadline={themeDialog.finalsHeadline}
+        nextLabel={themeDialog.nextLabel}
         detailsNode={details}
         onNext={props.onRaceComplete}
         onShowFinalStandings={() => props.onShowFinalStandings?.()}

@@ -170,6 +170,8 @@ export interface DuelProjectile {
   chip: number;
   /** true for a Super Fireball (bigger, flashier). */
   big?: boolean;
+  /** Visual treatment: energy ball (default), blaster bolt, or Force wave. */
+  shape?: 'ball' | 'bolt' | 'wave';
 }
 
 export interface DuelFx {

@@ -3,6 +3,7 @@
  *  sound/music settings are enforced here; the app-wide mute is enforced
  *  inside the synth (and checked directly for the music scheduler). */
 import type { StageId } from './duelEngine';
+import type { SuperKind, WeaponKind } from './duelCharacters';
 import { isGlobalMuted } from '../../../utils/globalAudioStore';
 import {
   createBus,
@@ -55,6 +56,67 @@ export function playBell(): void {
   tone(880, 0.4, 'sine', 0.12);
   tone(1320, 0.4, 'sine', 0.08);
 }
+// ---- Themed weapon SFX (galaxy roster) ----------------------------------
+
+/** Blaster bolt: the classic fast descending zap. */
+export function playBlaster(): void {
+  tone(1650, 0.11, 'square', 0.1, 260);
+  noise(0.06, 0.1, 4000, 900);
+}
+
+/** Bowcaster: heavier, lower blaster thump. */
+export function playBowcaster(): void {
+  tone(900, 0.16, 'sawtooth', 0.1, 150);
+  noise(0.1, 0.16, 2200, 500);
+}
+
+/** Energy blade swing/clash: airy sweep over a low detuned hum. */
+export function playSaberClash(): void {
+  noise(0.14, 0.2, 5200, 700);
+  tone(150, 0.16, 'sawtooth', 0.06, 110);
+  tone(157, 0.16, 'sawtooth', 0.05, 104); // slight detune = the hum beat
+}
+
+/** Telekinetic shove — a filtered whoosh with no tonal center. */
+export function playForceWhoosh(): void {
+  noise(0.36, 0.26, 900, 180);
+  tone(90, 0.3, 'sine', 0.05, 40);
+}
+
+/** Crackling energy discharge. */
+export function playLightning(): void {
+  for (let i = 0; i < 5; i++) {
+    setTimeout(() => {
+      noise(0.06, 0.22, 6000 - i * 500, 1200);
+      tone(1800 + Math.random() * 900, 0.05, 'square', 0.05, 600);
+    }, i * 55);
+  }
+}
+
+/** Melee swing, themed by what the fighter is holding. */
+export function playSwing(weapon?: WeaponKind): void {
+  if (weapon === 'saber' || weapon === 'saberDouble') playSaberClash();
+  else if (weapon === 'prod') playLightning();
+  else playPunch();
+}
+
+/** Ranged normal attack (hadoken slot), themed by weapon. */
+export function playRangedShot(weapon?: WeaponKind): void {
+  if (weapon === 'blaster') playBlaster();
+  else if (weapon === 'bowcaster') playBowcaster();
+  else if (weapon === 'saber' || weapon === 'saberDouble') playForceWhoosh();
+  else playFireball();
+}
+
+/** Super activation cue, chosen by the super's mechanic and weapon. */
+export function playSuperCue(kind: SuperKind, weapon?: WeaponKind): void {
+  if (kind === 'electric') playLightning();
+  else if (kind === 'grab' && !weapon) playForceWhoosh();
+  else if (kind === 'volley' || kind === 'projectile') playRangedShot(weapon);
+  else if (weapon === 'saber' || weapon === 'saberDouble') playSaberClash();
+  else playFireball();
+}
+
 export function playFanfare(): void {
   if (muted) return;
   const notes = [523, 659, 784, 1047];

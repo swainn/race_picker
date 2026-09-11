@@ -1,11 +1,12 @@
 /**
- * The Street Duel character roster. Each duelist is randomly assigned one of
- * these per duel (Street Fighter-style). A character carries its own look
+ * The default (Street Fighter-flavored) Street Duel roster, plus the shared
+ * character types used by every roster theme. Each duelist is randomly
+ * assigned a character per duel; a character carries its own look
  * (palette / build / headgear / extras) and a signature super.
  *
  * Original archetypes — no trademarked names or art.
+ * Alternate rosters live alongside this one (see `duelThemes.ts`).
  */
-import { createShuffleBag } from '../../../utils/shuffleBag';
 
 export type Build = 'thin' | 'normal' | 'wide' | 'huge';
 export type Headgear =
@@ -19,7 +20,18 @@ export type Headgear =
   | 'buns'
   | 'beret'
   | 'ponytail'
-  | 'pigtails';
+  | 'pigtails'
+  // Galaxy roster additions.
+  | 'jediHair'
+  | 'vaderMask'
+  | 'hood'
+  | 'horns'
+  | 'bigEars'
+  | 'fettHelmet'
+  | 'trooperHelmet';
+
+/** A held weapon, drawn procedurally from the fighter's hand in both renderers. */
+export type WeaponKind = 'saber' | 'saberDouble' | 'blaster' | 'bowcaster' | 'prod';
 
 /** The super mechanic a character unleashes from a full meter. */
 export type SuperKind =
@@ -44,6 +56,10 @@ export interface CharacterVisual {
   gloves?: boolean;
   cape?: boolean;
   claw?: boolean;
+  /** Held weapon (galaxy roster). Absent = bare hands. */
+  weapon?: WeaponKind;
+  /** Blade/bolt energy color. Required whenever `weapon` is set. */
+  weaponColor?: string;
 }
 
 export interface DuelCharacter {
@@ -118,16 +134,5 @@ export const DUEL_CHARACTERS: DuelCharacter[] = [
   },
 ];
 
-// Characters come from a shuffle bag so the whole roster appears before anyone
-// repeats across a session. Consecutive draws are never equal, so the two
-// duelists are always distinct (no mirror matches).
-const drawCharacter = createShuffleBag(DUEL_CHARACTERS);
-
-export function pickCharacter(): DuelCharacter {
-  return drawCharacter();
-}
-
-/** Two distinct random characters for a duel (SF-style: no mirror matches). */
-export function pickTwoCharacters(): [DuelCharacter, DuelCharacter] {
-  return [drawCharacter(), drawCharacter()];
-}
+// Per-roster shuffle bags live in `duelThemes.ts` so each theme cycles its own
+// cast independently; see `makeRosterDrawer` there.

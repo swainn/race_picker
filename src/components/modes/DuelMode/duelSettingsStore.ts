@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { DuelThemeId } from './duelThemes';
 
 /** Persisted settings for Street Duel — module singleton + useSyncExternalStore. */
 const STORAGE_KEY = 'gamified_picker_duel_settings';
@@ -11,6 +12,8 @@ export interface DuelSettings {
   sound: boolean;
   music: boolean;
   graphics: DuelGraphics;
+  /** Which roster theme is active (see duelThemes.ts). */
+  theme: DuelThemeId;
 }
 
 const DEFAULT_SETTINGS: DuelSettings = {
@@ -18,6 +21,7 @@ const DEFAULT_SETTINGS: DuelSettings = {
   sound: true,
   music: true,
   graphics: 'vector',
+  theme: 'street',
 };
 
 function loadSettings(): DuelSettings {
@@ -28,7 +32,8 @@ function loadSettings(): DuelSettings {
     const speed: DuelSpeed =
       parsed.speed === 'slow' || parsed.speed === 'fast' ? parsed.speed : 'normal';
     const graphics: DuelGraphics = parsed.graphics === 'pixel' ? 'pixel' : 'vector';
-    return { speed, sound: parsed.sound ?? true, music: parsed.music ?? true, graphics };
+    const theme: DuelThemeId = parsed.theme === 'galaxy' ? 'galaxy' : 'street';
+    return { speed, sound: parsed.sound ?? true, music: parsed.music ?? true, graphics, theme };
   } catch {
     return DEFAULT_SETTINGS;
   }
