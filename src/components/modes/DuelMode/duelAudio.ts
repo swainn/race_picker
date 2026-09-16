@@ -4,6 +4,7 @@
  *  inside the synth (and checked directly for the music scheduler). */
 import type { StageId } from './duelEngine';
 import type { SuperKind, WeaponKind } from './duelCharacters';
+import type { DuelThemeId } from './duelThemes';
 import { isGlobalMuted } from '../../../utils/globalAudioStore';
 import {
   createBus,
@@ -123,8 +124,8 @@ export function playFanfare(): void {
   notes.forEach((fq, i) => setTimeout(() => tone(fq, 0.22, 'square', 0.12), i * 130));
 }
 
-// ---- 8-bit chiptune soundtrack (a track per stage) ----------------------
-interface Track {
+// ---- 8-bit chiptune soundtrack (a track per stage, per roster theme) ----
+export interface Track {
   bpm: number;
   lead: number[]; // MIDI notes, 0 = rest
   bass: number[];
@@ -217,6 +218,75 @@ const TRACKS: Record<StageId, Track> = {
   },
 };
 
+/**
+ * Space-opera cues for the galaxy roster — one per stage in that theme's
+ * rotation. These are original loops written with the genre's stock devices
+ * (brass-style fanfares on rising fourths, chromatically sinking villain
+ * marches, bluesy alien-bar swing), not transcriptions of any film score.
+ * Stages without an entry fall back to their default track.
+ */
+const GALAXY_TRACKS: Partial<Record<StageId, Track>> = {
+  // Heroic fanfare: the rising-fourth brass leap that says "adventure".
+  space: {
+    bpm: 152, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.062,
+    lead: [79, 0, 84, 0, 83, 81, 79, 0, 76, 0, 79, 0, 81, 79, 76, 0],
+    bass: [48, 55, 48, 55, 41, 48, 41, 48, 43, 50, 43, 50, 48, 55, 48, 55],
+  },
+  // Twin suns: sparse, wistful, a lonely upward leap that sighs back down.
+  desert: {
+    bpm: 84, leadWave: 'triangle', bassWave: 'sine', hats: false, leadGain: 0.058,
+    lead: [64, 0, 0, 69, 0, 0, 72, 0, 71, 0, 69, 0, 67, 0, 0, 0],
+    bass: [40, 0, 0, 0, 45, 0, 0, 0, 36, 0, 0, 0, 43, 0, 0, 0],
+  },
+  // Ice assault: tense, clipped, driving minor.
+  frozen: {
+    bpm: 138, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.055,
+    lead: [74, 0, 74, 77, 0, 74, 0, 72, 74, 0, 77, 0, 79, 77, 74, 0],
+    bass: [38, 38, 0, 38, 45, 0, 38, 0, 36, 36, 0, 36, 43, 0, 36, 0],
+  },
+  // Dark lord: a pedal tone sinking chromatically — pure menace.
+  volcano: {
+    bpm: 104, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.058,
+    lead: [67, 0, 70, 0, 67, 0, 0, 0, 66, 0, 68, 0, 66, 0, 0, 0],
+    bass: [43, 0, 43, 43, 0, 43, 0, 0, 42, 0, 42, 42, 0, 42, 0, 0],
+  },
+  // Forest moon: light, bouncy, pentatonic and percussive.
+  jungle: {
+    bpm: 132, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.058,
+    lead: [72, 74, 76, 0, 79, 0, 76, 74, 72, 0, 69, 0, 72, 74, 72, 0],
+    bass: [48, 0, 48, 0, 43, 0, 43, 0, 41, 0, 41, 0, 43, 0, 43, 0],
+  },
+  // Capital world: broad, stately, noble.
+  city: {
+    bpm: 96, leadWave: 'triangle', bassWave: 'sine', hats: false, leadGain: 0.06,
+    lead: [72, 0, 0, 76, 0, 0, 79, 0, 81, 0, 79, 0, 76, 0, 72, 0],
+    bass: [48, 0, 0, 0, 53, 0, 0, 0, 55, 0, 0, 0, 48, 0, 0, 0],
+  },
+  // Alien cantina: honking blues-scale swing.
+  alley: {
+    bpm: 158, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.05,
+    lead: [69, 69, 72, 74, 75, 0, 74, 72, 69, 0, 69, 72, 76, 75, 74, 72],
+    bass: [45, 0, 52, 0, 45, 0, 52, 0, 40, 0, 47, 0, 43, 0, 50, 0],
+  },
+  // Imperial parade: stern minor march, i–VI–V in the bass.
+  arena: {
+    bpm: 112, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.062,
+    lead: [72, 0, 72, 0, 75, 0, 74, 0, 72, 0, 68, 0, 67, 0, 0, 0],
+    bass: [36, 36, 0, 36, 36, 36, 0, 36, 32, 32, 0, 32, 31, 31, 0, 31],
+  },
+  // Chase: relentless octave-pumping ostinato.
+  train: {
+    bpm: 158, leadWave: 'square', bassWave: 'triangle', hats: true, leadGain: 0.055,
+    lead: [76, 0, 76, 79, 76, 0, 81, 79, 76, 0, 76, 79, 83, 81, 79, 76],
+    bass: [40, 52, 40, 52, 40, 52, 40, 52, 38, 50, 38, 50, 43, 55, 43, 55],
+  },
+};
+
+/** The track a stage plays under a given roster theme. */
+export function trackFor(stage: StageId, theme: DuelThemeId): Track {
+  return (theme === 'galaxy' ? GALAXY_TRACKS[stage] : undefined) ?? TRACKS[stage];
+}
+
 let musicMaster: GainNode | null = null;
 let musicMuted = false;
 let musicTimer: ReturnType<typeof setInterval> | null = null;
@@ -288,12 +358,12 @@ function scheduler(): void {
   }
 }
 
-export function startTrack(stage: StageId): void {
+export function startTrack(stage: StageId, theme: DuelThemeId = 'street'): void {
   if (musicMuted) return;
   const c = getAudioContext();
   if (!c) return;
   stopTrack();
-  currentTrack = TRACKS[stage];
+  currentTrack = trackFor(stage, theme);
   musicStep = 0;
   nextNoteTime = c.currentTime + 0.06;
   musicTimer = setInterval(scheduler, 25);

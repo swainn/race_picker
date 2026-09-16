@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STAGE_IDS, type StageId } from './duelEngine';
+import { trackFor } from './duelAudio';
 import { DUEL_THEMES, DUEL_THEME_IDS } from './duelThemes';
 
 describe('DUEL_THEMES registry', () => {
@@ -52,6 +53,35 @@ describe('DUEL_THEMES registry', () => {
       const t = DUEL_THEMES[id];
       const drawn = t.stages.map(() => t.drawStage());
       expect(new Set(drawn).size, `${id}: stage bag skipped stages`).toBe(t.stages.length);
+    }
+  });
+
+  it('plays a well-formed track for every stage in every theme', () => {
+    for (const id of DUEL_THEME_IDS) {
+      for (const stage of DUEL_THEMES[id].stages) {
+        const t = trackFor(stage, id);
+        expect(t, `${id}/${stage}: no track`).toBeDefined();
+        expect(t.lead.length, `${id}/${stage}: lead length`).toBe(16);
+        expect(t.bass.length, `${id}/${stage}: bass length`).toBe(16);
+        expect(t.bpm).toBeGreaterThan(40);
+        expect(t.bpm).toBeLessThan(260);
+        for (const n of [...t.lead, ...t.bass]) {
+          // 0 is a rest; anything else must be a sane MIDI pitch.
+          if (n !== 0) {
+            expect(n, `${id}/${stage}: midi ${n} out of range`).toBeGreaterThanOrEqual(24);
+            expect(n, `${id}/${stage}: midi ${n} out of range`).toBeLessThanOrEqual(108);
+          }
+        }
+      }
+    }
+  });
+
+  it('gives the galaxy roster its own music on every one of its stages', () => {
+    for (const stage of DUEL_THEMES.galaxy.stages) {
+      expect(
+        trackFor(stage, 'galaxy'),
+        `${stage}: galaxy falls back to the street track`
+      ).not.toBe(trackFor(stage, 'street'));
     }
   });
 

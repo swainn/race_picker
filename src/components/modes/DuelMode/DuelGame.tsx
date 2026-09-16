@@ -206,7 +206,7 @@ export function DuelGame(props: Props) {
     clear();
     setReplayActive(false);
     audio.playBell();
-    audio.startTrack(stageRef.current); // no-op if music is muted
+    audio.startTrack(stageRef.current, themeRef.current); // no-op if music is muted
   };
 
   // ---- Combat helpers ---------------------------------------------------
