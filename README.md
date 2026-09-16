@@ -1,6 +1,6 @@
 # 🎮 Aquaveo Picker
 
-A gamified random-selection tool with eleven game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, a battleship grid, a spinning wheel, a kung-fu brawl, a retro Space Invaders assault (as the invaders or the defenders), or a one-on-one Street Duel — all sharing the same participant list.
+A gamified random-selection tool with twelve game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, a battleship grid, a spinning wheel, a kung-fu brawl, a retro Space Invaders assault (as the invaders or the defenders), a one-on-one Street Duel, or an alien abduction — all sharing the same participant list.
 
 ## Game Modes
 
@@ -17,8 +17,9 @@ Pick a mode from the dropdown at the top of the page (use the 🎲 button next t
 - **👾 Space Invaders** — Participants are the alien formation; an auto-cannon locks on with a target-lock drumroll and picks one off per wave. Features synth arcade sound, an accelerating march that continues across the whole session, and random theatrical powers/protections (shield, blink, rapid-fire, cloak) that never bias the fair pick. Last invader standing wins.
 - **🛡️ Space Defenders** — The same engine flipped: participants are the defender cannons along the bottom while a descending alien horde bombs one base per wave. Last defender standing wins.
 - **🥊 Street Duel** — Two participants are drawn at random each round for a Street Fighter-style 1v1 while everyone else watches from the crowd; the KO'd fighter is the pick. Each duelist is assigned a character from an 11-strong roster of original archetypes (Yogi, Sumo, Beast, Grappler, Boxer, General, Claw, Lightning, Commando, Kunoichi, Luchadora), each with a signature super unleashed from a fill-up meter — fireballs, flurries, piledrivers, spiral drills, kunai volleys, and more. Rounds cycle through 16 animated stages (city, jungle, space station, desert, dojo, harbor, night market, casino, wrestling arena, volcano, frozen peak, beach, waterfall, train roof, rainy alley, graveyard), each with its own 8-bit chiptune. KOs get an instant replay, and the final leaderboard ranks everyone by total damage inflicted across the session. A **Roster** setting swaps the whole cast for a Star Wars one (Luke, Vader, Yoda, Obi-Wan, Maul, Emperor, Boba Fett, Han Solo, Chewbacca, Leia, a Stormtrooper) with lightsabers, blasters, and Force powers — the fight mechanics are identical, so only the presentation changes. A **Graphics** setting switches between the default vector art and a hand-authored lo-fi pixel-sprite look.
+- **🛸 Alien Abduction** — Everyone scatters across a moonlit field while a saucer hunts them with a tractor beam. Whoever gets pulled into the ship wins; a hard enough gust of wind can shove someone out of the beam and drop them back to safety. When only one participant is left un-abducted, they are revealed as an alien who was in disguise the whole time. 9 abductee sub-modes (humans, cows, chickens, sheep, pigs, cats, dogs, robots, mixed) and a weather setting
 
-All modes share the same participant list and saved groups. Modes with a 🎛 Settings button (Racing, Wall Climber, Battleship, Wheel, Kung Fu, Space Invaders, Space Defenders, Street Duel) expose extra per-mode options in the ☰ header menu, which also holds the participant manager and a global sound mute. Switching modes mid-race prompts a confirmation and resets the current race.
+All modes share the same participant list and saved groups. Modes with a 🎛 Settings button (Racing, Wall Climber, Battleship, Wheel, Kung Fu, Space Invaders, Space Defenders, Street Duel, Alien Abduction) expose extra per-mode options in the ☰ header menu, which also holds the participant manager and a global sound mute. Switching modes mid-race prompts a confirmation and resets the current race.
 
 ## Screenshots
 
@@ -154,6 +155,7 @@ npm run build
   - `KungFuMode/` — platform brawler (moves, knock-offs, instant replay, optional shrinking platform)
   - `SpaceInvadersMode/` — retro Space Invaders family: **Space Invaders** (participants are the aliens) and **Space Defenders** (participants are the cannons) share one canvas engine, `SpaceGame`, parameterized by variant — target-lock suspense, synth sound, an escalating session-long march, and random powers
   - `DuelMode/` — Street Fighter-style 1v1 (11-character roster with signature supers, 16 chiptune-scored stages drawn from a no-repeat shuffle bag, instant replay, damage-based final standings)
+  - `AlienAbductionMode/` — saucer tractor-beam hunt over a night field (wind rescues, alien-in-disguise finale, 9 abductee sub-modes)
 - **components/modes/types.ts** — `ModeViewProps` contract every mode implements
 - **components/modes/registry.ts** — `MODE_REGISTRY` wires each mode's view, optional settings panel, winner theme, label, and `survivalOrder` flag in one place
 - **components/modes/themes.ts** — Per-mode `WinnerTheme` color/typography tokens
