@@ -7,7 +7,16 @@ import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import { alienAbductionTheme } from '../themes';
 import { ABDUCTEE_KINDS, drawAbductee, drawAlien, drawDisguise } from './abducteeSprites';
 import type { AbducteeKind, AlienAbductionSubMode, HazardMode } from './alienAbductionSettingsStore';
-import { CANVAS_WIDTH, FIELD_LEFT, FIELD_RIGHT, slotX, startingSlots } from './abductionField';
+import {
+  CANVAS_WIDTH,
+  FIELD_LEFT,
+  FIELD_RIGHT,
+  newProwl,
+  slotX,
+  startingSlots,
+  stepProwl,
+  type ProwlState,
+} from './abductionField';
 import './AlienAbductionGame.css';
 
 const CANVAS_HEIGHT = 600;
@@ -68,6 +77,12 @@ interface Ship {
   flash: number;
   /** How far the saucer has stooped from its hover height (finale only). */
   yOffset: number;
+  /** The beam starts dark: the saucer prowls first (see abductionField.ts). */
+  beamOn: boolean;
+  /** Opening strafe, until `beamOn`. */
+  prowl: ProwlState;
+  /** Timestamp the beam lit, which is when the impatience ramp starts. */
+  beamOnAt: number;
 }
 
 interface Wind {
@@ -130,6 +145,21 @@ interface Props {
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+/** A fresh saucer, hovering centre-field with its beam still dark. */
+function makeShip(): Ship {
+  const x = CANVAS_WIDTH / 2;
+  return {
+    x,
+    targetId: null,
+    retargetAt: 0,
+    flash: 0,
+    yOffset: 0,
+    beamOn: false,
+    prowl: newProwl(x),
+    beamOnAt: 0,
+  };
+}
 
 /** Half-width of the tractor beam at a given height. */
 function beamHalfAt(y: number, rage: number, topY: number = BEAM_TOP): number {
@@ -223,7 +253,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const runnersRef = useRef<Runner[]>([]);
-  const shipRef = useRef<Ship>({ x: CANVAS_WIDTH / 2, targetId: null, retargetAt: 0, flash: 0, yOffset: 0 });
+  const shipRef = useRef<Ship>(makeShip());
   const windRef = useRef<Wind>({ strength: 0, target: 0, dir: 1, timer: 1 });
   const revealRef = useRef<Reveal | null>(null);
   const motesRef = useRef<Mote[]>([]);
@@ -282,7 +312,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
     // Nobody left to place: keep the last frame so the finale has someone to reveal.
     if (entries.length === 0) return;
     runnersRef.current = createRunners(entries, mode);
-    shipRef.current = { x: CANVAS_WIDTH / 2, targetId: null, retargetAt: 0, flash: 0, yOffset: 0 };
+    shipRef.current = makeShip();
     motesRef.current = [];
     dustRef.current = [];
     flashesRef.current = [];
@@ -294,7 +324,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
     const race = raceRef.current;
     if (isRacing) {
       runnersRef.current = createRunners(entries, mode);
-      shipRef.current = { x: CANVAS_WIDTH / 2, targetId: null, retargetAt: 0, flash: 0, yOffset: 0 };
+      shipRef.current = makeShip();
       motesRef.current = [];
       dustRef.current = [];
       flashesRef.current = [];
@@ -488,9 +518,11 @@ export const AlienAbductionGame: React.FC<Props> = ({
     const update = (dt: number, now: number) => {
       const race = raceRef.current;
       const live = race.state === 'racing';
-      const elapsed = live ? (now - race.startTime) / 1000 : 0;
-      const rage = live ? clamp(elapsed / RAGE_RAMP, 0, 1) : 0;
       const ship = shipRef.current;
+      // The impatience ramp starts when the beam lights, not when the round
+      // does — the opening prowl shouldn't eat into it.
+      const elapsed = live && ship.beamOn ? (now - ship.beamOnAt) / 1000 : 0;
+      const rage = live && ship.beamOn ? clamp(elapsed / RAGE_RAMP, 0, 1) : 0;
       const wind = windRef.current;
       const runners = runnersRef.current;
 
@@ -519,7 +551,27 @@ export const AlienAbductionGame: React.FC<Props> = ({
       }
 
       // --- ship ------------------------------------------------------------
-      if (live) {
+      if (live && !ship.beamOn) {
+        // Opening prowl: cruise side to side, beam dark, nobody in danger.
+        const { x, ignite } = stepProwl(ship.prowl, ship.x, dt);
+        ship.x = x;
+        if (ignite) {
+          ship.beamOn = true;
+          ship.beamOnAt = now;
+          ship.flash = Math.max(ship.flash, 0.55); // the port lights up
+          // A puff of dust kicks up under the fresh beam.
+          for (let i = 0; i < 10; i++) {
+            dustRef.current.push({
+              x: ship.x + (Math.random() - 0.5) * BEAM_GROUND_HALF * 2,
+              y: GROUND_Y,
+              vx: (Math.random() - 0.5) * 55,
+              vy: -25 - Math.random() * 45,
+              life: 0.6,
+              maxLife: 0.6,
+            });
+          }
+        }
+      } else if (live) {
         const targetX = pickTarget(now);
         const chase = 1.5 + rage * 2.4;
         ship.x += (targetX - ship.x) * clamp(dt * chase, 0, 1);
@@ -536,7 +588,9 @@ export const AlienAbductionGame: React.FC<Props> = ({
             runner.grace = Math.max(0, runner.grace - dt);
 
             const gap = runner.x - ship.x;
-            const fear = live ? clamp(1 - Math.abs(gap) / 170, 0, 1) : 0;
+            // Nobody panics until the beam is actually lit — during the prowl
+            // the saucer is just something ominous drifting overhead.
+            const fear = live && ship.beamOn ? clamp(1 - Math.abs(gap) / 170, 0, 1) : 0;
             runner.dirTimer -= dt;
             if (fear > 0.15) {
               // Bolt away from whatever is hovering overhead.
@@ -563,6 +617,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
 
             if (
               live &&
+              ship.beamOn &&
               runner.grace <= 0 &&
               Math.abs(runner.x - ship.x) < beamHalfAt(GROUND_Y, rage) * 0.85
             ) {
@@ -649,7 +704,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
         }
       }
 
-      stepParticles(dt, windPush, live, rage, BEAM_TOP);
+      stepParticles(dt, windPush, live && ship.beamOn, rage, BEAM_TOP);
     };
 
     // ---------------------------------------------------------------- drawing
@@ -1069,13 +1124,17 @@ export const AlienAbductionGame: React.FC<Props> = ({
       const live = race.state === 'racing';
       const revealing = race.state === 'reveal';
       const reveal = revealRef.current;
-      const rage = live ? clamp((now - race.startTime) / 1000 / RAGE_RAMP, 0, 1) : 0;
-      const beamTop = BEAM_TOP + shipRef.current.yOffset;
+      const ship = shipRef.current;
+      const rage = live && ship.beamOn ? clamp((now - ship.beamOnAt) / 1000 / RAGE_RAMP, 0, 1) : 0;
+      const beamTop = BEAM_TOP + ship.yOffset;
       const revealT = reveal?.t ?? 0;
       const beamFade = revealing
         ? clamp((revealT - REVEAL_BEAM) / 0.5, 0, 1) * (1 - clamp((revealT - REVEAL_DEPART) / 0.6, 0, 1))
         : 1;
-      const beamOn = beamFade > 0 && (live || revealing || runnersRef.current.some((r) => r.state === 'abducted'));
+      // Dark through the opening prowl; the finale lights its own beam.
+      const beamOn =
+        beamFade > 0 &&
+        ((live && ship.beamOn) || revealing || runnersRef.current.some((r) => r.state === 'abducted'));
 
       drawSky(now);
       drawLand();
