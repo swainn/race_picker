@@ -49,6 +49,18 @@ export const wallClimberTheme: WinnerTheme = {
   ...racingTheme,
 };
 
+export const alienAbductionTheme: WinnerTheme = {
+  accent: '#7CFFB2',
+  accentSoft: 'rgba(124, 255, 178, 0.55)',
+  bgGradient: 'linear-gradient(135deg,#0d1f3c 0%,#1d1038 100%)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#9CFFD0',
+  letterSpacing: '1px',
+  buttonStyle: 'outline',
+};
+
 export const plinkoTheme: WinnerTheme = {
   ...racingTheme,
 };

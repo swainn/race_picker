@@ -11,7 +11,8 @@ export type GameMode =
   | 'kung-fu'
   | 'space-invaders'
   | 'space-defenders'
-  | 'street-duel';
+  | 'street-duel'
+  | 'alien-abduction';
 
 /** Per-mode metadata that gets stashed on a winner record. */
 export interface ModeWinnerExtras {

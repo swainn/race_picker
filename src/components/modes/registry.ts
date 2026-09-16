@@ -2,6 +2,7 @@ import { lazy, type ComponentType } from 'react';
 import type { GameMode, ModeViewProps } from './types';
 import type { WinnerTheme } from './themes';
 import {
+  alienAbductionTheme,
   battleBotsTheme,
   battleshipTheme,
   lightCyclesTheme,
@@ -22,6 +23,7 @@ import { KungFuSettings } from './KungFuMode/KungFuSettings';
 import { InvadersSettings } from './SpaceInvadersMode/InvadersSettings';
 import { DefendersSettings } from './SpaceInvadersMode/DefendersSettings';
 import { DuelSettings } from './DuelMode/DuelSettings';
+import { AlienAbductionSettings } from './AlienAbductionMode/AlienAbductionSettings';
 
 // Mode views are code-split: each mode's chunk (engine, drawing, audio, CSS)
 // loads on first use instead of in the initial bundle. Settings panels stay
@@ -38,6 +40,7 @@ const KungFuMode = lazy(() => import('./KungFuMode/KungFuMode').then((m) => ({ d
 const InvadersMode = lazy(() => import('./SpaceInvadersMode/InvadersMode').then((m) => ({ default: m.InvadersMode })));
 const DefendersMode = lazy(() => import('./SpaceInvadersMode/DefendersMode').then((m) => ({ default: m.DefendersMode })));
 const DuelMode = lazy(() => import('./DuelMode/DuelMode').then((m) => ({ default: m.DuelMode })));
+const AlienAbductionMode = lazy(() => import('./AlienAbductionMode/AlienAbductionMode').then((m) => ({ default: m.AlienAbductionMode })));
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -61,6 +64,7 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   'space-invaders':  { View: InvadersMode,  Settings: InvadersSettings,  theme: invadersTheme,  label: '👾 Space Invaders', survivalOrder: true },
   'space-defenders': { View: DefendersMode, Settings: DefendersSettings, theme: defendersTheme, label: '🛡️ Space Defenders', survivalOrder: true },
   'street-duel':     { View: DuelMode,      Settings: DuelSettings,      theme: duelTheme,      label: '🥊 Street Duel', survivalOrder: true },
+  'alien-abduction': { View: AlienAbductionMode, Settings: AlienAbductionSettings, theme: alienAbductionTheme, label: '🛸 Alien Abduction' },
 };
 
 export const MODE_LIST: { value: GameMode; label: string }[] =
