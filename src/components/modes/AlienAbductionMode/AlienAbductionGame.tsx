@@ -7,15 +7,13 @@ import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import { alienAbductionTheme } from '../themes';
 import { ABDUCTEE_KINDS, drawAbductee, drawAlien, drawDisguise } from './abducteeSprites';
 import type { AbducteeKind, AlienAbductionSubMode, HazardMode } from './alienAbductionSettingsStore';
+import { CANVAS_WIDTH, FIELD_LEFT, FIELD_RIGHT, slotX, startingSlots } from './abductionField';
 import './AlienAbductionGame.css';
 
-const CANVAS_WIDTH = 400;
 const CANVAS_HEIGHT = 600;
 
 const HORIZON_Y = 430;
 const GROUND_Y = 548; // feet baseline for the folks on the ground
-const FIELD_LEFT = 16;
-const FIELD_RIGHT = CANVAS_WIDTH - 16;
 
 const SHIP_Y = 98; // saucer centre (before bob)
 const SHIP_HALF_WIDTH = 62;
@@ -182,17 +180,18 @@ function assignKinds(count: number, mode: AlienAbductionSubMode): AbducteeKind[]
   return assignments;
 }
 
-/** Scatter everyone across the field, facing random ways. */
+/** Scatter everyone across the field, facing random ways. Starting marks are
+ *  shuffled rather than list-ordered — see abductionField.startingSlots. */
 function createRunners(entries: Entry[], mode: AlienAbductionSubMode): Runner[] {
   const kinds = assignKinds(entries.length, mode);
   const initials = computeInitials(entries);
-  const span = FIELD_RIGHT - FIELD_LEFT;
+  const slots = startingSlots(entries.length);
   return entries.map((entry, index) => ({
     entry,
     kind: kinds[index],
     color: generateColor(index),
     initials: initials[index],
-    x: FIELD_LEFT + ((index + 0.5) / Math.max(entries.length, 1)) * span,
+    x: slotX(slots[index], entries.length),
     y: GROUND_Y,
     dir: Math.random() < 0.5 ? 1 : -1,
     baseSpeed: 62 + Math.random() * 52,
