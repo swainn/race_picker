@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cardKey, createDeck, dealHoldem, suddenDeath } from './pokerDeck';
-import { evaluateSeven, weakestOf } from './pokerHands';
+import { evaluateSeven, strongestOf, weakestOf } from './pokerHands';
 
 describe('createDeck', () => {
   it('is 52 distinct cards', () => {
@@ -44,29 +44,29 @@ describe('dealHoldem', () => {
 });
 
 describe('suddenDeath', () => {
-  it('busts the single contender without drawing', () => {
+  it('singles out a lone contender without drawing', () => {
     const r = suddenDeath([7]);
-    expect(r.bustedId).toBe(7);
+    expect(r.pickedId).toBe(7);
     expect(r.rounds).toHaveLength(0);
   });
 
-  it('always returns one busted id drawn from the contenders', () => {
+  it('always returns one picked id drawn from the contenders', () => {
     for (let trial = 0; trial < 2000; trial++) {
       const ids = [1, 2, 3, 4];
       const r = suddenDeath(ids);
-      expect(ids).toContain(r.bustedId);
+      expect(ids).toContain(r.pickedId);
       expect(r.rounds.length).toBeGreaterThan(0);
       expect(r.rounds[0].draws).toHaveLength(4);
     }
   });
 
-  it('busts whoever drew the lowest card', () => {
+  it('picks whoever drew the lowest card when taking low', () => {
     for (let trial = 0; trial < 2000; trial++) {
       const r = suddenDeath([1, 2, 3, 4, 5]);
       const last = r.rounds[r.rounds.length - 1];
       const lowest = Math.min(...last.draws.map((d) => d.card.rank));
       const drewLowest = last.draws.filter((d) => d.card.rank === lowest).map((d) => d.id);
-      expect(drewLowest).toContain(r.bustedId);
+      expect(drewLowest).toContain(r.pickedId);
     }
   });
 
@@ -83,11 +83,21 @@ describe('suddenDeath', () => {
     }
   });
 
+  it("picks whoever drew the highest card when taking high", () => {
+    for (let trial = 0; trial < 2000; trial++) {
+      const r = suddenDeath([1, 2, 3, 4, 5], 'high');
+      const last = r.rounds[r.rounds.length - 1];
+      const highest = Math.max(...last.draws.map((d) => d.card.rank));
+      const drewHighest = last.draws.filter((d) => d.card.rank === highest).map((d) => d.id);
+      expect(drewHighest).toContain(r.pickedId);
+    }
+  });
+
   it('picks uniformly among tied players (fairness)', () => {
     const ids = [0, 1, 2, 3, 4];
     const trials = 20000;
     const busts = new Array<number>(ids.length).fill(0);
-    for (let t = 0; t < trials; t++) busts[suddenDeath(ids).bustedId]++;
+    for (let t = 0; t < trials; t++) busts[suddenDeath(ids).pickedId]++;
 
     const expected = trials / ids.length;
     for (const count of busts) {
@@ -95,31 +105,52 @@ describe('suddenDeath', () => {
       expect(count).toBeLessThan(expected * 1.1);
     }
   });
-});
 
-describe('the pick is uniform (fairness)', () => {
-  // This mode is fair by construction: an honest shuffle means the weakest
-  // hand is uniformly distributed across seats, and the deal is independent of
-  // where anyone sits. Unlike the other modes, that lets us test the real win
-  // condition end to end rather than a helper standing in for it.
-  it('busts every seat equally often over a full deal + showdown', () => {
-    const seats = 8;
-    const trials = 12000;
-    const busts = new Array<number>(seats).fill(0);
+  it('is uniform in the high direction too (fairness)', () => {
+    const ids = [0, 1, 2, 3, 4];
+    const trials = 20000;
+    const wins = new Array<number>(ids.length).fill(0);
+    for (let t = 0; t < trials; t++) wins[suddenDeath(ids, 'high').pickedId]++;
 
-    for (let t = 0; t < trials; t++) {
-      const { hole, board } = dealHoldem(seats);
-      const hands = hole.map((h) => evaluateSeven([...h, ...board]));
-      const tied = weakestOf(hands);
-      busts[tied.length === 1 ? tied[0] : suddenDeath(tied).bustedId]++;
-    }
-
-    const expected = trials / seats;
-    for (const [seat, count] of busts.entries()) {
-      expect(count, `seat ${seat} busted ${count} times, expected ~${expected}`)
-        .toBeGreaterThan(expected * 0.9);
-      expect(count, `seat ${seat} busted ${count} times, expected ~${expected}`)
-        .toBeLessThan(expected * 1.1);
+    const expected = trials / ids.length;
+    for (const count of wins) {
+      expect(count).toBeGreaterThan(expected * 0.9);
+      expect(count).toBeLessThan(expected * 1.1);
     }
   });
+});
+
+describe('the pick is uniform under either rule (fairness)', () => {
+  // This mode is fair by construction: an honest shuffle distributes both the
+  // weakest and the strongest hand uniformly across seats, and the deal is
+  // independent of where anyone sits. Unlike the other modes, that lets us
+  // test the real win condition end to end rather than a helper standing in
+  // for it — and both pick rules are settings, so both need covering.
+  const RULES = [
+    { name: 'worst hand busts', pickOf: weakestOf, take: 'low' as const },
+    { name: 'best hand takes the pot', pickOf: strongestOf, take: 'high' as const },
+  ];
+
+  for (const rule of RULES) {
+    it(`singles out every seat equally often — ${rule.name}`, () => {
+      const seats = 8;
+      const trials = 12000;
+      const picks = new Array<number>(seats).fill(0);
+
+      for (let t = 0; t < trials; t++) {
+        const { hole, board } = dealHoldem(seats);
+        const hands = hole.map((h) => evaluateSeven([...h, ...board]));
+        const tied = rule.pickOf(hands);
+        picks[tied.length === 1 ? tied[0] : suddenDeath(tied, rule.take).pickedId]++;
+      }
+
+      const expected = trials / seats;
+      for (const [seat, count] of picks.entries()) {
+        expect(count, `seat ${seat} picked ${count} times, expected ~${expected}`)
+          .toBeGreaterThan(expected * 0.9);
+        expect(count, `seat ${seat} picked ${count} times, expected ~${expected}`)
+          .toBeLessThan(expected * 1.1);
+      }
+    });
+  }
 });

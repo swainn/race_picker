@@ -87,23 +87,24 @@ export interface SuddenDeathRound {
 export interface SuddenDeathResult {
   /** One entry per draw round; usually just the one. */
   rounds: SuddenDeathRound[];
-  /** The seat that busts — lowest card, because the worst hand goes out. */
-  bustedId: number;
+  /** The seat singled out: the lowest card when taking 'low', highest for 'high'. */
+  pickedId: number;
 }
 
 /** Redraws before we stop being dramatic and just pick one. */
 const SUDDEN_DEATH_MAX_ROUNDS = 6;
 
 /**
- * Break a tie for the *weakest* hand: everyone still tied draws one card and
- * the lowest card busts. Ties on the draw redraw among those players.
+ * Break a tie by drawing one card each: `take: 'low'` singles out the lowest
+ * card (the worst hand busts), `'high'` the highest (the best hand takes the
+ * pot). Ties on the draw redraw among just those players.
  *
  * Cards come from a fresh shuffled deck rather than what's left of the deal —
  * at a full table only seven cards remain, which cannot support a redraw.
  */
-export function suddenDeath(ids: number[]): SuddenDeathResult {
+export function suddenDeath(ids: number[], take: 'low' | 'high' = 'low'): SuddenDeathResult {
   if (ids.length === 0) throw new Error('suddenDeath needs at least one id');
-  if (ids.length === 1) return { rounds: [], bustedId: ids[0] };
+  if (ids.length === 1) return { rounds: [], pickedId: ids[0] };
 
   const rounds: SuddenDeathRound[] = [];
   let contenders = [...ids];
@@ -113,14 +114,16 @@ export function suddenDeath(ids: number[]): SuddenDeathResult {
     const draws = contenders.map((id, i) => ({ id, card: deck[i] }));
     rounds.push({ draws });
 
-    let lowest = draws[0].card.rank;
-    for (const d of draws) if (d.card.rank < lowest) lowest = d.card.rank;
-    const stillTied = draws.filter((d) => d.card.rank === lowest).map((d) => d.id);
+    let edge = draws[0].card.rank;
+    for (const d of draws) {
+      if (take === 'low' ? d.card.rank < edge : d.card.rank > edge) edge = d.card.rank;
+    }
+    const stillTied = draws.filter((d) => d.card.rank === edge).map((d) => d.id);
 
-    if (stillTied.length === 1) return { rounds, bustedId: stillTied[0] };
+    if (stillTied.length === 1) return { rounds, pickedId: stillTied[0] };
     contenders = stillTied;
   }
 
   // Vanishingly unlikely; fall back to a uniform pick so this always ends.
-  return { rounds, bustedId: shuffle(contenders)[0] };
+  return { rounds, pickedId: shuffle(contenders)[0] };
 }

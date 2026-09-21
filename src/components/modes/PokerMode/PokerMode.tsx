@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
 import type { ModeViewProps } from '../types';
 import { pokerTheme } from '../themes';
 import { getEntryImages, getPreferredEntryImage } from '../../../utils/entryImages';
 import { PokerGame, type PokerWinnerDisplay } from './PokerGame';
+import { usePokerSettings } from './pokerSettingsStore';
 import './PokerGame.css';
 
 /**
@@ -15,6 +16,7 @@ export function PokerMode({
   entries,
   allEntries,
   eliminatedIds,
+  winOrder,
   isRacing,
   currentWinner,
   onWinner,
@@ -24,6 +26,18 @@ export function PokerMode({
   onResetRace,
 }: ModeViewProps) {
   const [winnerDisplay, setWinnerDisplay] = useState<PokerWinnerDisplay | null>(null);
+  const { pick } = usePokerSettings();
+
+  // The two pick rules read `winOrder` in opposite directions — first picked
+  // finishes last under 'worst', first under 'best' — so results recorded
+  // under one rule would be mis-ranked by the other. Switching mid-session
+  // therefore starts a clean session rather than silently re-ranking.
+  const lastPickRef = useRef(pick);
+  useEffect(() => {
+    if (lastPickRef.current === pick) return;
+    lastPickRef.current = pick;
+    if (eliminatedIds.length > 0) onResetRace();
+  }, [pick, eliminatedIds.length, onResetRace]);
 
   useEffect(() => {
     if (eliminatedIds.length === 0) {
@@ -62,17 +76,19 @@ export function PokerMode({
     }
   }, [currentWinner]);
 
-  // PokerGame reports the player with the worst hand (the pick) and what they held.
-  const handleWinner = (busted: Entry, handName: string) => {
-    const images = getEntryImages(busted);
+  // PokerGame reports whichever player the active rule singled out.
+  const handleWinner = (picked: Entry, handName: string) => {
+    const images = getEntryImages(picked);
     setWinnerDisplay({
-      name: busted.name,
-      imageDataUrl: getPreferredEntryImage(busted),
+      name: picked.name,
+      imageDataUrl: getPreferredEntryImage(picked),
       allImages: images.length > 0 ? images : undefined,
       isLastPlayer: false,
-      bustedWith: handName,
+      // Under the best-hand rule the first pot taken is the overall win.
+      isChampion: pick === 'best' && winOrder.size === 0,
+      handName,
     });
-    onWinner(busted);
+    onWinner(picked);
   };
 
   return (
