@@ -3,6 +3,7 @@ import type { GameMode, ModeViewProps } from './types';
 import type { WinnerTheme } from './themes';
 import {
   alienAbductionTheme,
+  pokerTheme,
   battleBotsTheme,
   battleshipTheme,
   lightCyclesTheme,
@@ -24,6 +25,7 @@ import { InvadersSettings } from './SpaceInvadersMode/InvadersSettings';
 import { DefendersSettings } from './SpaceInvadersMode/DefendersSettings';
 import { DuelSettings } from './DuelMode/DuelSettings';
 import { AlienAbductionSettings } from './AlienAbductionMode/AlienAbductionSettings';
+import { PokerSettings } from './PokerMode/PokerSettings';
 
 // Mode views are code-split: each mode's chunk (engine, drawing, audio, CSS)
 // loads on first use instead of in the initial bundle. Settings panels stay
@@ -41,6 +43,7 @@ const InvadersMode = lazy(() => import('./SpaceInvadersMode/InvadersMode').then(
 const DefendersMode = lazy(() => import('./SpaceInvadersMode/DefendersMode').then((m) => ({ default: m.DefendersMode })));
 const DuelMode = lazy(() => import('./DuelMode/DuelMode').then((m) => ({ default: m.DuelMode })));
 const AlienAbductionMode = lazy(() => import('./AlienAbductionMode/AlienAbductionMode').then((m) => ({ default: m.AlienAbductionMode })));
+const PokerMode = lazy(() => import('./PokerMode/PokerMode').then((m) => ({ default: m.PokerMode })));
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -65,6 +68,7 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   'space-defenders': { View: DefendersMode, Settings: DefendersSettings, theme: defendersTheme, label: '🛡️ Space Defenders', survivalOrder: true },
   'street-duel':     { View: DuelMode,      Settings: DuelSettings,      theme: duelTheme,      label: '🥊 Street Duel', survivalOrder: true },
   'alien-abduction': { View: AlienAbductionMode, Settings: AlienAbductionSettings, theme: alienAbductionTheme, label: '🛸 Alien Abduction' },
+  poker:             { View: PokerMode,      Settings: PokerSettings,      theme: pokerTheme,      label: '🃏 Poker Night', survivalOrder: true },
 };
 
 export const MODE_LIST: { value: GameMode; label: string }[] =

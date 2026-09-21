@@ -147,3 +147,17 @@ export const wheelTheme: WinnerTheme = {
   finalsTextColor: '#2b2b2b',
   buttonStyle: 'solid',
 };
+
+/** Poker Night — green felt, gold rail. */
+export const pokerTheme: WinnerTheme = {
+  accent: '#e8b94a',
+  accentSoft: 'rgba(232, 185, 74, 0.35)',
+  bgGradient: 'linear-gradient(145deg, #17402c, #0d2419)',
+  finalsAccent: '#ffd76b',
+  finalsAccentSoft: 'rgba(255, 215, 107, 0.45)',
+  finalsBgGradient: 'linear-gradient(145deg, #2a5a3c, #123324)',
+  headlineColor: '#ffd76b',
+  fontFamily: '"Arial Black", system-ui, sans-serif',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};

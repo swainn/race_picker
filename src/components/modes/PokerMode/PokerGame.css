@@ -1,0 +1,25 @@
+.poker-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  width: 100%;
+}
+
+.poker-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 840 / 600;
+  width: min(100%, calc((100svh - 240px) * (840 / 600)), calc(100vw - 64px));
+  max-width: 900px;
+}
+
+.poker-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  border: 3px solid #23272f;
+  background-color: #0d0f14;
+  border-radius: 10px;
+  display: block;
+}
