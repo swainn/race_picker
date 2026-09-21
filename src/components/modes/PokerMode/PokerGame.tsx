@@ -27,8 +27,24 @@ import {
   suddenDeathLayout,
 } from './pokerTable';
 import { usePokerSettings, pokerSpeedFactor } from './pokerSettingsStore';
+import { PokerHandStrip } from './PokerHandStrip';
 import * as audio from './pokerAudio';
 import './PokerGame.css';
+
+/** One end of a showdown: who held it, what it was, and the five cards. */
+export interface PokerShowdownHand {
+  player: string;
+  hand: string;
+  cards: Card[];
+}
+
+/** What the game reports when a hand resolves. */
+export interface PokerRoundResult {
+  /** The player the rule singled out, with their own five cards. */
+  picked: PokerShowdownHand;
+  /** The opposite end of the table, for contrast. Absent if it is the same player. */
+  other?: PokerShowdownHand;
+}
 
 export interface PokerWinnerDisplay {
   name: string;
@@ -38,15 +54,17 @@ export interface PokerWinnerDisplay {
   isLastPlayer?: boolean;
   /** Best-hand rule: took the very first pot, so the overall champion. */
   isChampion?: boolean;
-  /** The hand they were picked on. */
-  handName?: string;
+  /** The hand they were picked on, with their five cards. */
+  picked?: PokerShowdownHand;
+  /** The opposite end of that showdown. */
+  other?: PokerShowdownHand;
 }
 
 interface Props {
   theme: WinnerTheme;
   entries: Entry[];
   allEntries: Entry[];
-  onWinner: (busted: Entry, handName: string) => void;
+  onWinner: (picked: Entry, result: PokerRoundResult) => void;
   onRaceComplete: () => void;
   onShowFinalStandings?: () => void;
   isRacing: boolean;
@@ -72,6 +90,8 @@ interface Player {
   initials: string;
   hole: Card[];
   hand: HandValue | null;
+  /** False while seated but not yet dealt in (pre-deal and post-session views). */
+  dealt: boolean;
 }
 
 const CARD_W = 46;
@@ -126,19 +146,50 @@ export function PokerGame(props: Props) {
   const playersRef = useRef<Player[]>([]);
   const boardRef = useRef<Card[]>([]);
   const revealedRef = useRef(0);
-  /** Indexes tied for the hand the active rule singles out. */
-  const spotlightRef = useRef<number[]>([]);
-  /** Indexes tied at the other end, shown as a secondary marker. */
-  const otherEndRef = useRef<number[]>([]);
+  /** Indexes tied for the weakest hand — highlighted as at risk. */
+  const worstIdxRef = useRef<number[]>([]);
+  /** Indexes tied for the strongest hand — highlighted as leading. */
+  const bestIdxRef = useRef<number[]>([]);
   const pickedIdxRef = useRef<number | null>(null);
   const suddenRef = useRef<SuddenDeathResult | null>(null);
   const suddenRoundRef = useRef(0);
   const suddenUntilRef = useRef(0);
   const declaredRef = useRef(false);
+  /** Signature of the currently seated roster, so we reseat only when it changes. */
+  const rosterSigRef = useRef('');
   const flashRef = useRef(0);
   const imgCacheRef = useRef<Map<number, HTMLImageElement>>(new Map());
 
   const dur = (ms: number) => ms * pokerSpeedFactor(speedRef.current);
+
+  /** Seat a list of people with no cards dealt — the lobby and post-game views. */
+  const seatRoster = (list: Entry[]) => {
+    const initials = computeInitials(list);
+    const all = propsRef.current.allEntries;
+    playersRef.current = list.map((entry, i) => {
+      const url = getPreferredEntryImage(entry);
+      if (url && !imgCacheRef.current.has(entry.id)) {
+        const im = new Image();
+        im.src = url;
+        imgCacheRef.current.set(entry.id, im);
+      }
+      const idxInAll = all.findIndex((e) => e.id === entry.id);
+      return {
+        entry,
+        color: generateColor(idxInAll < 0 ? i : idxInAll),
+        initials: initials[i],
+        hole: [],
+        hand: null,
+        dealt: false,
+      };
+    });
+    boardRef.current = [];
+    revealedRef.current = 0;
+    worstIdxRef.current = [];
+    bestIdxRef.current = [];
+    pickedIdxRef.current = null;
+    suddenRef.current = null;
+  };
 
   // ---- Round lifecycle ---------------------------------------------------
   const startRound = (now: number) => {
@@ -161,16 +212,18 @@ export function PokerGame(props: Props) {
         initials: initials[i],
         hole: hole[i],
         hand: null,
+        dealt: true,
       };
     });
     boardRef.current = board;
     revealedRef.current = 0;
-    spotlightRef.current = [];
-    otherEndRef.current = [];
+    worstIdxRef.current = [];
+    bestIdxRef.current = [];
     pickedIdxRef.current = null;
     suddenRef.current = null;
     suddenRoundRef.current = 0;
     declaredRef.current = false;
+    rosterSigRef.current = '';
     flashRef.current = 0;
     phaseRef.current = 'deal';
     phaseUntilRef.current = now + dur(T.deal);
@@ -185,13 +238,14 @@ export function PokerGame(props: Props) {
       pl.hand = evaluateSeven([...pl.hole, ...board]);
     }
     const hands = playersRef.current.map((pl) => pl.hand!).filter(Boolean);
-    const worst = weakestOf(hands);
-    const best = strongestOf(hands);
-    // Whichever end the rule picks from gets the loud marker.
-    const takesWorst = pickRef.current === 'worst';
-    spotlightRef.current = takesWorst ? worst : best;
-    otherEndRef.current = takesWorst ? best : worst;
+    // Both ends get called out: who is in danger and who is on top. Only one
+    // of them is the pick, but knowing both is what makes the board readable.
+    worstIdxRef.current = weakestOf(hands);
+    bestIdxRef.current = strongestOf(hands);
   };
+
+  /** The end of the table the active rule picks from. */
+  const spotlight = () => (pickRef.current === 'worst' ? worstIdxRef.current : bestIdxRef.current);
 
   const finishRound = () => {
     if (declaredRef.current) return;
@@ -201,7 +255,26 @@ export function PokerGame(props: Props) {
     const player = playersRef.current[idx];
     if (pickRef.current === 'worst') audio.playBust();
     else audio.playChips();
-    propsRef.current.onWinner(player.entry, player.hand?.name ?? 'HIGH CARD');
+
+    // Report both ends of the showdown so the dialog can show the winning and
+    // the losing cards side by side. The picked player's own cards matter here:
+    // after a sudden-death draw they are not necessarily the first tied seat,
+    // and two players can hold the same-value hand out of different cards.
+    const showdownOf = (i: number): PokerShowdownHand | undefined => {
+      const pl = playersRef.current[i];
+      return pl?.hand
+        ? { player: pl.entry.name, hand: pl.hand.name, cards: pl.hand.cards }
+        : undefined;
+    };
+    const otherEndIdxs = pickRef.current === 'worst' ? bestIdxRef.current : worstIdxRef.current;
+    const otherIdx = otherEndIdxs.find((i) => i !== idx);
+
+    const picked = showdownOf(idx);
+    if (!picked) return;
+    propsRef.current.onWinner(player.entry, {
+      picked,
+      other: otherIdx === undefined ? undefined : showdownOf(otherIdx),
+    });
   };
 
   // ---- Start / stop on the racing flag -----------------------------------
@@ -253,7 +326,7 @@ export function PokerGame(props: Props) {
           break;
         case 'river': {
           audio.playShowdown();
-          const tied = spotlightRef.current;
+          const tied = spotlight();
           if (tied.length > 1) {
             // Lowest card busts under the worst-hand rule; highest takes the
             // pot under the best-hand rule.
@@ -431,14 +504,15 @@ export function PokerGame(props: Props) {
 
       const takesWorst = pickRef.current === 'worst';
       const isPicked = pickedIdxRef.current === i;
-      // The marker on whoever the rule is currently pointing at.
-      const inSpotlight = !isPicked && spotlightRef.current.includes(i) && revealedRef.current >= 3;
-      const atOtherEnd = otherEndRef.current.includes(i) && revealedRef.current >= 3;
-      const settled = phaseRef.current === 'showdown' || phaseRef.current === 'done';
-      const dim = settled && !isPicked;
+      const scored = revealedRef.current >= 3;
+      // Both ends of the table are called out every street: who is in danger
+      // and who is on top. The active rule decides which one becomes the pick.
+      const atRisk = scored && worstIdxRef.current.includes(i);
+      const leading = scored && bestIdxRef.current.includes(i);
       // Busting is bad news (red); taking the pot is good news (gold).
       const pickHue = takesWorst ? '255,90,90' : '255,206,92';
-      const spotHue = takesWorst ? '255,170,60' : '255,214,102';
+      const RISK = '255,150,60';
+      const LEAD = '255,214,102';
 
       ctx.save();
       if (isPicked) {
@@ -448,24 +522,23 @@ export function PokerGame(props: Props) {
       }
       ctx.fillStyle = isPicked
         ? takesWorst ? 'rgba(92,22,26,0.96)' : 'rgba(74,58,16,0.96)'
-        : dim ? 'rgba(18,22,30,0.72)' : 'rgba(24,29,39,0.94)';
+        : atRisk ? 'rgba(46,28,20,0.94)'
+          : leading ? 'rgba(40,36,18,0.94)'
+            : 'rgba(24,29,39,0.94)';
       roundRect(x, y, tw, th, 9);
       ctx.fill();
       ctx.shadowBlur = 0;
       ctx.strokeStyle = isPicked
         ? `rgba(${pickHue},1)`
-        : inSpotlight
-          ? `rgba(${spotHue},0.95)`
-          : atOtherEnd
-            ? 'rgba(255,255,255,0.4)'
+        : atRisk ? `rgba(${RISK},0.95)`
+          : leading ? `rgba(${LEAD},0.95)`
             : 'rgba(255,255,255,0.14)';
-      ctx.lineWidth = isPicked || inSpotlight ? 2.4 : 1.2;
+      ctx.lineWidth = isPicked || atRisk || leading ? 2.2 : 1.2;
       roundRect(x, y, tw, th, 9);
       ctx.stroke();
       ctx.restore();
 
       ctx.save();
-      ctx.globalAlpha = dim ? 0.55 : 1;
 
       // Avatar disc (photo when there is one).
       const ax = x + 16;
@@ -501,43 +574,44 @@ export function PokerGame(props: Props) {
       ctx.textBaseline = 'middle';
       ctx.fillText(player.entry.name.toUpperCase(), x + 31, y + 17, tw - 37);
 
-      // Hole cards
+      // Hole cards. Once they are face up they stay fully legible — dimming
+      // the losing hands made them unreadable exactly when you want to read
+      // them. Seated-but-not-dealt players show two card backs.
       const cx0 = x + 8;
       const cy0 = y + 31;
       const faceUp = revealedRef.current >= 3;
-      player.hole.forEach((card, k) => {
-        drawCard(faceUp ? card : null, cx0 + k * (MINI_W + 3), cy0, MINI_W, MINI_H, { dim });
+      const backs: (Card | null)[] = player.dealt ? player.hole : [null, null];
+      backs.forEach((card, k) => {
+        drawCard(faceUp ? card : null, cx0 + k * (MINI_W + 3), cy0, MINI_W, MINI_H);
       });
 
       // Hand label
       if (player.hand) {
         ctx.fillStyle = isPicked
           ? takesWorst ? '#ffb3b3' : '#ffe9a8'
-          : inSpotlight ? `rgba(${spotHue},1)` : 'rgba(255,255,255,0.78)';
+          : atRisk ? `rgba(${RISK},1)`
+            : leading ? `rgba(${LEAD},1)`
+              : 'rgba(255,255,255,0.78)';
         ctx.font = `bold ${tw >= 104 ? 10 : 9}px system-ui, sans-serif`;
         ctx.textAlign = 'left';
         ctx.fillText(player.hand.shortLabel, cx0 + MINI_W * 2 + 10, cy0 + MINI_H / 2, tw - MINI_W * 2 - 20);
       }
 
-      // Status flags
-      if (inSpotlight) {
-        ctx.fillStyle = `rgba(${spotHue},0.95)`;
-        ctx.font = 'bold 8px system-ui, sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText(takesWorst ? 'AT RISK' : 'LEADING', x + tw - 7, y + 8);
-      } else if (atOtherEnd && !settled) {
-        // Quiet counterweight: the best hand while we hunt the worst, and
-        // vice versa. Useful context, deliberately not shouted.
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.font = 'bold 9px system-ui, sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText(takesWorst ? '♔' : '▽', x + tw - 8, y + 9);
-      }
+      // Status flags. A player can be both ends at once only in degenerate
+      // cases, so the pick and then the rule's own end win the label.
+      ctx.textAlign = 'right';
       if (isPicked) {
         ctx.fillStyle = takesWorst ? '#ff8080' : '#ffd76b';
         ctx.font = 'bold 9px system-ui, sans-serif';
-        ctx.textAlign = 'right';
         ctx.fillText(takesWorst ? 'BUSTED' : 'WINS', x + tw - 7, y + 8);
+      } else if (atRisk && (!leading || takesWorst)) {
+        ctx.fillStyle = `rgba(${RISK},0.95)`;
+        ctx.font = 'bold 8px system-ui, sans-serif';
+        ctx.fillText('AT RISK', x + tw - 7, y + 8);
+      } else if (leading) {
+        ctx.fillStyle = `rgba(${LEAD},0.95)`;
+        ctx.font = 'bold 8px system-ui, sans-serif';
+        ctx.fillText('LEADING', x + tw - 7, y + 8);
       }
       ctx.restore();
     };
@@ -624,9 +698,24 @@ export function PokerGame(props: Props) {
       advance(now);
       advanceSudden(now);
 
+      // Seat the room whenever no hand is in play: everybody before the first
+      // deal, and the whole field again once the session is over.
+      const p = propsRef.current;
+      const sessionOver = p.entries.length === 0 && !!p.currentWinner;
+      if (!p.isRacing && (phaseRef.current === 'ready' || sessionOver)) {
+        const list = sessionOver ? p.allEntries : p.entries;
+        // The two views can hold identical id lists (nobody eliminated yet vs
+        // everybody eliminated), so the tag has to be part of the signature.
+        const signature = `${sessionOver ? 'end' : 'lobby'}:${list.map((e) => e.id).join(',')}`;
+        if (signature !== rosterSigRef.current) {
+          rosterSigRef.current = signature;
+          seatRoster(list);
+        }
+      }
+
       drawTable(now);
 
-      if (phaseRef.current === 'ready' && playersRef.current.length === 0) {
+      if (playersRef.current.length === 0) {
         drawIdle();
         raf = requestAnimationFrame(loop);
         return;
@@ -671,12 +760,26 @@ export function PokerGame(props: Props) {
   const cw = props.currentWinner;
   const takesWorst = settings.pick === 'worst';
   const details =
-    cw && !cw.isLastPlayer && cw.handName ? (
-      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.3, gap: 1 }}>
-        <span style={{ fontSize: '0.8em', opacity: 0.75, letterSpacing: '0.06em' }}>
-          {takesWorst ? '💀 BUSTED WITH' : '🏆 WON WITH'}
+    cw && !cw.isLastPlayer && cw.picked ? (
+      <span className="poker-showdown">
+        <span className="poker-showdown__block">
+          <span className="poker-showdown__label">
+            {takesWorst ? '💀 BUSTED WITH' : '🏆 WON WITH'}
+          </span>
+          <span className="poker-showdown__hand">{cw.picked.hand}</span>
+          <PokerHandStrip cards={cw.picked.cards} />
         </span>
-        <span style={{ fontSize: '1.2em', fontWeight: 800 }}>🃏 {cw.handName}</span>
+        {cw.other && (
+          <span className="poker-showdown__block poker-showdown__block--other">
+            <span className="poker-showdown__label">
+              {takesWorst ? '🏆 BEST HAND' : '💀 WORST HAND'} — {cw.other.player}
+            </span>
+            <span className="poker-showdown__hand poker-showdown__hand--other">
+              {cw.other.hand}
+            </span>
+            <PokerHandStrip cards={cw.other.cards} />
+          </span>
+        )}
       </span>
     ) : undefined;
 
@@ -699,6 +802,9 @@ export function PokerGame(props: Props) {
         finalsHeadline={takesWorst ? '🏆 LAST ONE STANDING 🏆' : '🃏 LAST TO BE DEALT IN'}
         nextLabel="🃏 Next Hand"
         detailsNode={details}
+        // No instant replay in this mode, so there is nothing to uncover by
+        // shrinking the card — it stays up until the player acts on it.
+        autoMinimize={false}
         onNext={props.onRaceComplete}
         onShowFinalStandings={() => props.onShowFinalStandings?.()}
       />

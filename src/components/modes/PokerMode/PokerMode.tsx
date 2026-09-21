@@ -3,7 +3,7 @@ import type { Entry } from '../../../types';
 import type { ModeViewProps } from '../types';
 import { pokerTheme } from '../themes';
 import { getEntryImages, getPreferredEntryImage } from '../../../utils/entryImages';
-import { PokerGame, type PokerWinnerDisplay } from './PokerGame';
+import { PokerGame, type PokerRoundResult, type PokerWinnerDisplay } from './PokerGame';
 import { usePokerSettings } from './pokerSettingsStore';
 import './PokerGame.css';
 
@@ -76,8 +76,9 @@ export function PokerMode({
     }
   }, [currentWinner]);
 
-  // PokerGame reports whichever player the active rule singled out.
-  const handleWinner = (picked: Entry, handName: string) => {
+  // PokerGame reports whichever player the active rule singled out, plus both
+  // ends of the showdown so the dialog can contrast them.
+  const handleWinner = (picked: Entry, result: PokerRoundResult) => {
     const images = getEntryImages(picked);
     setWinnerDisplay({
       name: picked.name,
@@ -86,7 +87,8 @@ export function PokerMode({
       isLastPlayer: false,
       // Under the best-hand rule the first pot taken is the overall win.
       isChampion: pick === 'best' && winOrder.size === 0,
-      handName,
+      picked: result.picked,
+      other: result.other,
     });
     onWinner(picked);
   };

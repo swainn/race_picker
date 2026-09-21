@@ -24,3 +24,76 @@
   display: block;
 }
 
+
+/* ---- Showdown detail inside the winner dialog ------------------------- */
+.poker-showdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.poker-showdown__block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.poker-showdown__block--other {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  width: 100%;
+}
+
+.poker-showdown__label {
+  font-size: 0.8em;
+  opacity: 0.75;
+  letter-spacing: 0.06em;
+}
+
+.poker-showdown__hand {
+  font-size: 1.12em;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.poker-showdown__hand--other {
+  font-size: 0.95em;
+  font-weight: 700;
+  opacity: 0.88;
+}
+
+.poker-hand-strip {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.poker-mini-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 34px;
+  border-radius: 3px;
+  background: #f6f4ee;
+  color: #16181f;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.poker-mini-card--red {
+  color: #c8102e;
+}
+
+.poker-mini-card__rank {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.poker-mini-card__suit {
+  font-size: 11px;
+  margin-top: 1px;
+}
