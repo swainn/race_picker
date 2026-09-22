@@ -26,7 +26,6 @@ import { DefendersSettings } from './SpaceInvadersMode/DefendersSettings';
 import { DuelSettings } from './DuelMode/DuelSettings';
 import { AlienAbductionSettings } from './AlienAbductionMode/AlienAbductionSettings';
 import { PokerSettings } from './PokerMode/PokerSettings';
-import { getPokerPick } from './PokerMode/pokerSettingsStore';
 
 // Mode views are code-split: each mode's chunk (engine, drawing, audio, CSS)
 // loads on first use instead of in the initial bundle. Settings panels stay
@@ -69,20 +68,10 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   'space-defenders': { View: DefendersMode, Settings: DefendersSettings, theme: defendersTheme, label: '🛡️ Space Defenders', survivalOrder: true },
   'street-duel':     { View: DuelMode,      Settings: DuelSettings,      theme: duelTheme,      label: '🥊 Street Duel', survivalOrder: true },
   'alien-abduction': { View: AlienAbductionMode, Settings: AlienAbductionSettings, theme: alienAbductionTheme, label: '🛸 Alien Abduction' },
-  poker: {
-    View: PokerMode,
-    Settings: PokerSettings,
-    theme: pokerTheme,
-    label: '🃏 Poker Night',
-    // The only dynamic entry in the registry. Poker's pick rule is a setting,
-    // and the two rules need opposite standings ordering: busting the worst
-    // hand records eliminations (first out finishes last), while awarding the
-    // pot to the best hand records placements (first picked finishes first).
-    // App reads this at render time, so a getter is enough.
-    get survivalOrder() {
-      return getPokerPick() === 'worst';
-    },
-  },
+  // Poker renders its own standings — ranked by pots won so the leaderboard
+  // reads the same under either pick rule — so the shared dialog's ordering
+  // never applies here. See PokerStandingsDialog.
+  poker:             { View: PokerMode,      Settings: PokerSettings,      theme: pokerTheme,      label: '🃏 Poker Night', survivalOrder: true },
 };
 
 export const MODE_LIST: { value: GameMode; label: string }[] =

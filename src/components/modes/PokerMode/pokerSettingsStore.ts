@@ -60,18 +60,6 @@ export function usePokerSettings(): PokerSettings {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
-/**
- * Non-hook read of the pick rule, for `registry.ts`.
- *
- * The two rules need opposite standings ordering — with `worst`, the first
- * player picked finished last; with `best`, they finished first — so the
- * registry's `survivalOrder` has to follow this setting rather than be a fixed
- * value. See the getter on the poker entry.
- */
-export function getPokerPick(): PokerPick {
-  return current.pick;
-}
-
 /** Multiplier on every phase duration. */
 export function pokerSpeedFactor(speed: PokerSpeed): number {
   return speed === 'slow' ? 1.45 : speed === 'fast' ? 0.62 : 1;

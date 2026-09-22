@@ -65,6 +65,8 @@ interface Props {
   entries: Entry[];
   allEntries: Entry[];
   onWinner: (picked: Entry, result: PokerRoundResult) => void;
+  /** Entry ids that held the best hand this showdown (a split pot counts for all). */
+  onPotWon?: (entryIds: number[]) => void;
   onRaceComplete: () => void;
   onShowFinalStandings?: () => void;
   isRacing: boolean;
@@ -271,6 +273,14 @@ export function PokerGame(props: Props) {
 
     const picked = showdownOf(idx);
     if (!picked) return;
+
+    // The pot goes to the best hand regardless of which rule is picking, so
+    // the leaderboard means the same thing under either setting.
+    const potWinners = bestIdxRef.current
+      .map((i) => playersRef.current[i]?.entry.id)
+      .filter((id): id is number => id !== undefined);
+    if (potWinners.length > 0) propsRef.current.onPotWon?.(potWinners);
+
     propsRef.current.onWinner(player.entry, {
       picked,
       other: otherIdx === undefined ? undefined : showdownOf(otherIdx),

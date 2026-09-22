@@ -97,3 +97,18 @@
   font-size: 11px;
   margin-top: 1px;
 }
+
+/* ---- Poker's own standings dialog ------------------------------------ */
+.poker-standings-note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  opacity: 0.75;
+  text-align: center;
+}
+
+.poker-standing-wins {
+  margin-left: auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

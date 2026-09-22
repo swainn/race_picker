@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
 import type { ModeViewProps } from '../types';
 import { pokerTheme } from '../themes';
 import { getEntryImages, getPreferredEntryImage } from '../../../utils/entryImages';
 import { PokerGame, type PokerRoundResult, type PokerWinnerDisplay } from './PokerGame';
 import { usePokerSettings } from './pokerSettingsStore';
+import { PokerStandingsDialog } from './PokerStandingsDialog';
 import './PokerGame.css';
 
 /**
@@ -21,12 +22,21 @@ export function PokerMode({
   currentWinner,
   onWinner,
   onRaceComplete,
-  onShowFinalStandings,
   onStartRace,
   onResetRace,
 }: ModeViewProps) {
   const [winnerDisplay, setWinnerDisplay] = useState<PokerWinnerDisplay | null>(null);
+  /** Snapshot of pots won, taken when the standings open (null = closed). */
+  const [standings, setStandings] = useState<Map<number, number> | null>(null);
+  /** Pots won per entry across the session. Updated from the game loop, so it
+   *  lives in a ref and is only read when the standings are opened. */
+  const potsRef = useRef<Map<number, number>>(new Map());
   const { pick } = usePokerSettings();
+
+  const handlePotWon = useCallback((entryIds: number[]) => {
+    const m = potsRef.current;
+    for (const id of entryIds) m.set(id, (m.get(id) ?? 0) + 1);
+  }, []);
 
   // The two pick rules read `winOrder` in opposite directions — first picked
   // finishes last under 'worst', first under 'best' — so results recorded
@@ -43,6 +53,8 @@ export function PokerMode({
     if (eliminatedIds.length === 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- synced from parent-driven prop transitions
       setWinnerDisplay(null);
+      setStandings(null);
+      potsRef.current = new Map();
     }
   }, [eliminatedIds.length]);
 
@@ -113,11 +125,22 @@ export function PokerMode({
         entries={entries}
         allEntries={allEntries}
         onWinner={handleWinner}
+        onPotWon={handlePotWon}
         onRaceComplete={onRaceComplete}
-        onShowFinalStandings={onShowFinalStandings}
+        onShowFinalStandings={() => setStandings(new Map(potsRef.current))}
         isRacing={isRacing}
         currentWinner={winnerDisplay}
       />
+
+      {standings && (
+        <PokerStandingsDialog
+          entries={allEntries}
+          wins={standings}
+          winOrder={winOrder}
+          survivalOrder={pick === 'worst'}
+          onClose={() => setStandings(null)}
+        />
+      )}
     </div>
   );
 }
