@@ -11,8 +11,7 @@
   position: relative;
   display: block;
   aspect-ratio: 840 / 600;
-  width: min(100%, calc((100svh - 240px) * (840 / 600)), calc(100vw - 64px));
-  max-width: 900px;
+  width: 100%;
 }
 
 .poker-canvas-host .game-canvas {
@@ -111,4 +110,151 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* ---- Layout: reference chart below the table ------------------------- */
+.poker-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  /* One width for the table and the chart beneath it. The vertical reserve
+     covers the page chrome above plus the chart below, so the whole thing
+     fits without scrolling. */
+  width: min(100%, calc((100svh - 340px) * (840 / 600)), calc(100vw - 64px));
+  max-width: 900px;
+}
+
+/* Collapsed, the chart is a thin bar, so the table can have the room back. */
+.poker-layout:has(.poker-ranks--collapsed) {
+  width: min(100%, calc((100svh - 250px) * (840 / 600)), calc(100vw - 64px));
+}
+
+.poker-ranks {
+  width: 100%;
+  background: rgba(18, 24, 20, 0.85);
+  border: 1px solid rgba(232, 185, 74, 0.25);
+  border-radius: 10px;
+  padding: 6px 10px 8px;
+  color: #e9e6df;
+}
+
+.poker-ranks--collapsed {
+  padding: 7px 12px;
+}
+
+.poker-ranks__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.poker-ranks__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: #e8b94a;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.poker-ranks__toggle:hover {
+  color: #ffd76b;
+}
+
+.poker-ranks__chevron {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.poker-ranks__hint {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  white-space: nowrap;
+}
+
+/* Ten hands across; wraps to a second line when the table is narrow. */
+.poker-ranks__list {
+  list-style: none;
+  margin: 7px 0 0;
+  padding: 0;
+  display: flex;
+  flex-flow: row wrap;
+  justify-content: center;
+  /* Sized so ten hands land in two rows at the table's width. */
+  gap: 8px 10px;
+}
+
+.poker-ranks__row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.poker-ranks__index {
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.45;
+  margin-right: 4px;
+}
+
+.poker-ranks__label {
+  font-size: 9px;
+  font-weight: 600;
+  opacity: 0.88;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+.poker-hand-strip--compact {
+  gap: 2px;
+}
+
+.poker-hand-strip--compact .poker-mini-card {
+  width: 17px;
+  height: 23px;
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.poker-hand-strip--compact .poker-mini-card__rank {
+  font-size: 9px;
+}
+
+.poker-hand-strip--compact .poker-mini-card__suit {
+  font-size: 8px;
+  margin-top: 0;
+}
+
+/* Sudden-death line inside the showdown detail. */
+.poker-showdown__tiebreak {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.18);
+  width: 100%;
+}
+
+.poker-showdown__tiebreak-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.poker-showdown__tiebreak-text {
+  font-size: 0.82em;
+  opacity: 0.8;
+  letter-spacing: 0.03em;
 }

@@ -101,6 +101,7 @@ export function PokerMode({
       isChampion: pick === 'best' && winOrder.size === 0,
       picked: result.picked,
       other: result.other,
+      tiebreak: result.tiebreak,
     });
     onWinner(picked);
   };

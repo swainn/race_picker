@@ -27,6 +27,7 @@ import {
   suddenDeathLayout,
 } from './pokerTable';
 import { usePokerSettings, pokerSpeedFactor } from './pokerSettingsStore';
+import { PokerHandRanks } from './PokerHandRanks';
 import { PokerHandStrip } from './PokerHandStrip';
 import * as audio from './pokerAudio';
 import './PokerGame.css';
@@ -38,12 +39,24 @@ export interface PokerShowdownHand {
   cards: Card[];
 }
 
+/** How a sudden-death draw resolved, when one was needed. */
+export interface PokerTiebreak {
+  /** How many players were tied going into the draw. */
+  contenders: number;
+  /** The card the picked player drew. */
+  card: Card;
+  /** Draw rounds it took — more than one means the draw itself tied. */
+  rounds: number;
+}
+
 /** What the game reports when a hand resolves. */
 export interface PokerRoundResult {
   /** The player the rule singled out, with their own five cards. */
   picked: PokerShowdownHand;
   /** The opposite end of the table, for contrast. Absent if it is the same player. */
   other?: PokerShowdownHand;
+  /** Present only when the hand was settled by a sudden-death draw. */
+  tiebreak?: PokerTiebreak;
 }
 
 export interface PokerWinnerDisplay {
@@ -58,6 +71,8 @@ export interface PokerWinnerDisplay {
   picked?: PokerShowdownHand;
   /** The opposite end of that showdown. */
   other?: PokerShowdownHand;
+  /** Set when a sudden-death draw decided it. */
+  tiebreak?: PokerTiebreak;
 }
 
 interface Props {
@@ -274,6 +289,15 @@ export function PokerGame(props: Props) {
     const picked = showdownOf(idx);
     if (!picked) return;
 
+    // If a sudden-death draw settled this, report the card that did it.
+    const sd = suddenRef.current;
+    const lastRound = sd?.rounds[sd.rounds.length - 1];
+    const drawn = lastRound?.draws.find((d) => d.id === idx)?.card;
+    const tiebreak: PokerTiebreak | undefined =
+      sd && drawn
+        ? { contenders: sd.rounds[0].draws.length, card: drawn, rounds: sd.rounds.length }
+        : undefined;
+
     // The pot goes to the best hand regardless of which rule is picking, so
     // the leaderboard means the same thing under either setting.
     const potWinners = bestIdxRef.current
@@ -284,6 +308,7 @@ export function PokerGame(props: Props) {
     propsRef.current.onWinner(player.entry, {
       picked,
       other: otherIdx === undefined ? undefined : showdownOf(otherIdx),
+      tiebreak,
     });
   };
 
@@ -778,6 +803,20 @@ export function PokerGame(props: Props) {
           </span>
           <span className="poker-showdown__hand">{cw.picked.hand}</span>
           <PokerHandStrip cards={cw.picked.cards} />
+          {cw.tiebreak && (
+            <span className="poker-showdown__tiebreak">
+              <span className="poker-showdown__label">
+                ⚔️ SUDDEN DEATH — {cw.tiebreak.contenders} TIED
+                {cw.tiebreak.rounds > 1 ? `, ${cw.tiebreak.rounds} DRAWS` : ''}
+              </span>
+              <span className="poker-showdown__tiebreak-row">
+                <PokerHandStrip cards={[cw.tiebreak.card]} compact />
+                <span className="poker-showdown__tiebreak-text">
+                  {takesWorst ? 'drew lowest' : 'drew highest'}
+                </span>
+              </span>
+            </span>
+          )}
         </span>
         {cw.other && (
           <span className="poker-showdown__block poker-showdown__block--other">
@@ -795,8 +834,11 @@ export function PokerGame(props: Props) {
 
   return (
     <div className="poker-game">
-      <div className="poker-canvas-host">
-        <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} className="game-canvas" />
+      <div className="poker-layout">
+        <div className="poker-canvas-host">
+          <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} className="game-canvas" />
+        </div>
+        <PokerHandRanks />
       </div>
 
       <WinnerDialog

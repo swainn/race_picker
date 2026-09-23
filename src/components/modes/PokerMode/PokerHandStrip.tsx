@@ -1,10 +1,13 @@
 import { SUIT_IS_RED, SUIT_SYMBOL, rankLabel, type Card } from './pokerDeck';
 
-/** The five cards of a showdown hand, as small faces for the winner dialog. */
-export function PokerHandStrip({ cards }: { cards: Card[] }) {
+/** The cards of a hand, as small faces. `compact` suits the reference chart. */
+export function PokerHandStrip({ cards, compact }: { cards: Card[]; compact?: boolean }) {
   if (cards.length === 0) return null;
   return (
-    <span className="poker-hand-strip" aria-hidden="true">
+    <span
+      className={`poker-hand-strip${compact ? ' poker-hand-strip--compact' : ''}`}
+      aria-hidden="true"
+    >
       {cards.map((card, i) => (
         <span
           key={`${card.rank}${card.suit}-${i}`}

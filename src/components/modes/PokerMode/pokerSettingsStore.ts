@@ -12,9 +12,16 @@ export interface PokerSettings {
   speed: PokerSpeed;
   sound: boolean;
   pick: PokerPick;
+  /** Whether the hand-ranking reference chart is expanded. */
+  showRanks: boolean;
 }
 
-const DEFAULT_SETTINGS: PokerSettings = { speed: 'normal', sound: true, pick: 'worst' };
+const DEFAULT_SETTINGS: PokerSettings = {
+  speed: 'normal',
+  sound: true,
+  pick: 'worst',
+  showRanks: true,
+};
 
 function loadSettings(): PokerSettings {
   try {
@@ -24,7 +31,7 @@ function loadSettings(): PokerSettings {
     const speed: PokerSpeed =
       parsed.speed === 'slow' || parsed.speed === 'fast' ? parsed.speed : 'normal';
     const pick: PokerPick = parsed.pick === 'best' ? 'best' : 'worst';
-    return { speed, sound: parsed.sound ?? true, pick };
+    return { speed, sound: parsed.sound ?? true, pick, showRanks: parsed.showRanks ?? true };
   } catch {
     return DEFAULT_SETTINGS;
   }
