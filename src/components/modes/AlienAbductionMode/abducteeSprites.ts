@@ -147,16 +147,80 @@ function drawCow(ctx: CanvasRenderingContext2D, color: string, o: SpriteOptions)
   ctx.fill();
 }
 
+function drawHorse(ctx: CanvasRenderingContext2D, color: string, o: SpriteOptions) {
+  const swing = o.lifted ? Math.sin(o.phase * 2) * 0.3 : Math.sin(o.phase) * 0.95;
+  const dark = darken(color, 0.55);
+
+  // Long legs — the tallest of the farm set, opposite of the sheep.
+  runLegs(ctx, -6, -13, 13, swing, 1.5, darken(color, 0.62), 2.4);
+  runLegs(ctx, 7, -13, 13, -swing, 1.5, darken(color, 0.62), 2.4);
+
+  // Barrel
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(0, -20, 12.5, 6.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Neck sweeping up to the head
+  ctx.beginPath();
+  ctx.moveTo(6, -24);
+  ctx.lineTo(10, -31);
+  ctx.lineTo(15, -30);
+  ctx.lineTo(12, -20);
+  ctx.closePath();
+  ctx.fill();
+
+  // Head
+  ctx.beginPath();
+  ctx.ellipse(16.5, -31, 5, 2.9, -0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Muzzle
+  ctx.fillStyle = darken(color, 0.3);
+  ctx.beginPath();
+  ctx.ellipse(20.5, -28.8, 2.3, 1.8, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ear
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(13.5, -34);
+  ctx.lineTo(13, -37.5);
+  ctx.lineTo(15.5, -35);
+  ctx.closePath();
+  ctx.fill();
+
+  // Mane
+  legStroke(ctx, dark, 2.2);
+  ctx.beginPath();
+  ctx.moveTo(12.5, -35);
+  ctx.quadraticCurveTo(8.5, -30, 6.5, -24);
+  ctx.stroke();
+
+  // Tail — streams out behind when the beam has hold of them
+  legStroke(ctx, dark, 2);
+  ctx.beginPath();
+  ctx.moveTo(-12, -23);
+  ctx.quadraticCurveTo(-18, -20, -17, -12 + (o.lifted ? -6 : 0));
+  ctx.stroke();
+
+  // Eye
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.arc(17.5, -32, 1, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawChicken(ctx: CanvasRenderingContext2D, color: string, o: SpriteOptions) {
   const swing = o.lifted ? Math.sin(o.phase * 3) * 0.5 : Math.sin(o.phase * 1.6) * 1.1;
 
-  // Skinny legs
-  runLegs(ctx, 0, -9, 9, swing, 1.2, '#f0a020', 1.8);
+  // Short scratchy legs, stance wide enough to read as two.
+  runLegs(ctx, 0, -6, 6, swing, 2.2, '#f0a020', 1.8);
 
   // Body
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.ellipse(0, -15, 8, 7, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, -13, 8, 7, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Wing — flapping hard while airborne
@@ -164,58 +228,59 @@ function drawChicken(ctx: CanvasRenderingContext2D, color: string, o: SpriteOpti
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   const flap = o.lifted ? Math.sin(o.phase * 6) * 4 : Math.sin(o.phase * 2) * 1.5;
-  ctx.ellipse(-1, -15 - flap * 0.4, 4.5, 3, flap * 0.15, 0, Math.PI * 2);
+  ctx.ellipse(-1, -13 - flap * 0.4, 4.5, 3, flap * 0.15, 0, Math.PI * 2);
   ctx.stroke();
 
   // Tail feathers
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.moveTo(-7, -17);
-  ctx.lineTo(-14, -23);
-  ctx.lineTo(-13, -16);
+  ctx.moveTo(-7, -15);
+  ctx.lineTo(-14, -21);
+  ctx.lineTo(-13, -14);
   ctx.closePath();
   ctx.fill();
 
   // Head
   ctx.beginPath();
-  ctx.arc(6, -22, 4, 0, Math.PI * 2);
+  ctx.arc(6, -20, 4, 0, Math.PI * 2);
   ctx.fill();
 
   // Comb + wattle
   ctx.fillStyle = '#e63b2e';
   ctx.beginPath();
-  ctx.arc(5, -26, 1.6, 0, Math.PI * 2);
-  ctx.arc(7.5, -26.5, 1.4, 0, Math.PI * 2);
-  ctx.arc(7, -18.5, 1.3, 0, Math.PI * 2);
+  ctx.arc(5, -24, 1.6, 0, Math.PI * 2);
+  ctx.arc(7.5, -24.5, 1.4, 0, Math.PI * 2);
+  ctx.arc(7, -16.5, 1.3, 0, Math.PI * 2);
   ctx.fill();
 
   // Beak
   ctx.fillStyle = '#f0a020';
   ctx.beginPath();
-  ctx.moveTo(9.5, -22.5);
-  ctx.lineTo(14, -21);
-  ctx.lineTo(9.5, -20);
+  ctx.moveTo(9.5, -20.5);
+  ctx.lineTo(14, -19);
+  ctx.lineTo(9.5, -18);
   ctx.closePath();
   ctx.fill();
 
   // Eye
   ctx.fillStyle = '#222';
   ctx.beginPath();
-  ctx.arc(7, -23.5, 0.9, 0, Math.PI * 2);
+  ctx.arc(7, -21.5, 0.9, 0, Math.PI * 2);
   ctx.fill();
 }
 
 function drawSheep(ctx: CanvasRenderingContext2D, color: string, o: SpriteOptions) {
   const swing = o.lifted ? Math.sin(o.phase * 2) * 0.3 : Math.sin(o.phase) * 0.85;
 
-  runLegs(ctx, -4, -12, 12, swing, 1.4, '#37343a', 2.2);
-  runLegs(ctx, 5, -12, 12, -swing, 1.4, '#37343a', 2.2);
+  // Stubby legs under a low-hanging fleece — a sheep is mostly wool.
+  runLegs(ctx, -4, -7, 7, swing, 1.4, '#37343a', 2.2);
+  runLegs(ctx, 5, -7, 7, -swing, 1.4, '#37343a', 2.2);
 
   // Fluffy wool — overlapping puffs
   ctx.fillStyle = '#f4f1ea';
   ctx.beginPath();
   for (let i = -2; i <= 2; i++) {
-    ctx.arc(i * 4.2, -19 + (i % 2 === 0 ? 0 : -2), 5.5, 0, Math.PI * 2);
+    ctx.arc(i * 4.2, -13 + (i % 2 === 0 ? 0 : -2), 5.5, 0, Math.PI * 2);
   }
   ctx.fill();
 
@@ -223,24 +288,24 @@ function drawSheep(ctx: CanvasRenderingContext2D, color: string, o: SpriteOption
   ctx.strokeStyle = color;
   ctx.lineWidth = 2.5;
   ctx.beginPath();
-  ctx.arc(9, -23, 3.5, -0.4, 1.6);
+  ctx.arc(9, -17, 3.5, -0.4, 1.6);
   ctx.stroke();
 
   // Head
   ctx.fillStyle = '#37343a';
   ctx.beginPath();
-  ctx.ellipse(12, -25, 4.2, 3.4, -0.3, 0, Math.PI * 2);
+  ctx.ellipse(12, -19, 4.2, 3.4, -0.3, 0, Math.PI * 2);
   ctx.fill();
 
   // Ear
   ctx.beginPath();
-  ctx.ellipse(9.5, -27.5, 2.4, 1.3, 0.6, 0, Math.PI * 2);
+  ctx.ellipse(9.5, -21.5, 2.4, 1.3, 0.6, 0, Math.PI * 2);
   ctx.fill();
 
   // Eye
   ctx.fillStyle = '#fff';
   ctx.beginPath();
-  ctx.arc(13.5, -26, 1, 0, Math.PI * 2);
+  ctx.arc(13.5, -20, 1, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -487,6 +552,7 @@ const SPRITES: Record<
 > = {
   human: drawHuman,
   cow: drawCow,
+  horse: drawHorse,
   chicken: drawChicken,
   sheep: drawSheep,
   pig: drawPig,

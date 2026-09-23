@@ -4,7 +4,7 @@ import { useAlienAbductionSettings } from './alienAbductionSettingsStore';
 import './AlienAbductionMode.css';
 
 export function AlienAbductionMode(props: ModeViewProps) {
-  const { subMode, hazards } = useAlienAbductionSettings();
+  const { subMode, hazards, sound, music } = useAlienAbductionSettings();
   const {
     entries,
     allEntries,
@@ -43,6 +43,8 @@ export function AlienAbductionMode(props: ModeViewProps) {
         currentWinner={currentWinner}
         mode={subMode}
         hazards={hazards}
+        sound={sound}
+        music={music}
       />
     </div>
   );

@@ -74,6 +74,13 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   poker:             { View: PokerMode,      Settings: PokerSettings,      theme: pokerTheme,      label: '🃏 Poker Night', survivalOrder: true },
 };
 
+/** Labels lead with an emoji, so sort on the name that follows it. */
+function modeSortKey(label: string): string {
+  return label.replace(/^[^\p{L}]+/u, '').toLocaleLowerCase();
+}
+
+/** The dropdown, in alphabetical order by mode name. */
 export const MODE_LIST: { value: GameMode; label: string }[] =
   (Object.entries(MODE_REGISTRY) as [GameMode, ModeRegistryEntry][])
-    .map(([value, entry]) => ({ value, label: entry.label }));
+    .map(([value, entry]) => ({ value, label: entry.label }))
+    .sort((a, b) => modeSortKey(a.label).localeCompare(modeSortKey(b.label)));

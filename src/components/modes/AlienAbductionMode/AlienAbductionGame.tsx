@@ -6,6 +6,7 @@ import { shuffle } from '../../../utils/array';
 import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import { alienAbductionTheme } from '../themes';
 import { ABDUCTEE_KINDS, drawAbductee, drawAlien, drawDisguise } from './abducteeSprites';
+import { FARM_KINDS } from './alienAbductionSettingsStore';
 import type { AbducteeKind, AlienAbductionSubMode, HazardMode } from './alienAbductionSettingsStore';
 import {
   CANVAS_WIDTH,
@@ -17,6 +18,7 @@ import {
   stepProwl,
   type ProwlState,
 } from './abductionField';
+import * as audio from './alienAbductionAudio';
 import './AlienAbductionGame.css';
 
 const CANVAS_HEIGHT = 600;
@@ -130,6 +132,8 @@ interface Reveal {
   id: number;
   t: number;
   puffed: boolean;
+  /** One-shot guard so the departure sting only plays once. */
+  departed: boolean;
 }
 
 interface Props {
@@ -142,6 +146,8 @@ interface Props {
   currentWinner: string | null;
   mode: AlienAbductionSubMode;
   hazards: HazardMode;
+  sound: boolean;
+  music: boolean;
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
@@ -200,11 +206,18 @@ function computeInitials(entries: Entry[]): string[] {
 }
 
 function assignKinds(count: number, mode: AlienAbductionSubMode): AbducteeKind[] {
-  if (mode !== 'mixed') return Array.from({ length: count }, () => mode);
+  // Every other sub-mode puts the whole field in one costume.
+  if (mode !== 'farm' && mode !== 'mixed') {
+    return Array.from({ length: count }, () => mode);
+  }
+  // 'farm' and 'mixed' deal from a bag so the field is varied rather than
+  // clumpy: everything comes up once before anything repeats.
+  const bag = mode === 'farm' ? FARM_KINDS : ABDUCTEE_KINDS;
+
   const assignments: AbducteeKind[] = [];
-  let pool = shuffle(ABDUCTEE_KINDS);
+  let pool = shuffle(bag);
   for (let i = 0; i < count; i++) {
-    if (pool.length === 0) pool = shuffle(ABDUCTEE_KINDS);
+    if (pool.length === 0) pool = shuffle(bag);
     assignments.push(pool.pop() as AbducteeKind);
   }
   return assignments;
@@ -249,8 +262,23 @@ export const AlienAbductionGame: React.FC<Props> = ({
   currentWinner,
   mode,
   hazards,
+  sound,
+  music,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    audio.setAbductionMuted(!sound);
+  }, [sound]);
+  useEffect(() => {
+    audio.setAbductionMusicMuted(!music);
+  }, [music]);
+  // The hum and the loop are the only things that outlive a frame, so make
+  // sure leaving the mode silences them.
+  useEffect(() => () => {
+    audio.stopBeamHum();
+    audio.stopTrack();
+  }, []);
 
   const runnersRef = useRef<Runner[]>([]);
   const shipRef = useRef<Ship>(makeShip());
@@ -337,8 +365,12 @@ export const AlienAbductionGame: React.FC<Props> = ({
         hasWind: hazards === 'random' ? Math.random() < 0.6 : hazards === 'wind',
         declared: false,
       };
+      audio.resumeAbductionAudio();
+      audio.playArrive();
+      audio.startTrack();
     } else if (race.state === 'racing') {
       raceRef.current = { ...race, state: 'ready' };
+      audio.stopBeamHum();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only the racing flag should start/stop a round
   }, [isRacing]);
@@ -354,7 +386,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
     survivor.grace = 0;
     survivor.abductT = 0;
     survivor.y = GROUND_Y;
-    revealRef.current = { id: survivor.entry.id, t: 0, puffed: false };
+    revealRef.current = { id: survivor.entry.id, t: 0, puffed: false, departed: false };
     raceRef.current = { ...raceRef.current, state: 'reveal' };
   }, [isFinale, currentWinner]);
 
@@ -400,6 +432,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
     };
 
     const escape = (runner: Runner, text: string, color: string, kick: number) => {
+      audio.playEscape();
       runner.state = 'falling';
       runner.fallV = -60;
       runner.driftV = kick;
@@ -469,9 +502,18 @@ export const AlienAbductionGame: React.FC<Props> = ({
       const wantsLow = reveal.t >= REVEAL_DESCEND && reveal.t < REVEAL_DEPART;
       ship.yOffset += ((wantsLow ? SHIP_LOW_OFFSET : 0) - ship.yOffset) * clamp(dt * 1.1, 0, 1);
 
+      if (!reveal.departed && reveal.t >= REVEAL_DEPART) {
+        reveal.departed = true;
+        audio.stopBeamHum();
+        audio.playDepart();
+        audio.playFanfare();
+        audio.stopTrack();
+      }
+
       if (!reveal.puffed && reveal.t >= REVEAL_MORPH) {
         reveal.puffed = true;
         ship.flash = 0.7;
+        audio.playMorph();
         for (let i = 0; i < 26; i++) {
           const angle = (i / 26) * Math.PI * 2;
           dustRef.current.push({
@@ -533,6 +575,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
       if (wind.timer <= 0) {
         const gustsAllowed = live && race.hasWind && rage < 0.9;
         if (gustsAllowed && Math.random() < 0.5) {
+          audio.playGust();
           wind.target = 110 + Math.random() * 130;
           wind.dir = Math.random() < 0.5 ? -1 : 1;
           wind.timer = 0.9 + Math.random() * 1.2;
@@ -559,6 +602,8 @@ export const AlienAbductionGame: React.FC<Props> = ({
           ship.beamOn = true;
           ship.beamOnAt = now;
           ship.flash = Math.max(ship.flash, 0.55); // the port lights up
+          audio.playBeamOn();
+          audio.startBeamHum();
           // A puff of dust kicks up under the fresh beam.
           for (let i = 0; i < 10; i++) {
             dustRef.current.push({
@@ -623,6 +668,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
             ) {
               runner.state = 'beamed';
               runner.liftV = 0;
+              audio.playCapture();
               for (let i = 0; i < 8; i++) {
                 dustRef.current.push({
                   x: runner.x + (Math.random() - 0.5) * 14,
@@ -661,6 +707,8 @@ export const AlienAbductionGame: React.FC<Props> = ({
               runner.state = 'abducted';
               runner.abductT = 0;
               ship.flash = 0.8;
+              audio.playAbducted();
+              audio.stopBeamHum();
             }
             break;
           }

@@ -2,12 +2,14 @@ import {
   ALIEN_ABDUCTION_SUB_MODES,
   HAZARD_MODES,
   setAlienAbductionHazards,
+  setAlienAbductionMusic,
+  setAlienAbductionSound,
   setAlienAbductionSubMode,
   useAlienAbductionSettings,
 } from './alienAbductionSettingsStore';
 
 export function AlienAbductionSettings() {
-  const { subMode, hazards } = useAlienAbductionSettings();
+  const { subMode, hazards, sound, music } = useAlienAbductionSettings();
   return (
     <>
       <fieldset>
@@ -44,6 +46,26 @@ export function AlienAbductionSettings() {
             </label>
           ))}
         </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Sound</legend>
+        <label>
+          <input
+            type="checkbox"
+            checked={sound}
+            onChange={(e) => setAlienAbductionSound(e.target.checked)}
+          />
+          <span>Saucer sound effects</span>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={music}
+            onChange={(e) => setAlienAbductionMusic(e.target.checked)}
+          />
+          <span>Night-sky soundtrack</span>
+        </label>
       </fieldset>
     </>
   );
