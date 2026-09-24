@@ -3,6 +3,7 @@ import type { GameMode, ModeViewProps } from './types';
 import type { WinnerTheme } from './themes';
 import {
   alienAbductionTheme,
+  clawTheme,
   pokerTheme,
   battleBotsTheme,
   battleshipTheme,
@@ -26,6 +27,7 @@ import { DefendersSettings } from './SpaceInvadersMode/DefendersSettings';
 import { DuelSettings } from './DuelMode/DuelSettings';
 import { AlienAbductionSettings } from './AlienAbductionMode/AlienAbductionSettings';
 import { PokerSettings } from './PokerMode/PokerSettings';
+import { ClawSettings } from './ClawMode/ClawSettings';
 
 // Mode views are code-split: each mode's chunk (engine, drawing, audio, CSS)
 // loads on first use instead of in the initial bundle. Settings panels stay
@@ -44,6 +46,7 @@ const DefendersMode = lazy(() => import('./SpaceInvadersMode/DefendersMode').the
 const DuelMode = lazy(() => import('./DuelMode/DuelMode').then((m) => ({ default: m.DuelMode })));
 const AlienAbductionMode = lazy(() => import('./AlienAbductionMode/AlienAbductionMode').then((m) => ({ default: m.AlienAbductionMode })));
 const PokerMode = lazy(() => import('./PokerMode/PokerMode').then((m) => ({ default: m.PokerMode })));
+const ClawMode = lazy(() => import('./ClawMode/ClawMode').then((m) => ({ default: m.ClawMode })));
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -72,6 +75,9 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   // reads the same under either pick rule — so the shared dialog's ordering
   // never applies here. See PokerStandingsDialog.
   poker:             { View: PokerMode,      Settings: PokerSettings,      theme: pokerTheme,      label: '🃏 Poker Night', survivalOrder: true },
+  // The claw takes one toy per drop and that toy is the pick, so this orders
+  // like Racing: first chosen places first.
+  claw:              { View: ClawMode,       Settings: ClawSettings,       theme: clawTheme,       label: '🕹 The Claw' },
 };
 
 /** Labels lead with an emoji, so sort on the name that follows it. */

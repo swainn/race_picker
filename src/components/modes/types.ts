@@ -13,7 +13,8 @@ export type GameMode =
   | 'space-defenders'
   | 'street-duel'
   | 'alien-abduction'
-  | 'poker';
+  | 'poker'
+  | 'claw';
 
 /** Per-mode metadata that gets stashed on a winner record. */
 export interface ModeWinnerExtras {

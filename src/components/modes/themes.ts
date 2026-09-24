@@ -161,3 +161,17 @@ export const pokerTheme: WinnerTheme = {
   letterSpacing: '1px',
   buttonStyle: 'solid',
 };
+
+/** The Claw — arcade cabinet red and marquee gold. */
+export const clawTheme: WinnerTheme = {
+  accent: '#ffd23a',
+  accentSoft: 'rgba(255, 210, 58, 0.35)',
+  bgGradient: 'linear-gradient(145deg, #4a1f2e, #241432)',
+  finalsAccent: '#ffe98a',
+  finalsAccentSoft: 'rgba(255, 233, 138, 0.45)',
+  finalsBgGradient: 'linear-gradient(145deg, #7a2a30, #34183c)',
+  headlineColor: '#ffd23a',
+  fontFamily: '"Arial Black", system-ui, sans-serif',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};

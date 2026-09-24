@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A gamified random-selection tool ("Aquaveo Picker"). One shared participant list is run through one of several **game modes** (Racing, Battle Bots, Light Cycles, Plinko, Wall Climber, Battleship, Wheel, Alien Abduction, Poker Night). Each race eliminates the winner from the pool and repeats until everyone is ranked. Pure client-side React app — no backend, all state lives in React state + `localStorage`.
+A gamified random-selection tool ("Aquaveo Picker"). One shared participant list is run through one of several **game modes** (Racing, Battle Bots, Light Cycles, Plinko, Wall Climber, Battleship, Wheel, Alien Abduction, Poker Night, The Claw). Each race eliminates the winner from the pool and repeats until everyone is ranked. Pure client-side React app — no backend, all state lives in React state + `localStorage`.
 
 ## Commands
 

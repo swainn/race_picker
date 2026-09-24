@@ -1,0 +1,25 @@
+.claw-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  width: 100%;
+}
+
+.claw-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 480 / 600;
+  width: min(100%, calc((100svh - 240px) * (480 / 600)), calc(100vw - 64px));
+  max-width: 520px;
+}
+
+.claw-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  border: 3px solid #2a1e40;
+  background-color: #140f22;
+  border-radius: 10px;
+  display: block;
+}
