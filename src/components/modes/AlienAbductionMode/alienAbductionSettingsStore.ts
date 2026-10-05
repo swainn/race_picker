@@ -8,6 +8,7 @@ import {
   type LocationId,
   type Weather,
 } from './abductionScenery';
+import { FINALE_IDS, FINALE_LABELS, type FinaleId } from './abductionFinale';
 
 export type AbducteeKind =
   | 'human'
@@ -55,10 +56,19 @@ export const LOCATION_MODES: { value: LocationMode; label: string }[] = [
   ...LOCATION_IDS.map((l) => ({ value: l as LocationMode, label: LOCATION_LABELS[l] })),
 ];
 
+/** How the last one standing is sent off. Rolled per session unless pinned. */
+export type FinaleMode = 'random' | FinaleId;
+
+export const FINALE_MODES: { value: FinaleMode; label: string }[] = [
+  { value: 'random', label: '🎲 Random each time' },
+  ...FINALE_IDS.map((f) => ({ value: f as FinaleMode, label: FINALE_LABELS[f] })),
+];
+
 const SUB_MODE_KEY = 'alien_abduction_sub_mode_v2';
 const LEGACY_SUB_MODE_KEY = 'alien_abduction_sub_mode';
 const HAZARD_KEY = 'alien_abduction_hazards';
 const LOCATION_KEY = 'alien_abduction_location';
+const FINALE_KEY = 'alien_abduction_finale';
 const SOUND_KEY = 'alien_abduction_sound';
 const MUSIC_KEY = 'alien_abduction_music';
 
@@ -66,6 +76,7 @@ interface AlienAbductionSettings {
   subMode: AlienAbductionSubMode;
   hazards: HazardMode;
   location: LocationMode;
+  finale: FinaleMode;
   sound: boolean;
   music: boolean;
 }
@@ -98,10 +109,16 @@ function loadLocation(): LocationMode {
   return LOCATION_MODES.some((m) => m.value === stored) ? (stored as LocationMode) : 'random';
 }
 
+function loadFinale(): FinaleMode {
+  const stored = loadFromStorage<string>(FINALE_KEY, 'random');
+  return FINALE_MODES.some((m) => m.value === stored) ? (stored as FinaleMode) : 'random';
+}
+
 let current: AlienAbductionSettings = {
   subMode: loadSubMode(),
   hazards: loadHazards(),
   location: loadLocation(),
+  finale: loadFinale(),
   sound: loadFromStorage<boolean>(SOUND_KEY, true),
   music: loadFromStorage<boolean>(MUSIC_KEY, true),
 };
@@ -139,6 +156,13 @@ export function setAlienAbductionLocation(next: LocationMode): void {
   if (current.location === next) return;
   current = { ...current, location: next };
   saveToStorage(LOCATION_KEY, next);
+  notify();
+}
+
+export function setAlienAbductionFinale(next: FinaleMode): void {
+  if (current.finale === next) return;
+  current = { ...current, finale: next };
+  saveToStorage(FINALE_KEY, next);
   notify();
 }
 

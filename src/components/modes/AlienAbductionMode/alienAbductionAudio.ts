@@ -88,6 +88,32 @@ export function playDepart(): void {
   noise(0.9, 0.12, 2600, 300);
 }
 
+/** Something going badly wrong aboard: an alarm rising in pitch. */
+export function playAlarm(): void {
+  if (muted) return;
+  for (let i = 0; i < 5; i++) {
+    setTimeout(() => {
+      if (!muted) tone(520 + i * 70, 0.16, 'square', 0.055, 2000);
+    }, i * 230);
+  }
+}
+
+/** The saucer coming apart. */
+export function playExplosion(): void {
+  if (muted) return;
+  noise(0.75, 0.32, 1800, 90);
+  tone(140, 0.7, 'sawtooth', 0.13, 40);
+  setTimeout(() => { if (!muted) noise(1.3, 0.2, 900, 60); }, 110);
+}
+
+/** Canopies snapping open overhead. */
+export function playChutes(): void {
+  if (muted) return;
+  for (let i = 0; i < 4; i++) {
+    setTimeout(() => { if (!muted) noise(0.22, 0.12, 2800, 700); }, i * 170);
+  }
+}
+
 export function playFanfare(): void {
   if (muted) return;
   [523, 659, 784, 1047].forEach((f, i) =>

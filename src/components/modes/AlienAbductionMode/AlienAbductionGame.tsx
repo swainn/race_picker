@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Entry } from '../../../types';
 import { generateColor } from '../../../utils/colors';
 import { getPreferredEntryImage } from '../../../utils/entryImages';
@@ -11,9 +11,18 @@ import { FARM_KINDS } from './alienAbductionSettingsStore';
 import type {
   AbducteeKind,
   AlienAbductionSubMode,
+  FinaleMode,
   HazardMode,
   LocationMode,
 } from './alienAbductionSettingsStore';
+import {
+  DISGUISE,
+  FINALE_CAPTIONS,
+  FINALE_IDS,
+  HERO,
+  parachutePlan,
+  type FinaleId,
+} from './abductionFinale';
 import {
   LOCATION_IDS,
   WEATHER_IDS,
@@ -54,13 +63,14 @@ const ABDUCT_ANIM = 0.45; // seconds of the shrink-into-the-ship flourish
 /** Seconds until the ship gets impatient: beam widens, the wind dies down. */
 const RAGE_RAMP = 10;
 
-/** Beats of the finale, in seconds from the moment the last survivor is crowned. */
-const REVEAL_SHAKE = 1.0;   // the disguise starts twitching
-const REVEAL_MORPH = 2.1;   // flash — the costume drops
-const REVEAL_DESCEND = 2.3; // the saucer comes down to collect its own
-const REVEAL_BEAM = 3.8;    // beam on, a slow wave goodbye
-const REVEAL_RISE = 4.6;    // stepping aboard, no struggle this time
-const REVEAL_DEPART = 8.0;  // ship climbs back to its hover
+// Beats of each ending live in abductionFinale.ts; these are the local names
+// the disguise sequence has always used.
+const REVEAL_SHAKE = DISGUISE.SHAKE;
+const REVEAL_MORPH = DISGUISE.MORPH;
+const REVEAL_DESCEND = DISGUISE.DESCEND;
+const REVEAL_BEAM = DISGUISE.BEAM;
+const REVEAL_RISE = DISGUISE.RISE;
+const REVEAL_DEPART = DISGUISE.DEPART;
 const SHIP_LOW_OFFSET = 92; // how far it stoops during the finale
 
 type RunnerState = 'running' | 'beamed' | 'falling' | 'abducted';
@@ -100,6 +110,8 @@ interface Ship {
   prowl: ProwlState;
   /** Timestamp the beam lit, which is when the impatience ramp starts. */
   beamOnAt: number;
+  /** Judder amplitude while the saucer is coming apart (hero ending only). */
+  shake: number;
 }
 
 interface Wind {
@@ -150,9 +162,47 @@ interface RaceRef {
 interface Reveal {
   id: number;
   t: number;
+  /** Which ending is playing. */
+  kind: FinaleId;
   puffed: boolean;
   /** One-shot guard so the departure sting only plays once. */
   departed: boolean;
+  /** Hero ending one-shots: alarm, explosion, canopies. */
+  rumbled: boolean;
+  boomed: boolean;
+}
+
+/** One participant floating home after the saucer comes apart. */
+interface Chute {
+  kind: AbducteeKind;
+  color: string;
+  initials: string;
+  /** The hero gets a gold label and lands dead centre of the attention. */
+  isHero: boolean;
+  x: number;
+  y: number;
+  targetX: number;
+  speed: number;
+  sway: number;
+  phase: number;
+  /** Seconds before this one bails out. */
+  delay: number;
+  /** Canopy deployment, 0..1. */
+  open: number;
+  landed: boolean;
+}
+
+/** A piece of the saucer, after. */
+interface Debris {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rot: number;
+  spin: number;
+  size: number;
+  life: number;
+  maxLife: number;
 }
 
 interface Props {
@@ -166,6 +216,7 @@ interface Props {
   mode: AlienAbductionSubMode;
   hazards: HazardMode;
   location: LocationMode;
+  finale: FinaleMode;
   sound: boolean;
   music: boolean;
 }
@@ -177,6 +228,9 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 // cycle the whole catalogue before repeating. Never for the pick itself.
 const nextLocation = createShuffleBag(LOCATION_IDS);
 const nextWeather = createShuffleBag(WEATHER_IDS);
+// The winner is already decided before any ending plays, so this is theatre
+// too — the bag just stops the same send-off coming up twice in a row.
+const nextFinale = createShuffleBag(FINALE_IDS);
 
 /** A fresh saucer, hovering centre-field with its beam still dark. */
 function makeShip(): Ship {
@@ -190,6 +244,7 @@ function makeShip(): Ship {
     beamOn: false,
     prowl: newProwl(x),
     beamOnAt: 0,
+    shake: 0,
   };
 }
 
@@ -289,6 +344,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
   mode,
   hazards,
   location,
+  finale,
   sound,
   music,
 }) => {
@@ -311,6 +367,11 @@ export const AlienAbductionGame: React.FC<Props> = ({
   const shipRef = useRef<Ship>(makeShip());
   const windRef = useRef<Wind>({ strength: 0, target: 0, dir: 1, timer: 1 });
   const revealRef = useRef<Reveal | null>(null);
+  const chutesRef = useRef<Chute[]>([]);
+  const debrisRef = useRef<Debris[]>([]);
+  // The winner dialog headline depends on which ending played, so this one bit
+  // of finale state has to live in React rather than a ref.
+  const [finaleKind, setFinaleKind] = useState<FinaleId>('disguise');
   const motesRef = useRef<Mote[]>([]);
   const dustRef = useRef<Dust[]>([]);
   const flashesRef = useRef<Flash[]>([]);
@@ -326,8 +387,15 @@ export const AlienAbductionGame: React.FC<Props> = ({
 
   // Latest settings, read from inside the round-start effect without listing
   // them as deps (only the racing flag may start a round).
-  const sceneSettingsRef = useRef({ hazards, location });
-  sceneSettingsRef.current = { hazards, location };
+  const sceneSettingsRef = useRef({ hazards, location, finale });
+  sceneSettingsRef.current = { hazards, location, finale };
+
+  // The finale needs the whole roster and the current costume setting, and the
+  // loop only mounts once, so both are read through refs like the callbacks.
+  const allEntriesRef = useRef(allEntries);
+  allEntriesRef.current = allEntries;
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
 
   // Latest callback, read from inside the animation loop without restarting it.
   const onWinnerRef = useRef(onWinner);
@@ -358,6 +426,8 @@ export const AlienAbductionGame: React.FC<Props> = ({
       motesRef.current = [];
       dustRef.current = [];
       flashesRef.current = [];
+      chutesRef.current = [];
+      debrisRef.current = [];
       windRef.current = { strength: 0, target: 0, dir: 1, timer: 0.8 };
       revealRef.current = null;
 
@@ -396,7 +466,22 @@ export const AlienAbductionGame: React.FC<Props> = ({
     survivor.grace = 0;
     survivor.abductT = 0;
     survivor.y = GROUND_Y;
-    revealRef.current = { id: survivor.entry.id, t: 0, puffed: false, departed: false };
+
+    const pinned = sceneSettingsRef.current.finale;
+    const kind = pinned === 'random' ? nextFinale() : pinned;
+    setFinaleKind(kind);
+
+    chutesRef.current = [];
+    debrisRef.current = [];
+    revealRef.current = {
+      id: survivor.entry.id,
+      t: 0,
+      kind,
+      puffed: false,
+      departed: false,
+      rumbled: false,
+      boomed: false,
+    };
     raceRef.current = { ...raceRef.current, state: 'reveal' };
   }, [isFinale, currentWinner]);
 
@@ -498,12 +583,191 @@ export const AlienAbductionGame: React.FC<Props> = ({
       flashesRef.current = flashes.filter((f) => f.life > 0);
     };
 
+    /** Everyone the saucer ever took, bailing out of the wreck. */
+    const spawnChutes = (hero: Runner) => {
+      const ship = shipRef.current;
+      const roster = allEntriesRef.current;
+      const kinds = assignKinds(roster.length, modeRef.current);
+      const initials = computeInitials(roster);
+      const plan = parachutePlan(roster.length);
+      chutesRef.current = roster.map((entry: Entry, i: number) => ({
+        kind: entry.id === hero.entry.id ? hero.kind : kinds[i],
+        color: entry.id === hero.entry.id ? hero.color : generateColor(i),
+        initials: initials[i],
+        isHero: entry.id === hero.entry.id,
+        // They all come out of the fireball, then spread to their own patch.
+        x: ship.x + (Math.random() - 0.5) * 70,
+        y: SHIP_Y + ship.yOffset + (Math.random() - 0.5) * 24,
+        targetX: plan[i].x,
+        speed: plan[i].speed,
+        sway: plan[i].sway,
+        phase: plan[i].phase,
+        delay: plan[i].delay,
+        open: 0,
+        landed: false,
+      }));
+    };
+
+    /** The saucer bursting: a ring of hull fragments thrown outward. */
+    const spawnDebris = (cx: number, cy: number) => {
+      debrisRef.current = Array.from({ length: 26 }, () => {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 90 + Math.random() * 190;
+        return {
+          x: cx + (Math.random() - 0.5) * 40,
+          y: cy + (Math.random() - 0.5) * 16,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 60,
+          rot: Math.random() * Math.PI * 2,
+          spin: (Math.random() - 0.5) * 9,
+          size: 3 + Math.random() * 7,
+          life: 2.2 + Math.random() * 1.6,
+          maxLife: 3.8,
+        };
+      });
+    };
+
+    /**
+     * The hero ending: the survivor is taken like everyone else, and then the
+     * saucer tears itself apart — every participant it collected floats home.
+     */
+    const updateHero = (dt: number, now: number, windPush: number) => {
+      const reveal = revealRef.current;
+      const ship = shipRef.current;
+      if (!reveal) return;
+      const runner = runnersRef.current.find((r) => r.entry.id === reveal.id);
+      if (!runner) return;
+      const t = reveal.t;
+
+      if (!reveal.boomed) {
+        ship.x += (runner.x - ship.x) * clamp(dt * 1.6, 0, 1);
+        const wantsLow = t >= HERO.DESCEND && t < HERO.BOOM;
+        ship.yOffset += ((wantsLow ? SHIP_LOW_OFFSET : 0) - ship.yOffset) * clamp(dt * 1.1, 0, 1);
+      }
+
+      // Lifted, then swallowed.
+      if (t >= HERO.RISE && t < HERO.BOOM) {
+        const abductY = ABDUCT_Y + ship.yOffset;
+        runner.y = Math.max(abductY, runner.y - 150 * dt);
+        runner.wobble = Math.sin(now / 180) * 0.12;
+        runner.phase += dt * 3;
+        if (runner.y <= abductY + 0.5) {
+          runner.abductT = Math.min(1, runner.abductT + dt / 0.6);
+        }
+      } else if (t < HERO.RISE) {
+        runner.phase += dt * 2.2;
+      }
+
+      if (!reveal.rumbled && t >= HERO.RUMBLE) {
+        reveal.rumbled = true;
+        audio.stopBeamHum();
+        audio.playAlarm();
+      }
+
+      // Shaking itself to pieces: the flash flickers and the hull judders.
+      if (t >= HERO.RUMBLE && t < HERO.BOOM) {
+        const build = clamp((t - HERO.RUMBLE) / (HERO.BOOM - HERO.RUMBLE), 0, 1);
+        ship.shake = build * 7;
+        ship.flash = 0.35 + 0.5 * build * Math.abs(Math.sin(now / 70));
+      }
+
+      if (!reveal.boomed && t >= HERO.BOOM) {
+        reveal.boomed = true;
+        ship.shake = 0;
+        ship.flash = 1;
+        const cy = SHIP_Y + ship.yOffset;
+        spawnDebris(ship.x, cy);
+        spawnChutes(runner);
+        // The hero is out of the ship now and lands with everyone else.
+        runner.abductT = 1;
+        audio.playExplosion();
+        audio.stopTrack();
+        setTimeout(() => audio.playChutes(), 450);
+        flashesRef.current.push({
+          x: CANVAS_WIDTH / 2,
+          y: SHIP_Y + 70,
+          text: '💥 SHIP DOWN 💥',
+          color: '#ffd27a',
+          life: 2.6,
+        });
+      }
+
+      if (reveal.boomed) {
+        ship.flash = Math.max(0, ship.flash - dt * 1.2);
+        stepDebris(dt);
+        stepChutes(dt, now);
+      }
+
+      if (!reveal.departed && t >= HERO.CAPTION) {
+        reveal.departed = true;
+        audio.playFanfare();
+      }
+
+      const beamTop = BEAM_TOP + ship.yOffset;
+      stepParticles(dt, windPush, t >= HERO.BEAM && t < HERO.ABOARD, 0.4, beamTop);
+    };
+
+    const stepDebris = (dt: number) => {
+      const next: Debris[] = [];
+      for (const d of debrisRef.current) {
+        d.life -= dt;
+        if (d.life <= 0) continue;
+        d.vy += GRAVITY * 0.35 * dt;
+        d.x += d.vx * dt;
+        d.y += d.vy * dt;
+        d.rot += d.spin * dt;
+        // Fragments settle on the ground rather than falling through it.
+        if (d.y >= GROUND_Y) {
+          d.y = GROUND_Y;
+          d.vy = 0;
+          d.vx *= 0.8;
+          d.spin *= 0.6;
+        }
+        next.push(d);
+      }
+      debrisRef.current = next;
+    };
+
+    const stepChutes = (dt: number, now: number) => {
+      for (const c of chutesRef.current) {
+        if (c.delay > 0) {
+          c.delay -= dt;
+          continue;
+        }
+        if (c.landed) continue;
+        c.open = Math.min(1, c.open + dt * 2.6);
+        // Falls fast until the canopy catches, then drifts toward its patch.
+        const fall = c.speed * (0.35 + 0.65 * c.open);
+        c.y += fall * dt;
+        c.x += (c.targetX - c.x) * clamp(dt * 0.9, 0, 1);
+        if (c.y >= GROUND_Y) {
+          c.y = GROUND_Y;
+          c.landed = true;
+          dustRef.current.push(
+            ...Array.from({ length: 5 }, () => ({
+              x: c.x,
+              y: GROUND_Y,
+              vx: (Math.random() - 0.5) * 70,
+              vy: -20 - Math.random() * 30,
+              life: 0.5,
+              maxLife: 0.5,
+            }))
+          );
+        }
+      }
+      void now;
+    };
+
     /** The finale: costume off, saucer down, a calm ride home. */
     const updateReveal = (dt: number, now: number, windPush: number) => {
       const reveal = revealRef.current;
       const ship = shipRef.current;
       if (!reveal) return;
       reveal.t += dt;
+      if (reveal.kind === 'hero') {
+        updateHero(dt, now, windPush);
+        return;
+      }
 
       const runner = runnersRef.current.find((r) => r.entry.id === reveal.id);
       if (!runner) return;
@@ -863,8 +1127,11 @@ export const AlienAbductionGame: React.FC<Props> = ({
     const drawShip = (now: number) => {
       const ship = shipRef.current;
       const bob = Math.sin(now / 780) * 5;
-      const cx = ship.x;
-      const cy = SHIP_Y + bob + ship.yOffset;
+      // The judder as it tears itself apart; zero for every other moment.
+      const jx = ship.shake ? (Math.random() - 0.5) * ship.shake : 0;
+      const jy = ship.shake ? (Math.random() - 0.5) * ship.shake : 0;
+      const cx = ship.x + jx;
+      const cy = SHIP_Y + bob + ship.yOffset + jy;
 
       ctx.save();
 
@@ -991,8 +1258,189 @@ export const AlienAbductionGame: React.FC<Props> = ({
       }
     };
 
+    /** Burning hull fragments, tumbling and then lying where they fell. */
+    const drawDebris = () => {
+      for (const d of debrisRef.current) {
+        const fade = clamp(d.life / 1.2, 0, 1);
+        ctx.save();
+        ctx.globalAlpha = fade;
+        ctx.translate(d.x, d.y);
+        ctx.rotate(d.rot);
+        ctx.fillStyle = '#6d7f8f';
+        ctx.fillRect(-d.size / 2, -d.size / 2, d.size, d.size * 0.7);
+        // Still glowing while it is fresh.
+        if (d.life > d.maxLife - 1.4) {
+          ctx.globalAlpha = fade * 0.8;
+          ctx.fillStyle = '#ffb765';
+          ctx.fillRect(-d.size / 2, -d.size / 2, d.size * 0.45, d.size * 0.35);
+        }
+        ctx.restore();
+      }
+    };
+
+    /** The fireball, for the moment or so after the saucer goes up. */
+    const drawFireball = (reveal: Reveal) => {
+      const since = reveal.t - HERO.BOOM;
+      if (since < 0 || since > 1.1) return;
+      const ship = shipRef.current;
+      const cy = SHIP_Y + ship.yOffset;
+      const k = since / 1.1;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 1 - k;
+      const r = 26 + k * 120;
+      const burst = ctx.createRadialGradient(ship.x, cy, 4, ship.x, cy, r);
+      burst.addColorStop(0, 'rgba(255,255,235,0.95)');
+      burst.addColorStop(0.35, 'rgba(255,190,90,0.7)');
+      burst.addColorStop(1, 'rgba(255,90,40,0)');
+      ctx.fillStyle = burst;
+      ctx.beginPath();
+      ctx.arc(ship.x, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      // Shockwave ring
+      ctx.strokeStyle = `rgba(255,230,180,${(1 - k).toFixed(3)})`;
+      ctx.lineWidth = 3 * (1 - k) + 0.5;
+      ctx.beginPath();
+      ctx.arc(ship.x, cy, 20 + k * 190, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    /** One participant under a canopy, on the way home. */
+    const drawChute = (c: Chute, now: number) => {
+      if (c.delay > 0) return;
+      const swing = c.landed ? 0 : Math.sin(now / 520 + c.phase) * c.sway;
+      const x = c.x + swing * 0.35;
+      const tilt = c.landed ? 0 : (swing / Math.max(c.sway, 1)) * 0.12;
+
+      ctx.save();
+      ctx.translate(x, c.y);
+
+      // Canopy and rigging, collapsing once they are down
+      const canopy = c.open * (c.landed ? 0.3 : 1);
+      if (canopy > 0.02) {
+        const w = 27 * canopy;
+        const h = 18 * canopy;
+        const cy = -58 + (c.landed ? 26 : 0);
+        const harness = -20;
+        ctx.save();
+        ctx.rotate(tilt);
+
+        // The hero's canopy gets a halo so it reads as theirs even next to a
+        // participant whose own colour happens to be gold.
+        if (c.isHero) {
+          const halo = ctx.createRadialGradient(0, cy, 4, 0, cy, w * 2.2);
+          halo.addColorStop(0, 'rgba(255,215,110,0.45)');
+          halo.addColorStop(1, 'rgba(255,215,110,0)');
+          ctx.fillStyle = halo;
+          ctx.beginPath();
+          ctx.arc(0, cy, w * 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Gores, alternating the fabric with the jumper's colour
+        for (let i = 0; i < 4; i++) {
+          const a0 = Math.PI + (i * Math.PI) / 4;
+          const a1 = Math.PI + ((i + 1) * Math.PI) / 4;
+          ctx.fillStyle = i % 2 ? '#f2f5fb' : (c.isHero ? '#FFC93C' : c.color);
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a0) * w, cy + Math.sin(a0) * h);
+          ctx.ellipse(0, cy, w, h, 0, a0, a1);
+          ctx.lineTo(0, cy);
+          ctx.closePath();
+          ctx.fill();
+        }
+        // Rim, so the dome has an edge against the night sky
+        ctx.strokeStyle = c.isHero ? 'rgba(255,240,190,0.95)' : 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.ellipse(0, cy, w, h, 0, Math.PI, Math.PI * 2);
+        ctx.stroke();
+
+        // Rigging down to the harness
+        ctx.strokeStyle = 'rgba(225,232,245,0.7)';
+        ctx.lineWidth = 0.9;
+        for (const k of [-1, -0.45, 0.45, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(w * k, cy);
+          ctx.lineTo(0, harness);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // The passenger
+      ctx.save();
+      ctx.rotate(tilt * 0.6);
+      drawAbductee(ctx, c.kind, c.color, { phase: c.landed ? 0 : now / 400 + c.phase, lifted: !c.landed });
+      ctx.restore();
+      ctx.restore();
+
+      // Name, gold for the one who brought the ship down
+      ctx.save();
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      const labelY = c.y - (canopy > 0.3 ? 82 : 42);
+      ctx.strokeText(c.initials, x, labelY);
+      ctx.fillStyle = c.isHero ? '#FFD966' : '#fff';
+      ctx.fillText(c.initials, x, labelY);
+      ctx.restore();
+    };
+
+    /** The hero ending, from the last catch to the landing. */
+    const drawHeroReveal = (reveal: Reveal, now: number) => {
+      const runner = runnersRef.current.find((r) => r.entry.id === reveal.id);
+      const ship = shipRef.current;
+
+      // Before the blast the survivor rides the beam up like anyone else.
+      if (runner && !reveal.boomed) {
+        const alpha = 1 - runner.abductT;
+        if (alpha > 0.02) {
+          const abductY = ABDUCT_Y + ship.yOffset;
+          const height = clamp((GROUND_Y - runner.y) / Math.max(1, GROUND_Y - abductY), 0, 1);
+          const scale = (1 - height * 0.4) * (1 - runner.abductT * 0.85);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.translate(runner.x, runner.y);
+          ctx.scale(scale, scale);
+          if (runner.wobble) ctx.rotate(runner.wobble);
+          if (runner.dir === -1) ctx.scale(-1, 1);
+          drawAbductee(ctx, runner.kind, runner.color, {
+            phase: runner.phase,
+            lifted: reveal.t >= HERO.RISE,
+          });
+          ctx.restore();
+
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.font = 'bold 11px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 3;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(runner.initials, runner.x, runner.y - 44 * scale);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(runner.initials, runner.x, runner.y - 44 * scale);
+          ctx.restore();
+        }
+      }
+
+      drawFireball(reveal);
+      drawDebris();
+      for (const c of chutesRef.current) drawChute(c, now);
+    };
+
     /** The survivor's costume comes off and the saucer collects one of its own. */
     const drawReveal = (reveal: Reveal, now: number) => {
+      if (reveal.kind === 'hero') {
+        drawHeroReveal(reveal, now);
+        return;
+      }
       const runner = runnersRef.current.find((r) => r.entry.id === reveal.id);
       if (!runner) return;
       const ship = shipRef.current;
@@ -1079,9 +1527,10 @@ export const AlienAbductionGame: React.FC<Props> = ({
         ctx.strokeStyle = 'rgba(0,0,0,0.85)';
         ctx.lineWidth = 4;
         ctx.lineJoin = 'round';
-        ctx.strokeText('👽 ALIEN IN DISGUISE 👽', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 22);
+        const text = FINALE_CAPTIONS.disguise;
+        ctx.strokeText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 22);
         ctx.fillStyle = '#9CFFD0';
-        ctx.fillText('👽 ALIEN IN DISGUISE 👽', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 22);
+        ctx.fillText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 22);
         ctx.restore();
       }
     };
@@ -1095,9 +1544,18 @@ export const AlienAbductionGame: React.FC<Props> = ({
       const rage = live && ship.beamOn ? clamp((now - ship.beamOnAt) / 1000 / RAGE_RAMP, 0, 1) : 0;
       const beamTop = BEAM_TOP + ship.yOffset;
       const revealT = reveal?.t ?? 0;
-      const beamFade = revealing
-        ? clamp((revealT - REVEAL_BEAM) / 0.5, 0, 1) * (1 - clamp((revealT - REVEAL_DEPART) / 0.6, 0, 1))
-        : 1;
+      // Each ending runs the beam to its own schedule: the disguise ending
+      // holds it until the saucer leaves, the hero ending cuts it the moment
+      // the survivor is aboard, well before the explosion.
+      const heroEnding = revealing && reveal?.kind === 'hero';
+      let beamFade = 1;
+      if (heroEnding) {
+        beamFade =
+          clamp((revealT - HERO.BEAM) / 0.4, 0, 1) * (1 - clamp((revealT - HERO.ABOARD) / 0.4, 0, 1));
+      } else if (revealing) {
+        beamFade =
+          clamp((revealT - REVEAL_BEAM) / 0.5, 0, 1) * (1 - clamp((revealT - REVEAL_DEPART) / 0.6, 0, 1));
+      }
       // Dark through the opening prowl; the finale lights its own beam.
       const beamOn =
         beamFade > 0 &&
@@ -1122,7 +1580,8 @@ export const AlienAbductionGame: React.FC<Props> = ({
       });
       if (revealing && reveal) drawReveal(reveal, now);
       if (beamOn) drawBeam(now, rage, true, beamTop, beamFade);
-      drawShip(now);
+      // Nothing left to draw once it has come apart — only the wreckage.
+      if (!(heroEnding && reveal?.boomed)) drawShip(now);
 
       // Weather is in front of everything in the field, so rain and snow fall
       // between the viewer and the abductees rather than behind them.
@@ -1133,6 +1592,24 @@ export const AlienAbductionGame: React.FC<Props> = ({
         clamp((windRef.current.strength / 220) * windRef.current.dir, -1, 1)
       );
       drawCaption(now);
+
+      if (heroEnding && reveal && reveal.t > HERO.CAPTION) {
+        const pulse = 0.72 + 0.28 * Math.sin(now / 320);
+        ctx.save();
+        ctx.globalAlpha = clamp((reveal.t - HERO.CAPTION) / 0.8, 0, 1) * pulse;
+        ctx.font = 'bold 17px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.lineWidth = 4;
+        ctx.lineJoin = 'round';
+        // Clear of the minimised winner bar that sits along the bottom edge.
+        const text = FINALE_CAPTIONS.hero;
+        const y = CANVAS_HEIGHT - 76;
+        ctx.strokeText(text, CANVAS_WIDTH / 2, y);
+        ctx.fillStyle = '#FFD966';
+        ctx.fillText(text, CANVAS_WIDTH / 2, y);
+        ctx.restore();
+      }
 
       flashesRef.current.forEach((flash) => {
         ctx.save();
@@ -1184,7 +1661,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
           };
         })()}
         headline="🛸 ABDUCTED 🛸"
-        finalsHeadline="👽 ALIEN IN DISGUISE 👽"
+        finalsHeadline={FINALE_CAPTIONS[finaleKind]}
         nextLabel="▶ Next Abduction"
         onNext={onRaceComplete}
         onShowFinalStandings={() => onShowFinalStandings?.()}

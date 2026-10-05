@@ -1,7 +1,9 @@
 import {
   ALIEN_ABDUCTION_SUB_MODES,
+  FINALE_MODES,
   HAZARD_MODES,
   LOCATION_MODES,
+  setAlienAbductionFinale,
   setAlienAbductionHazards,
   setAlienAbductionLocation,
   setAlienAbductionMusic,
@@ -11,7 +13,7 @@ import {
 } from './alienAbductionSettingsStore';
 
 export function AlienAbductionSettings() {
-  const { subMode, hazards, location, sound, music } = useAlienAbductionSettings();
+  const { subMode, hazards, location, finale, sound, music } = useAlienAbductionSettings();
   return (
     <>
       <fieldset>
@@ -61,6 +63,24 @@ export function AlienAbductionSettings() {
                 value={m.value}
                 checked={hazards === m.value}
                 onChange={() => setAlienAbductionHazards(m.value)}
+              />
+              <span>{m.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Ending</legend>
+        <div role="radiogroup" aria-label="Alien abduction ending">
+          {FINALE_MODES.map((m) => (
+            <label key={m.value}>
+              <input
+                type="radio"
+                name="alienAbductionFinale"
+                value={m.value}
+                checked={finale === m.value}
+                onChange={() => setAlienAbductionFinale(m.value)}
               />
               <span>{m.label}</span>
             </label>
