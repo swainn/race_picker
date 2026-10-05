@@ -4,8 +4,13 @@ import { shuffle } from '../../../utils/array';
  *  starting layout can be tested without a canvas. */
 
 export const CANVAS_WIDTH = 400;
+export const CANVAS_HEIGHT = 600;
 export const FIELD_LEFT = 16;
 export const FIELD_RIGHT = CANVAS_WIDTH - 16;
+
+/** Where the sky meets the ground, and the baseline the abductees stand on. */
+export const HORIZON_Y = 430;
+export const GROUND_Y = 548;
 
 /** The x of one of `count` evenly spaced starting marks across the field. */
 export function slotX(slot: number, count: number): number {

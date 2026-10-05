@@ -3,15 +3,35 @@ import type { Entry } from '../../../types';
 import { generateColor } from '../../../utils/colors';
 import { getPreferredEntryImage } from '../../../utils/entryImages';
 import { shuffle } from '../../../utils/array';
+import { createShuffleBag } from '../../../utils/shuffleBag';
 import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import { alienAbductionTheme } from '../themes';
 import { ABDUCTEE_KINDS, drawAbductee, drawAlien, drawDisguise } from './abducteeSprites';
 import { FARM_KINDS } from './alienAbductionSettingsStore';
-import type { AbducteeKind, AlienAbductionSubMode, HazardMode } from './alienAbductionSettingsStore';
+import type {
+  AbducteeKind,
+  AlienAbductionSubMode,
+  HazardMode,
+  LocationMode,
+} from './alienAbductionSettingsStore';
 import {
+  LOCATION_IDS,
+  WEATHER_IDS,
+  CAPTION_MS,
+  captionAlpha,
+  drawLocation,
+  drawSceneCaption,
+  drawWeather,
+  weatherHasGusts,
+  type LocationId,
+  type Weather,
+} from './abductionScenery';
+import {
+  CANVAS_HEIGHT,
   CANVAS_WIDTH,
   FIELD_LEFT,
   FIELD_RIGHT,
+  GROUND_Y,
   newProwl,
   slotX,
   startingSlots,
@@ -20,11 +40,6 @@ import {
 } from './abductionField';
 import * as audio from './alienAbductionAudio';
 import './AlienAbductionGame.css';
-
-const CANVAS_HEIGHT = 600;
-
-const HORIZON_Y = 430;
-const GROUND_Y = 548; // feet baseline for the folks on the ground
 
 const SHIP_Y = 98; // saucer centre (before bob)
 const SHIP_HALF_WIDTH = 62;
@@ -124,6 +139,10 @@ interface RaceRef {
   state: 'ready' | 'racing' | 'finished' | 'reveal';
   startTime: number;
   hasWind: boolean;
+  location: LocationId;
+  weather: Weather;
+  /** Seconds the location/weather caption stays up at the top of a round. */
+  captionUntil: number;
   declared: boolean;
 }
 
@@ -146,11 +165,18 @@ interface Props {
   currentWinner: string | null;
   mode: AlienAbductionSubMode;
   hazards: HazardMode;
+  location: LocationMode;
   sound: boolean;
   music: boolean;
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+// Where the saucer shows up and what the sky is doing are pure set dressing —
+// they have no bearing on who gets taken — so these draw from shuffle bags to
+// cycle the whole catalogue before repeating. Never for the pick itself.
+const nextLocation = createShuffleBag(LOCATION_IDS);
+const nextWeather = createShuffleBag(WEATHER_IDS);
 
 /** A fresh saucer, hovering centre-field with its beam still dark. */
 function makeShip(): Ship {
@@ -262,6 +288,7 @@ export const AlienAbductionGame: React.FC<Props> = ({
   currentWinner,
   mode,
   hazards,
+  location,
   sound,
   music,
 }) => {
@@ -291,45 +318,20 @@ export const AlienAbductionGame: React.FC<Props> = ({
     state: 'ready',
     startTime: 0,
     hasWind: true,
+    location: 'field',
+    weather: 'clear',
+    captionUntil: 0,
     declared: false,
   });
+
+  // Latest settings, read from inside the round-start effect without listing
+  // them as deps (only the racing flag may start a round).
+  const sceneSettingsRef = useRef({ hazards, location });
+  sceneSettingsRef.current = { hazards, location };
 
   // Latest callback, read from inside the animation loop without restarting it.
   const onWinnerRef = useRef(onWinner);
   onWinnerRef.current = onWinner;
-
-  // Static scenery, rolled once per mount.
-  const sceneryRef = useRef<{
-    stars: { x: number; y: number; r: number; tw: number }[];
-    hills: { x: number; w: number; h: number; shade: number }[];
-    tufts: { x: number; y: number; h: number }[];
-    trees: { x: number; h: number }[];
-  } | null>(null);
-  if (!sceneryRef.current) {
-    sceneryRef.current = {
-      stars: Array.from({ length: 110 }, () => ({
-        x: Math.random() * CANVAS_WIDTH,
-        y: Math.random() * (HORIZON_Y - 40),
-        r: 0.4 + Math.random() * 1.3,
-        tw: Math.random() * Math.PI * 2,
-      })),
-      hills: Array.from({ length: 9 }, (_, i) => ({
-        x: (i / 8) * CANVAS_WIDTH + (Math.random() - 0.5) * 30,
-        w: 70 + Math.random() * 90,
-        h: 30 + Math.random() * 55,
-        shade: Math.random(),
-      })),
-      tufts: Array.from({ length: 70 }, () => ({
-        x: Math.random() * CANVAS_WIDTH,
-        y: GROUND_Y - 10 + Math.random() * 50,
-        h: 4 + Math.random() * 7,
-      })),
-      trees: Array.from({ length: 7 }, () => ({
-        x: Math.random() * CANVAS_WIDTH,
-        h: 14 + Math.random() * 18,
-      })),
-    };
-  }
 
   const entriesSignature = entries.map((e) => e.id).join(',');
 
@@ -359,10 +361,18 @@ export const AlienAbductionGame: React.FC<Props> = ({
       windRef.current = { strength: 0, target: 0, dir: 1, timer: 0.8 };
       revealRef.current = null;
 
+      const scene = sceneSettingsRef.current;
+      const loc = scene.location === 'random' ? nextLocation() : scene.location;
+      const weather = scene.hazards === 'random' ? nextWeather() : scene.hazards;
+
       raceRef.current = {
         state: 'racing',
         startTime: performance.now(),
-        hasWind: hazards === 'random' ? Math.random() < 0.6 : hazards === 'wind',
+        // Only the blustery weathers can blow an abductee back out of the beam.
+        hasWind: weatherHasGusts(weather),
+        location: loc,
+        weather,
+        captionUntil: performance.now() + CAPTION_MS,
         declared: false,
       };
       audio.resumeAbductionAudio();
@@ -756,105 +766,9 @@ export const AlienAbductionGame: React.FC<Props> = ({
     };
 
     // ---------------------------------------------------------------- drawing
-    const drawSky = (now: number) => {
-      const sky = ctx.createLinearGradient(0, 0, 0, HORIZON_Y);
-      sky.addColorStop(0, '#07091d');
-      sky.addColorStop(0.5, '#141a3c');
-      sky.addColorStop(1, '#3b2f5c');
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, CANVAS_WIDTH, HORIZON_Y);
-
-      const scenery = sceneryRef.current!;
-      scenery.stars.forEach((star) => {
-        const twinkle = 0.45 + 0.55 * Math.abs(Math.sin(now / 900 + star.tw));
-        ctx.fillStyle = `rgba(255,255,255,${(0.75 * twinkle).toFixed(3)})`;
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      // Moon
-      ctx.save();
-      const glow = ctx.createRadialGradient(325, 78, 6, 325, 78, 54);
-      glow.addColorStop(0, 'rgba(255,245,210,0.35)');
-      glow.addColorStop(1, 'rgba(255,245,210,0)');
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(325, 78, 54, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#f3ead0';
-      ctx.beginPath();
-      ctx.arc(325, 78, 22, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(190,180,155,0.55)';
-      ctx.beginPath();
-      ctx.arc(318, 72, 5, 0, Math.PI * 2);
-      ctx.arc(332, 84, 3.5, 0, Math.PI * 2);
-      ctx.arc(327, 67, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    };
-
-    const drawLand = () => {
-      const scenery = sceneryRef.current!;
-
-      // Rolling hills on the horizon, back layer then front layer
-      scenery.hills.forEach((hill) => {
-        ctx.fillStyle = hill.shade > 0.5 ? '#1d2545' : '#232c52';
-        ctx.beginPath();
-        ctx.ellipse(hill.x, HORIZON_Y + 6, hill.w, hill.h, 0, Math.PI, Math.PI * 2);
-        ctx.fill();
-      });
-
-      // Tree line silhouettes
-      ctx.fillStyle = '#131a33';
-      scenery.trees.forEach((tree) => {
-        ctx.beginPath();
-        ctx.moveTo(tree.x - 7, HORIZON_Y + 4);
-        ctx.lineTo(tree.x, HORIZON_Y + 4 - tree.h);
-        ctx.lineTo(tree.x + 7, HORIZON_Y + 4);
-        ctx.closePath();
-        ctx.fill();
-      });
-
-      // Field
-      const ground = ctx.createLinearGradient(0, HORIZON_Y, 0, CANVAS_HEIGHT);
-      ground.addColorStop(0, '#20402b');
-      ground.addColorStop(0.45, '#2c5636');
-      ground.addColorStop(1, '#16301f');
-      ctx.fillStyle = ground;
-      ctx.fillRect(0, HORIZON_Y, CANVAS_WIDTH, CANVAS_HEIGHT - HORIZON_Y);
-
-      // Fence along the back of the field
-      ctx.strokeStyle = '#4a3a2a';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, HORIZON_Y + 18);
-      ctx.lineTo(CANVAS_WIDTH, HORIZON_Y + 14);
-      ctx.moveTo(0, HORIZON_Y + 26);
-      ctx.lineTo(CANVAS_WIDTH, HORIZON_Y + 22);
-      ctx.stroke();
-      for (let x = 10; x < CANVAS_WIDTH; x += 42) {
-        ctx.beginPath();
-        ctx.moveTo(x, HORIZON_Y + 8);
-        ctx.lineTo(x, HORIZON_Y + 32);
-        ctx.stroke();
-      }
-
-      // Grass tufts
-      ctx.strokeStyle = 'rgba(140, 200, 140, 0.35)';
-      ctx.lineWidth = 1.4;
-      scenery.tufts.forEach((tuft) => {
-        ctx.beginPath();
-        ctx.moveTo(tuft.x, tuft.y);
-        ctx.lineTo(tuft.x - 2, tuft.y - tuft.h);
-        ctx.moveTo(tuft.x, tuft.y);
-        ctx.lineTo(tuft.x + 3, tuft.y - tuft.h * 0.8);
-        ctx.stroke();
-      });
-    };
-
-    const drawWind = (now: number) => {
+    /** The live gust that can blow an abductee out of the beam. Distinct from
+     *  the ambient weather below: this one is the mechanic telling on itself. */
+    const drawGust = (now: number) => {
       const wind = windRef.current;
       if (wind.strength < 25) return;
       const intensity = clamp((wind.strength - 25) / 200, 0, 1);
@@ -880,6 +794,11 @@ export const AlienAbductionGame: React.FC<Props> = ({
         ctx.fillText('💨 GUST', wind.dir > 0 ? 12 : CANVAS_WIDTH - 12, 34);
       }
       ctx.restore();
+    };
+
+    const drawCaption = (now: number) => {
+      const race = raceRef.current;
+      drawSceneCaption(ctx, race.location, race.weather, captionAlpha(race.captionUntil - now));
     };
 
     const drawBeam = (
@@ -1184,9 +1103,8 @@ export const AlienAbductionGame: React.FC<Props> = ({
         beamFade > 0 &&
         ((live && ship.beamOn) || revealing || runnersRef.current.some((r) => r.state === 'abducted'));
 
-      drawSky(now);
-      drawLand();
-      drawWind(now);
+      drawLocation(ctx, raceRef.current.location, now);
+      drawGust(now);
       if (beamOn) drawBeam(now, rage, false, beamTop, beamFade);
 
       dustRef.current.forEach((d) => {
@@ -1205,6 +1123,16 @@ export const AlienAbductionGame: React.FC<Props> = ({
       if (revealing && reveal) drawReveal(reveal, now);
       if (beamOn) drawBeam(now, rage, true, beamTop, beamFade);
       drawShip(now);
+
+      // Weather is in front of everything in the field, so rain and snow fall
+      // between the viewer and the abductees rather than behind them.
+      drawWeather(
+        ctx,
+        raceRef.current.weather,
+        now,
+        clamp((windRef.current.strength / 220) * windRef.current.dir, -1, 1)
+      );
+      drawCaption(now);
 
       flashesRef.current.forEach((flash) => {
         ctx.save();

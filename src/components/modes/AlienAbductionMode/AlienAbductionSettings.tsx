@@ -1,7 +1,9 @@
 import {
   ALIEN_ABDUCTION_SUB_MODES,
   HAZARD_MODES,
+  LOCATION_MODES,
   setAlienAbductionHazards,
+  setAlienAbductionLocation,
   setAlienAbductionMusic,
   setAlienAbductionSound,
   setAlienAbductionSubMode,
@@ -9,7 +11,7 @@ import {
 } from './alienAbductionSettingsStore';
 
 export function AlienAbductionSettings() {
-  const { subMode, hazards, sound, music } = useAlienAbductionSettings();
+  const { subMode, hazards, location, sound, music } = useAlienAbductionSettings();
   return (
     <>
       <fieldset>
@@ -31,8 +33,26 @@ export function AlienAbductionSettings() {
       </fieldset>
 
       <fieldset>
+        <legend>Location</legend>
+        <div role="radiogroup" aria-label="Alien abduction location">
+          {LOCATION_MODES.map((m) => (
+            <label key={m.value}>
+              <input
+                type="radio"
+                name="alienAbductionLocation"
+                value={m.value}
+                checked={location === m.value}
+                onChange={() => setAlienAbductionLocation(m.value)}
+              />
+              <span>{m.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend>Weather</legend>
-        <div role="radiogroup" aria-label="Alien abduction wind">
+        <div role="radiogroup" aria-label="Alien abduction weather">
           {HAZARD_MODES.map((m) => (
             <label key={m.value}>
               <input

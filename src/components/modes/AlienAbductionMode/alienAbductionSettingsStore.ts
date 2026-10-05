@@ -1,5 +1,13 @@
 import { useSyncExternalStore } from 'react';
 import { loadFromStorage, saveToStorage } from '../../../utils/storage';
+import {
+  LOCATION_IDS,
+  LOCATION_LABELS,
+  WEATHER_IDS,
+  WEATHER_LABELS,
+  type LocationId,
+  type Weather,
+} from './abductionScenery';
 
 export type AbducteeKind =
   | 'human'
@@ -31,23 +39,33 @@ export const ALIEN_ABDUCTION_SUB_MODES: { value: AlienAbductionSubMode; label: s
   { value: 'mixed', label: '🎲 Mixed' },
 ];
 
-export type HazardMode = 'random' | 'wind' | 'none';
+/** Weather is picked per round unless pinned to one. */
+export type HazardMode = 'random' | Weather;
 
 export const HAZARD_MODES: { value: HazardMode; label: string }[] = [
   { value: 'random', label: '🎲 Random each round' },
-  { value: 'wind', label: '💨 Always windy' },
-  { value: 'none', label: '🚫 Dead calm' },
+  ...WEATHER_IDS.map((w) => ({ value: w as HazardMode, label: WEATHER_LABELS[w] })),
+];
+
+/** Where the saucer shows up. Also picked per round unless pinned. */
+export type LocationMode = 'random' | LocationId;
+
+export const LOCATION_MODES: { value: LocationMode; label: string }[] = [
+  { value: 'random', label: '🎲 Random each round' },
+  ...LOCATION_IDS.map((l) => ({ value: l as LocationMode, label: LOCATION_LABELS[l] })),
 ];
 
 const SUB_MODE_KEY = 'alien_abduction_sub_mode_v2';
 const LEGACY_SUB_MODE_KEY = 'alien_abduction_sub_mode';
 const HAZARD_KEY = 'alien_abduction_hazards';
+const LOCATION_KEY = 'alien_abduction_location';
 const SOUND_KEY = 'alien_abduction_sound';
 const MUSIC_KEY = 'alien_abduction_music';
 
 interface AlienAbductionSettings {
   subMode: AlienAbductionSubMode;
   hazards: HazardMode;
+  location: LocationMode;
   sound: boolean;
   music: boolean;
 }
@@ -64,15 +82,26 @@ function loadSubMode(): AlienAbductionSubMode {
   return !legacy || legacy === 'cow' ? 'farm' : legacy;
 }
 
-/** Stored values can predate the current option list (the bird rescues are gone). */
+/**
+ * Stored values can predate the current option list: the bird rescues are long
+ * gone, and 'none' became the 'clear' weather when the wind-only hazard setting
+ * grew into a full weather picker.
+ */
 function loadHazards(): HazardMode {
   const stored = loadFromStorage<string>(HAZARD_KEY, 'random');
+  if (stored === 'none') return 'clear';
   return HAZARD_MODES.some((m) => m.value === stored) ? (stored as HazardMode) : 'random';
+}
+
+function loadLocation(): LocationMode {
+  const stored = loadFromStorage<string>(LOCATION_KEY, 'random');
+  return LOCATION_MODES.some((m) => m.value === stored) ? (stored as LocationMode) : 'random';
 }
 
 let current: AlienAbductionSettings = {
   subMode: loadSubMode(),
   hazards: loadHazards(),
+  location: loadLocation(),
   sound: loadFromStorage<boolean>(SOUND_KEY, true),
   music: loadFromStorage<boolean>(MUSIC_KEY, true),
 };
@@ -103,6 +132,13 @@ export function setAlienAbductionHazards(next: HazardMode): void {
   if (current.hazards === next) return;
   current = { ...current, hazards: next };
   saveToStorage(HAZARD_KEY, next);
+  notify();
+}
+
+export function setAlienAbductionLocation(next: LocationMode): void {
+  if (current.location === next) return;
+  current = { ...current, location: next };
+  saveToStorage(LOCATION_KEY, next);
   notify();
 }
 
