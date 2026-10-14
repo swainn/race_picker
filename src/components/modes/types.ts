@@ -14,7 +14,9 @@ export type GameMode =
   | 'street-duel'
   | 'alien-abduction'
   | 'poker'
-  | 'claw';
+  | 'claw'
+  | 'whac-a-mole'
+  | 'angry-birds';
 
 /** Per-mode metadata that gets stashed on a winner record. */
 export interface ModeWinnerExtras {

@@ -3,7 +3,9 @@ import type { GameMode, ModeViewProps } from './types';
 import type { WinnerTheme } from './themes';
 import {
   alienAbductionTheme,
+  angryBirdsTheme,
   clawTheme,
+  whacAMoleTheme,
   pokerTheme,
   battleBotsTheme,
   battleshipTheme,
@@ -28,6 +30,8 @@ import { DuelSettings } from './DuelMode/DuelSettings';
 import { AlienAbductionSettings } from './AlienAbductionMode/AlienAbductionSettings';
 import { PokerSettings } from './PokerMode/PokerSettings';
 import { ClawSettings } from './ClawMode/ClawSettings';
+import { WhacAMoleSettings } from './WhacAMoleMode/WhacAMoleSettings';
+import { AngryBirdsSettings } from './AngryBirdsMode/AngryBirdsSettings';
 
 // Mode views are code-split: each mode's chunk (engine, drawing, audio, CSS)
 // loads on first use instead of in the initial bundle. Settings panels stay
@@ -47,6 +51,10 @@ const DuelMode = lazy(() => import('./DuelMode/DuelMode').then((m) => ({ default
 const AlienAbductionMode = lazy(() => import('./AlienAbductionMode/AlienAbductionMode').then((m) => ({ default: m.AlienAbductionMode })));
 const PokerMode = lazy(() => import('./PokerMode/PokerMode').then((m) => ({ default: m.PokerMode })));
 const ClawMode = lazy(() => import('./ClawMode/ClawMode').then((m) => ({ default: m.ClawMode })));
+const WhacAMoleMode = lazy(() => import('./WhacAMoleMode/WhacAMoleMode').then((m) => ({ default: m.WhacAMoleMode })));
+// Angry Birds pulls matter-js into its chunk; code-splitting keeps that out of
+// the initial bundle for everyone who never opens the mode.
+const AngryBirdsMode = lazy(() => import('./AngryBirdsMode/AngryBirdsMode').then((m) => ({ default: m.AngryBirdsMode })));
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -78,6 +86,14 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   // The claw takes one toy per drop and that toy is the pick, so this orders
   // like Racing: first chosen places first.
   claw:              { View: ClawMode,       Settings: ClawSettings,       theme: clawTheme,       label: '🕹 The Claw' },
+  // The mallet knocks a mole out, so the one it never comes for is champion.
+  'whac-a-mole':     { View: WhacAMoleMode,  Settings: WhacAMoleSettings,  theme: whacAMoleTheme,  label: '🔨 Whac-a-Mole', survivalOrder: true },
+  // Ordering here depends on the sub-mode — pigs eliminate, birds place first —
+  // so AngryBirdsMode renders its own FinalStandingsDialog with a runtime
+  // `reverseOrder` and never calls onShowFinalStandings. This flag is the
+  // correct default for the pigs sub-mode but is otherwise unused: the shared
+  // standings dialog never opens for this mode. See AngryBirdsMode.tsx.
+  'angry-birds':     { View: AngryBirdsMode, Settings: AngryBirdsSettings, theme: angryBirdsTheme, label: '🐦 Angry Birds', survivalOrder: true },
 };
 
 /** Labels lead with an emoji, so sort on the name that follows it. */

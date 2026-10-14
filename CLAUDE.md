@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A gamified random-selection tool ("Aquaveo Picker"). One shared participant list is run through one of several **game modes** (Racing, Battle Bots, Light Cycles, Plinko, Wall Climber, Battleship, Wheel, Alien Abduction, Poker Night, The Claw). Each race eliminates the winner from the pool and repeats until everyone is ranked. Pure client-side React app — no backend, all state lives in React state + `localStorage`.
+A gamified random-selection tool ("Aquaveo Picker"). One shared participant list is run through one of several **game modes** (Racing, Battle Bots, Light Cycles, Plinko, Wall Climber, Battleship, Wheel, Alien Abduction, Poker Night, The Claw, Whac-a-Mole, Angry Birds). Each race eliminates the winner from the pool and repeats until everyone is ranked. Pure client-side React app — no backend, all state lives in React state + `localStorage`.
 
 ## Commands
 
@@ -65,3 +65,5 @@ Mode settings that must persist (e.g. `wheelSettingsStore.ts`, `racingSettingsSt
 - Shared utilities live in `src/utils/`: `colors.ts` (`PLAYER_COLORS` / `generateColor`), `array.ts` (`shuffle`), `storage.ts` (`loadFromStorage`/`saveToStorage`), `entryImages.ts`.
 - `localStorage` access is always wrapped in try/catch (quota/serialization can throw); follow the existing helpers.
 - React 19 + new JSX transform — no `import React` needed.
+- **`matter-js` is the only runtime dependency any mode uses**, and only Angry Birds uses it. Every `matter-js` import is confined to `AngryBirdsMode/angryBirdsPhysics.ts` so the rest of that mode stays pure and unit-testable, and so the dependency rides along in the mode's lazy-loaded chunk instead of the initial bundle. Drive it on a fixed timestep (`Engine.update(engine, 1000/60)`), never a variable `dt`, and tear the world down on unmount — the whole mode remounts on every reset.
+- `survivalOrder` in the registry is a **static** flag read once at render (`App.tsx` → `FinalStandingsDialog reverseOrder`). A mode whose ordering depends on a runtime setting cannot use it: instead the mode declines to call `onShowFinalStandings` (which keeps App's dialog shut) and renders its own. Angry Birds does this with the shared `FinalStandingsDialog` and a runtime `reverseOrder`; Poker Night does it with a bespoke dialog because it ranks by pots won rather than `winOrder`.

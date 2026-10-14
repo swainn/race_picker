@@ -175,3 +175,32 @@ export const clawTheme: WinnerTheme = {
   letterSpacing: '1px',
   buttonStyle: 'solid',
 };
+
+/** Whac-a-Mole — grass green, with a mallet-red headline for the knockout. */
+export const whacAMoleTheme: WinnerTheme = {
+  accent: '#6FD36B',
+  accentSoft: 'rgba(111, 211, 107, 0.55)',
+  bgGradient: 'linear-gradient(135deg,#1b3b2a 0%,#0d2017 100%)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  // The per-round card announces a knockout, so the headline wears mallet red.
+  headlineColor: '#FF6B5E',
+  finalsHeadlineColor: FINALS_GOLD,
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};
+
+/** Angry Birds — sky blue and slingshot red. */
+export const angryBirdsTheme: WinnerTheme = {
+  accent: '#E8453C',
+  accentSoft: 'rgba(232, 69, 60, 0.55)',
+  bgGradient: 'linear-gradient(135deg,#1a4e7a 0%,#0e2b45 100%)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#FFD23A',
+  fontFamily: '"Arial Black", system-ui, sans-serif',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};

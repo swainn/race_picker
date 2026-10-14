@@ -1,0 +1,25 @@
+.whac-a-mole-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  width: 100%;
+}
+
+.whac-a-mole-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 640 / 560;
+  width: min(100%, calc((100svh - 240px) * (640 / 560)), calc(100vw - 64px));
+  max-width: 720px;
+}
+
+.whac-a-mole-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  border: 3px solid #1f3a26;
+  background-color: #0d2017;
+  border-radius: 10px;
+  display: block;
+}

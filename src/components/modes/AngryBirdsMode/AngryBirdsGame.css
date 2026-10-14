@@ -1,0 +1,35 @@
+.angry-birds-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  width: 100%;
+}
+
+/* Wide canvas: the same vertical-reserve formula the other 840x600 modes use,
+   so the field fits without scrolling the page. */
+.angry-birds-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 840 / 600;
+  width: min(100%, calc((100svh - 240px) * (840 / 600)), calc(100vw - 64px));
+  max-width: 900px;
+}
+
+.angry-birds-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  border: 3px solid #1a4e7a;
+  background-color: #BDE9FB;
+  border-radius: 10px;
+  display: block;
+}
+
+/* Winning score, inside the winner dialog. */
+.angry-birds-score {
+  font-size: 1.05em;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+}
