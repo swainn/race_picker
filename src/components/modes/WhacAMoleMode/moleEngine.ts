@@ -70,8 +70,22 @@ export const MOLE_T = {
   done: 1000,
 } as const;
 
-/** Empty holes the mallet fakes at before it commits to the real one. */
-export const FAKE_SWINGS = 2;
+/** Fewest and most swings a round may take, the connecting one included. */
+export const SWINGS_MIN = 1;
+export const SWINGS_MAX = 6;
+
+/**
+ * How many swings this round takes before the mallet connects, counting the
+ * hit itself — so 1 means it lands first time and 6 means five misses first.
+ *
+ * Rolled fresh each round. A fixed count made the mode predictable: with two
+ * fakes every time you could see the hit coming on the third swing. This is
+ * theatre only — the victim was already drawn uniformly before any of it, so
+ * the number of swings cannot change who gets hit, only how long they sweat.
+ */
+export function swingsForRound(rand: () => number = Math.random): number {
+  return SWINGS_MIN + Math.floor(rand() * (SWINGS_MAX - SWINGS_MIN + 1));
+}
 
 export interface HoleSpot {
   x: number;

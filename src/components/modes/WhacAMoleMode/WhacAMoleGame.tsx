@@ -5,7 +5,7 @@ import { createShuffleBag } from '../../../utils/shuffleBag';
 import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import type { WinnerTheme } from '../themes';
 import {
-  FAKE_SWINGS,
+  swingsForRound,
   MOLE_T,
   WHAC,
   easeInCubic,
@@ -15,12 +15,14 @@ import {
   type HoleSpot,
 } from './moleEngine';
 import {
+  CRITTER_KINDS,
   drawBoard,
   drawHole,
   drawHoleRim,
   drawImpactDust,
   drawMallet,
   drawMole,
+  type CritterKind,
   drawStars,
 } from './moleSprites';
 import {
@@ -61,6 +63,8 @@ interface Mole {
   entry: Entry;
   color: string;
   initials: string;
+  /** Which critter this participant is. Cosmetic only. */
+  kind: CritterKind;
   hole: HoleSpot;
   /** Where the mole is heading: up out of the hole, or back down. */
   up: boolean;
@@ -170,6 +174,8 @@ export function WhacAMoleGame(props: Props) {
 
   /** Fake swings landed so far this round, and whether one is mid-flight. */
   const fakesDoneRef = useRef(0);
+  /** Swings this round, the connecting one included. Rolled per round. */
+  const swingsTargetRef = useRef(1);
   const fakingRef = useRef(false);
   /** The hole the current drift/fake is aimed at, so its mole can dodge. */
   const fakeTargetRef = useRef<number>(-1);
@@ -183,6 +189,23 @@ export function WhacAMoleGame(props: Props) {
    * for the victim (see utils/shuffleBag.ts and moleEngine.ts).
    */
   const decoyBagRef = useRef<(() => number) | null>(null);
+
+  /**
+   * Which critter each participant is, keyed by entry id so it survives being
+   * re-seeded between rounds — your animal should not change under you. Dealt
+   * from a bag so the board is varied rather than clumpy. Purely cosmetic: the
+   * victim is drawn before any of this, so a critter cannot affect the odds.
+   */
+  const kindsRef = useRef<Map<number, CritterKind>>(new Map());
+  const kindBagRef = useRef(createShuffleBag(CRITTER_KINDS));
+
+  const kindFor = (entry: Entry): CritterKind => {
+    const seen = kindsRef.current.get(entry.id);
+    if (seen) return seen;
+    const next = kindBagRef.current();
+    kindsRef.current.set(entry.id, next);
+    return next;
+  };
 
   const dur = (ms: number) => ms * whacSpeedFactor(speedRef.current);
 
@@ -206,6 +229,7 @@ export function WhacAMoleGame(props: Props) {
         entry,
         color: generateColor(idx < 0 ? i : idx),
         initials: initials[i],
+        kind: kindFor(entry),
         hole: holes[i],
         up: false,
         pop: 0,
@@ -251,6 +275,7 @@ export function WhacAMoleGame(props: Props) {
 
     declaredRef.current = false;
     fakesDoneRef.current = 0;
+    swingsTargetRef.current = swingsForRound();
     lockedRef.current = false;
     hitAtRef.current = 0;
     tiltRef.current = 0;
@@ -326,10 +351,21 @@ export function WhacAMoleGame(props: Props) {
             fromYRef.current = toYRef.current;
             malletYRef.current = toYRef.current;
             fakesDoneRef.current++;
+            startDrift(now);
+            break;
+          }
 
-            if (fakesDoneRef.current >= FAKE_SWINGS) {
-              // Commit. Every other mole ducks, leaving the one that was
-              // picked before the round began alone on the board.
+          // Drifting across the board to the next hole to tease.
+          const e = easeInOut(t);
+          malletXRef.current = fromXRef.current + (toXRef.current - fromXRef.current) * e;
+          malletYRef.current = fromYRef.current + (toYRef.current - fromYRef.current) * e;
+          tiltRef.current = 0;
+          if (now >= phaseUntilRef.current) {
+            // Out of teases: commit. Every other mole ducks, leaving the one
+            // picked before the round began alone on the board. Checked here
+            // rather than after a fake so a one-swing round can connect
+            // without teasing first.
+            if (fakesDoneRef.current >= swingsTargetRef.current - 1) {
               lockedRef.current = true;
               molesRef.current.forEach((m, i) => {
                 m.up = i === victimRef.current;
@@ -341,18 +377,8 @@ export function WhacAMoleGame(props: Props) {
               toYRef.current = victim ? hoverYFor(victim.hole) : malletYRef.current;
               fakingRef.current = false;
               setPhase('lock', now, dur(MOLE_T.lock));
-            } else {
-              startDrift(now);
+              break;
             }
-            break;
-          }
-
-          // Drifting across the board to the next hole to tease.
-          const e = easeInOut(t);
-          malletXRef.current = fromXRef.current + (toXRef.current - fromXRef.current) * e;
-          malletYRef.current = fromYRef.current + (toYRef.current - fromYRef.current) * e;
-          tiltRef.current = 0;
-          if (now >= phaseUntilRef.current) {
             fakingRef.current = true;
             // The mole in the hole being teased drops out of the way as the
             // mallet comes down. Without this the head visibly lands on a mole
@@ -457,6 +483,7 @@ export function WhacAMoleGame(props: Props) {
         ctx.clip();
         ctx.translate(hole.x, hole.y);
         drawMole(ctx, mole.color, mole.initials, {
+          kind: mole.kind,
           pop: mole.pop,
           phase: mole.phase + now / 420,
           alarm,

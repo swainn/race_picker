@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Entry } from '../../../types';
 import {
+  SWINGS_MAX,
+  SWINGS_MIN,
   WHAC,
   colsFor,
   easeInCubic,
   easeInOut,
   layoutHoles,
   pickVictim,
+  swingsForRound,
 } from './moleEngine';
 
 /** Every crowd size the grid has to cope with. */
@@ -136,5 +139,47 @@ describe('easing', () => {
   it('accelerates into the impact', () => {
     // The downstroke should cover most of its distance late, so the hit lands hard.
     expect(easeInCubic(0.5)).toBeLessThan(0.2);
+  });
+});
+
+describe('swingsForRound', () => {
+  it('always lands inside the advertised range', () => {
+    for (let t = 0; t < 5000; t++) {
+      const n = swingsForRound();
+      expect(Number.isInteger(n)).toBe(true);
+      expect(n).toBeGreaterThanOrEqual(SWINGS_MIN);
+      expect(n).toBeLessThanOrEqual(SWINGS_MAX);
+    }
+  });
+
+  it('reaches both ends of the range', () => {
+    const seen = new Set<number>();
+    for (let t = 0; t < 5000; t++) seen.add(swingsForRound());
+    expect(seen.has(SWINGS_MIN)).toBe(true);
+    expect(seen.has(SWINGS_MAX)).toBe(true);
+    expect(seen.size).toBe(SWINGS_MAX - SWINGS_MIN + 1);
+  });
+
+  // The old fixed count made the hit land on the third swing every single
+  // round, which is exactly what this replaced.
+  it('spreads evenly, so the hit is never on a predictable swing', () => {
+    const trials = 12000;
+    const counts = new Map<number, number>();
+    for (let t = 0; t < trials; t++) {
+      const n = swingsForRound();
+      counts.set(n, (counts.get(n) ?? 0) + 1);
+    }
+    const expected = trials / (SWINGS_MAX - SWINGS_MIN + 1);
+    for (let n = SWINGS_MIN; n <= SWINGS_MAX; n++) {
+      const got = counts.get(n) ?? 0;
+      expect(got, `${n} swings came up ${got} times, expected ~${expected}`)
+        .toBeGreaterThan(expected * 0.85);
+      expect(got).toBeLessThan(expected * 1.15);
+    }
+  });
+
+  it('is driven entirely by the supplied randomness', () => {
+    expect(swingsForRound(() => 0)).toBe(SWINGS_MIN);
+    expect(swingsForRound(() => 0.999999)).toBe(SWINGS_MAX);
   });
 });

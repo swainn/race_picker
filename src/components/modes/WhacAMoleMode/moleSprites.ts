@@ -125,7 +125,18 @@ export function drawHoleRim(ctx: CanvasRenderingContext2D, x: number, y: number)
   ctx.restore();
 }
 
+/**
+ * What is living in the holes. Purely cosmetic: the victim is drawn before any
+ * of this is assigned, so a participant's critter has no bearing on whether it
+ * gets whacked.
+ */
+export type CritterKind = 'mole' | 'rabbit' | 'mouse' | 'hedgehog' | 'frog' | 'badger';
+
+export const CRITTER_KINDS: CritterKind[] = ['mole', 'rabbit', 'mouse', 'hedgehog', 'frog', 'badger'];
+
 export interface MoleOptions {
+  /** Which critter this participant is. */
+  kind: CritterKind;
   /** 0 = hidden in the hole, 1 = fully up. */
   pop: number;
   /** Idle wobble phase. */
@@ -172,12 +183,74 @@ export function drawMole(
     ctx.translate(0, o.alarm * 3);
   }
 
-  // Ears
+  // Ears / crown — the silhouette is what tells the critters apart at this size
+  const inner = lighten(color, 0.45);
   ctx.fillStyle = shade;
-  for (const side of [-1, 1]) {
-    ctx.beginPath();
-    ctx.ellipse(side * 17, -42, 5.5, 6.5, 0, 0, Math.PI * 2);
-    ctx.fill();
+  switch (o.kind) {
+    case 'rabbit':
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(side * 11, -62, 6, 20, side * 0.16, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = inner;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(side * 11, -62, 2.8, 14, side * 0.16, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    case 'mouse':
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(side * 20, -44, 12, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = inner;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(side * 20, -44, 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    case 'hedgehog': {
+      // A crown of spines instead of ears.
+      ctx.fillStyle = shade;
+      for (let i = -4; i <= 4; i++) {
+        const a = (i / 4) * 1.05;
+        const bx = Math.sin(a) * 22;
+        const by = -44 - Math.cos(a) * 10;
+        ctx.beginPath();
+        ctx.moveTo(bx - 5, by + 4);
+        ctx.lineTo(bx + Math.sin(a) * 9, by - 13);
+        ctx.lineTo(bx + 5, by + 4);
+        ctx.closePath();
+        ctx.fill();
+      }
+      break;
+    }
+    case 'badger':
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(side * 19, -40, 7, 5.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    case 'frog':
+      // Eyes ride on top in bulging turrets; no ears at all.
+      ctx.fillStyle = fur;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(side * 13, -46, 11, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    default:
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(side * 17, -42, 5.5, 6.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
   }
 
   // Body/head — one rounded blob, which is how the arcade ones look.
@@ -185,6 +258,14 @@ export function drawMole(
   ctx.beginPath();
   ctx.ellipse(0, -24, 24, 30, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // The badger's blaze, straight down the middle of the face
+  if (o.kind === 'badger') {
+    ctx.fillStyle = '#f2efe6';
+    ctx.beginPath();
+    ctx.ellipse(0, -30, 7, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // Paws gripping the rim
   ctx.fillStyle = shade;
@@ -205,38 +286,61 @@ export function drawMole(
   ctx.textBaseline = 'middle';
   ctx.fillText(initials.slice(0, 3), 0, -13);
 
-  // Nose
-  ctx.fillStyle = '#e8718b';
-  ctx.beginPath();
-  ctx.ellipse(0, -24, 4, 3.2, 0, 0, Math.PI * 2);
-  ctx.fill();
+  // Nose, or the frog's wide grin
+  if (o.kind === 'frog') {
+    ctx.strokeStyle = darken(color, 0.55);
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(0, -28, 13, 0.25, Math.PI - 0.25);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = o.kind === 'badger' ? '#2b2b33' : '#e8718b';
+    ctx.beginPath();
+    ctx.ellipse(0, -24, 4, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-  // Eyes — round and widening with alarm, crossed out once hit.
+  // Buck teeth, for the ones that gnaw
+  if (o.kind === 'rabbit' || o.kind === 'mouse') {
+    ctx.fillStyle = '#fbfbf5';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.roundRect(side * 2.6 - 2.4, -21, 4.8, 7, 1.4);
+      ctx.fill();
+    }
+  }
+
+  // Eyes — round and widening with alarm, crossed out once hit. The frog's
+  // ride high in the turrets drawn above; everyone else wears them on the face.
   const eyeR = 4.2 + o.alarm * 1.4;
-  for (const ex of [-9, 9]) {
+  const eyeY = o.kind === 'frog' ? -46 : -34;
+  const eyeSpread = o.kind === 'frog' ? 13 : 9;
+  for (const ex of [-eyeSpread, eyeSpread]) {
     if (o.hit) {
       ctx.strokeStyle = '#20222a';
       ctx.lineWidth = 2.2;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(ex - 4, -38);
-      ctx.lineTo(ex + 4, -30);
-      ctx.moveTo(ex + 4, -38);
-      ctx.lineTo(ex - 4, -30);
+      ctx.moveTo(ex - 4, eyeY - 4);
+      ctx.lineTo(ex + 4, eyeY + 4);
+      ctx.moveTo(ex + 4, eyeY - 4);
+      ctx.lineTo(ex - 4, eyeY + 4);
       ctx.stroke();
     } else {
       ctx.fillStyle = '#f8f8f4';
       ctx.beginPath();
-      ctx.arc(ex, -34, eyeR, 0, Math.PI * 2);
+      ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#20222a';
       ctx.beginPath();
-      ctx.arc(ex, -34 + o.alarm * 0.8, 2, 0, Math.PI * 2);
+      ctx.arc(ex, eyeY + o.alarm * 0.8, 2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
-  // Whiskers
+  // Whiskers — not on the frog or the hedgehog
+  if (o.kind !== 'frog' && o.kind !== 'hedgehog') {
   ctx.strokeStyle = 'rgba(255,255,255,0.65)';
   ctx.lineWidth = 1.1;
   for (const side of [-1, 1]) {
@@ -246,6 +350,7 @@ export function drawMole(
       ctx.lineTo(side * 24, dy - 3);
       ctx.stroke();
     }
+  }
   }
 
   ctx.restore();
