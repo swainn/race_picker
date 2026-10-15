@@ -101,20 +101,34 @@ function computeInitials(entries: Entry[]): string[] {
   return result;
 }
 
+/** How far the head is lifted on the cock-back, in px. */
+const COCK_LIFT = 52;
+/**
+ * Cock-back tilt, in radians. `drawMallet` pivots about the grip, so this tips
+ * the cylinder end back rather than swinging the handle around a head that
+ * stays put. It is deliberately small: the handle is steep in this view, so
+ * rotation about its base moves the head mostly sideways — the lift above is
+ * what raises the head, and this only adds the tip that sells the wind-up.
+ */
+const COCK_TILT = 0.14;
+
 /**
  * The shape of a swing: cock back, strike, recover. `reach` is how far below
  * the hover line the head travels — a fake swing simply uses a short reach,
  * which is the whole difference between a tease and a hit.
+ *
+ * Tilt returns to 0 before the head lands, so the strike always arrives square
+ * over the hole no matter how far back it was cocked.
  */
 function swingShape(t: number, reach: number): { dy: number; tilt: number } {
   if (t < 0.3) {
     const e = easeInOut(t / 0.3);
-    return { dy: -26 * e, tilt: -0.55 * e };
+    return { dy: -COCK_LIFT * e, tilt: COCK_TILT * e };
   }
   if (t < 0.62) {
     // Accelerating downstroke, so the head is moving fastest when it lands.
     const e = easeInCubic((t - 0.3) / 0.32);
-    return { dy: -26 + (reach + 26) * e, tilt: -0.55 * (1 - e) };
+    return { dy: -COCK_LIFT + (reach + COCK_LIFT) * e, tilt: COCK_TILT * (1 - e) };
   }
   const e = easeInOut((t - 0.62) / 0.38);
   return { dy: reach * (1 - e), tilt: 0 };
@@ -157,6 +171,8 @@ export function WhacAMoleGame(props: Props) {
   /** Fake swings landed so far this round, and whether one is mid-flight. */
   const fakesDoneRef = useRef(0);
   const fakingRef = useRef(false);
+  /** The hole the current drift/fake is aimed at, so its mole can dodge. */
+  const fakeTargetRef = useRef<number>(-1);
   /** True once the mallet has stopped teasing and committed to the victim. */
   const lockedRef = useRef(false);
   /** Timestamp of impact, used to time the stars and the dust ring. */
@@ -206,6 +222,7 @@ export function WhacAMoleGame(props: Props) {
     const moles = molesRef.current;
     const draw = decoyBagRef.current;
     const target = draw ? draw() : victimRef.current;
+    fakeTargetRef.current = target;
     const hole = moles[target]?.hole ?? moles[0]?.hole;
     fromXRef.current = malletXRef.current;
     fromYRef.current = malletYRef.current;
@@ -337,6 +354,21 @@ export function WhacAMoleGame(props: Props) {
           tiltRef.current = 0;
           if (now >= phaseUntilRef.current) {
             fakingRef.current = true;
+            // The mole in the hole being teased drops out of the way as the
+            // mallet comes down. Without this the head visibly lands on a mole
+            // that is still standing and nothing happens, which reads as a
+            // broken hit rather than a miss. Ducking it turns the fake into a
+            // dodge — and it is safe to do, because the real victim was drawn
+            // before the round began and is never a fake target.
+            const decoy = molesRef.current[fakeTargetRef.current];
+            if (decoy && !decoy.knocked) {
+              decoy.up = false;
+              // Give the dodge a head start so it completes before the head
+              // lands even on the Fast setting, where the swing is shortest.
+              decoy.pop = Math.min(decoy.pop, 0.5);
+              // Stay down until the mallet has moved on.
+              decoy.nextAt = now + dur(MOLE_T.fake) + 120;
+            }
             audio.playWhoosh();
             setPhase('popping', now, dur(MOLE_T.fake));
           }

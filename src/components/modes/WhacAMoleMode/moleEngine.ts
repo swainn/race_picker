@@ -49,19 +49,25 @@ export const WHAC = {
   MAX_COLS: 5,
 } as const;
 
-/** Phase lengths in ms, before the speed multiplier is applied. */
+/**
+ * Phase lengths in ms, before the speed multiplier is applied.
+ *
+ * Paced like someone actually trying to catch a mole that keeps dodging:
+ * the hunt is quick and a little frantic, and only the payoff after a
+ * connecting hit is allowed to breathe.
+ */
 export const MOLE_T = {
   /** One drift across the board to the next hole the mallet will tease. */
-  drift: 820,
+  drift: 360,
   /** A swing that stops short — pure theatre at an empty hole. */
-  fake: 540,
+  fake: 290,
   /** Easing the mallet onto the victim's hole once it commits. */
-  lock: 760,
+  lock: 300,
   /** Cock back and slam. */
-  swing: 460,
+  swing: 250,
   /** Mole flattened, stars spinning, before the knockout is declared. */
-  whack: 860,
-  done: 1100,
+  whack: 760,
+  done: 1000,
 } as const;
 
 /** Empty holes the mallet fakes at before it commits to the real one. */
