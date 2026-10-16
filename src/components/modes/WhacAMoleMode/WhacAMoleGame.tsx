@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Entry } from '../../../types';
 import { generateColor } from '../../../utils/colors';
+import { getPreferredEntryImage } from '../../../utils/entryImages';
 import { createShuffleBag } from '../../../utils/shuffleBag';
 import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import type { WinnerTheme } from '../themes';
@@ -196,6 +197,13 @@ export function WhacAMoleGame(props: Props) {
    * from a bag so the board is varied rather than clumpy. Purely cosmetic: the
    * victim is drawn before any of this, so a critter cannot affect the odds.
    */
+  /**
+   * Decoded participant photos, keyed by entry id. Kept in a ref because the
+   * rAF loop draws them: an <img> has to be decoded before `drawImage` will
+   * take it, so the sprite falls back to the drawn face until `complete` flips.
+   */
+  const imgCacheRef = useRef<Map<number, HTMLImageElement>>(new Map());
+
   const kindsRef = useRef<Map<number, CritterKind>>(new Map());
   const kindBagRef = useRef(createShuffleBag(CRITTER_KINDS));
 
@@ -225,6 +233,12 @@ export function WhacAMoleGame(props: Props) {
     const dwell = whacDensityDwell(densityRef.current);
     molesRef.current = list.map((entry, i) => {
       const idx = all.findIndex((e) => e.id === entry.id);
+      const url = getPreferredEntryImage(entry);
+      if (url && !imgCacheRef.current.has(entry.id)) {
+        const im = new Image();
+        im.src = url;
+        imgCacheRef.current.set(entry.id, im);
+      }
       return {
         entry,
         color: generateColor(idx < 0 ? i : idx),
@@ -484,6 +498,7 @@ export function WhacAMoleGame(props: Props) {
         ctx.translate(hole.x, hole.y);
         drawMole(ctx, mole.color, mole.initials, {
           kind: mole.kind,
+          avatar: imgCacheRef.current.get(mole.entry.id) ?? null,
           pop: mole.pop,
           phase: mole.phase + now / 420,
           alarm,

@@ -149,6 +149,12 @@ export interface MoleOptions {
   ghost?: boolean;
   /** Milliseconds since impact, for the stars and the squash recovery. */
   sinceHit?: number;
+  /**
+   * The participant's photo, when they have one. Drawn as the critter's face
+   * in place of the muzzle and features; the ears, spines and blaze stay, so
+   * which critter it is still reads. Ignored until the image has decoded.
+   */
+  avatar?: HTMLImageElement | null;
 }
 
 /**
@@ -273,6 +279,51 @@ export function drawMole(
     ctx.beginPath();
     ctx.ellipse(side * 21, -2, 7.5, 5, side * 0.3, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  const photo = o.avatar && o.avatar.complete && o.avatar.naturalWidth > 0 ? o.avatar : null;
+
+  if (photo) {
+    // Photo face, centred on the head and cropped to a circle.
+    const cx = 0;
+    const cy = -28;
+    const r = 17;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    // Cover-fit: fill the disc from the short side and centre-crop, rather
+    // than stretching a portrait into a circle.
+    const scale = Math.max((r * 2) / photo.naturalWidth, (r * 2) / photo.naturalHeight);
+    const w = photo.naturalWidth * scale;
+    const h = photo.naturalHeight * scale;
+    ctx.drawImage(photo, cx - w / 2, cy - h / 2, w, h);
+    ctx.restore();
+    // A ring in the participant's colour, so they are still identifiable at a
+    // glance when several photos are up at once.
+    ctx.strokeStyle = shade;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 1, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // The knockout still has to read, so cross the eyes out over the photo.
+    if (o.hit) {
+      ctx.strokeStyle = '#20222a';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      for (const ex of [-7, 7]) {
+        ctx.beginPath();
+        ctx.moveTo(ex - 5, -34);
+        ctx.lineTo(ex + 5, -24);
+        ctx.moveTo(ex + 5, -34);
+        ctx.lineTo(ex - 5, -24);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+    return;
   }
 
   // Muzzle, with the participant's initials on it like a name badge.

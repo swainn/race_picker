@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState } from 'react';
-import type { Entry } from './types';
+import type { Entry, EntryImage } from './types';
 import { FinalStandingsDialog } from './components/FinalStandingsDialog';
 import { ManagementDialog } from './components/ManagementDialog';
 import { SettingsModal } from './components/shared/SettingsModal/SettingsModal';
@@ -20,7 +20,28 @@ interface Group {
   timestamp: number;
 }
 
+/**
+ * Crop records as stored, dropping anything malformed. Entries saved before
+ * cropping existed have none; `utils/imageCrop.ts` fills those in on demand
+ * from the cropped square itself, so a missing record is not an error.
+ */
+function normalizeImages(entry: Entry): EntryImage[] | undefined {
+  if (!Array.isArray(entry.images)) return undefined;
+  const kept = entry.images.filter(
+    (im): im is EntryImage =>
+      !!im &&
+      typeof im.src === 'string' &&
+      im.src.length > 0 &&
+      !!im.crop &&
+      typeof im.crop.cx === 'number' &&
+      typeof im.crop.cy === 'number' &&
+      typeof im.crop.zoom === 'number'
+  );
+  return kept.length > 0 ? kept : undefined;
+}
+
 function normalizeEntry(entry: Entry): Entry {
+  const images = normalizeImages(entry);
   if (Array.isArray(entry.imageDataUrls) && entry.imageDataUrls.length > 0) {
     return {
       id: entry.id,
@@ -28,10 +49,11 @@ function normalizeEntry(entry: Entry): Entry {
       imageDataUrls: entry.imageDataUrls.filter(
         (v): v is string => typeof v === 'string' && v.length > 0
       ),
+      images,
     };
   }
   if (typeof entry.imageDataUrl === 'string' && entry.imageDataUrl.length > 0) {
-    return { id: entry.id, name: entry.name, imageDataUrls: [entry.imageDataUrl] };
+    return { id: entry.id, name: entry.name, imageDataUrls: [entry.imageDataUrl], images };
   }
   return { id: entry.id, name: entry.name, imageDataUrls: [] };
 }

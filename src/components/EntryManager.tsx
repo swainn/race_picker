@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
-import type { Entry } from '../types';
+import type { Entry, EntryImage, ImageCrop } from '../types';
 import { getEntryImages } from '../utils/entryImages';
+import { DEFAULT_CROP, SOURCE_MAX_PX, entryImageRecords } from '../utils/imageCrop';
+import { ImageCropDialog } from './ImageCropDialog';
 import './EntryManager.css';
 
 interface Props {
@@ -10,9 +12,27 @@ interface Props {
   winOrder: Map<number, number>;
 }
 
+/** What the crop dialog is currently pointed at. */
+interface CropTarget {
+  entryId: number;
+  /** Index being re-cropped, or null when this is a picture being added. */
+  index: number | null;
+  src: string;
+  crop: ImageCrop;
+  name: string;
+  /** Position within a multi-file add, for the dialog title. */
+  queued: { at: number; of: number } | null;
+}
+
 export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, eliminatedIds, winOrder }) => {
   const [input, setInput] = useState('');
   const fileInputsRef = useRef<Record<number, HTMLInputElement | null>>({});
+  const [cropTarget, setCropTarget] = useState<CropTarget | null>(null);
+  /** Sources still waiting for a crop, when several files were picked at once. */
+  const pendingRef = useRef<{ entryId: number; name: string; src: string }[]>([]);
+  const pendingTotalRef = useRef(0);
+  const [editingNameId, setEditingNameId] = useState<number | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
 
   const addEntry = () => {
     if (input.trim() && entries.length < 20) {
@@ -30,85 +50,165 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
     delete fileInputsRef.current[id];
   };
 
-  const updateEntryImages = (id: number, imageDataUrls: string[]) => {
+  const renameEntry = (id: number, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onEntriesChange(entries.map((e) => (e.id === id ? { ...e, name: trimmed } : e)));
+  };
+
+  const startRename = (entry: Entry) => {
+    setEditingNameId(entry.id);
+    setNameDraft(entry.name);
+  };
+
+  const commitRename = () => {
+    if (editingNameId !== null) renameEntry(editingNameId, nameDraft);
+    setEditingNameId(null);
+  };
+
+  /**
+   * Write both halves of an entry's pictures at once. `imageDataUrls` is what
+   * every mode draws; `images` keeps the uncropped sources beside it so a crop
+   * stays editable instead of being baked in.
+   */
+  const writePictures = (id: number, records: EntryImage[], urls: string[]) => {
     onEntriesChange(
       entries.map((entry) =>
-        entry.id === id ? { ...entry, imageDataUrls, imageDataUrl: undefined } : entry
+        entry.id === id
+          ? { ...entry, imageDataUrls: urls, images: records, imageDataUrl: undefined }
+          : entry
       )
     );
   };
 
-  const resizeImageToDataUrl = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+  /** Downscale an upload for storage. The crop is applied later, from this. */
+  const readSource = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
-
       reader.onload = () => {
         const raw = reader.result;
         if (typeof raw !== 'string') {
           reject(new Error('Failed to read file.'));
           return;
         }
-
         const img = new Image();
         img.onload = () => {
-          const MAX_SIZE = 160;
-          const scale = Math.min(MAX_SIZE / img.width, MAX_SIZE / img.height, 1);
+          const scale = Math.min(SOURCE_MAX_PX / img.width, SOURCE_MAX_PX / img.height, 1);
           const width = Math.max(1, Math.round(img.width * scale));
           const height = Math.max(1, Math.round(img.height * scale));
-
           const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
-
           if (!ctx) {
             reject(new Error('Unable to process image.'));
             return;
           }
-
           ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.82));
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
         };
-
         img.onerror = () => reject(new Error('Image could not be loaded.'));
         img.src = raw;
       };
-
       reader.onerror = () => reject(new Error('Failed to read file.'));
       reader.readAsDataURL(file);
+    });
+
+  /** Open the crop dialog on the next queued upload, or close it when done. */
+  const advanceQueue = () => {
+    const next = pendingRef.current.shift();
+    if (!next) {
+      pendingTotalRef.current = 0;
+      setCropTarget(null);
+      return;
+    }
+    const at = pendingTotalRef.current - pendingRef.current.length;
+    setCropTarget({
+      entryId: next.entryId,
+      index: null,
+      src: next.src,
+      crop: { ...DEFAULT_CROP },
+      name: next.name,
+      queued: pendingTotalRef.current > 1 ? { at, of: pendingTotalRef.current } : null,
     });
   };
 
   const handleImageChange = async (id: number, files: FileList | undefined) => {
-    if (!files || files.length === 0) {
-      return;
-    }
-
+    if (!files || files.length === 0) return;
     const selectedFiles = Array.from(files);
     if (selectedFiles.some((file) => !file.type.startsWith('image/'))) {
       alert('Please choose an image file.');
       return;
     }
+    const entry = entries.find((item) => item.id === id);
+    if (!entry) return;
 
     try {
-      const dataUrls = await Promise.all(selectedFiles.map((file) => resizeImageToDataUrl(file)));
-      const entry = entries.find((item) => item.id === id);
-      const existingImages = entry ? getEntryImages(entry) : [];
-      updateEntryImages(id, [...existingImages, ...dataUrls]);
+      const sources = await Promise.all(selectedFiles.map((file) => readSource(file)));
+      pendingRef.current = sources.map((src) => ({ entryId: id, name: entry.name, src }));
+      pendingTotalRef.current = sources.length;
+      advanceQueue();
     } catch (error) {
       console.error(error);
       alert('Unable to add this image. Try a different file.');
     }
   };
 
-  const removeImageAtIndex = (id: number, imageIndex: number) => {
-    const entry = entries.find((item) => item.id === id);
+  const openRecrop = (entry: Entry, index: number) => {
+    const records = entryImageRecords(entry);
+    const record = records[index];
+    if (!record) return;
+    pendingRef.current = [];
+    pendingTotalRef.current = 0;
+    setCropTarget({
+      entryId: entry.id,
+      index,
+      src: record.src,
+      crop: record.crop,
+      name: entry.name,
+      queued: null,
+    });
+  };
+
+  const handleCropConfirm = (crop: ImageCrop, croppedDataUrl: string) => {
+    const target = cropTarget;
+    if (!target) return;
+    const entry = entries.find((item) => item.id === target.entryId);
     if (!entry) {
+      advanceQueue();
       return;
     }
+    const records = entryImageRecords(entry);
+    const urls = getEntryImages(entry);
 
-    updateEntryImages(
+    if (target.index === null) {
+      writePictures(
+        entry.id,
+        [...records, { src: target.src, crop }],
+        [...urls, croppedDataUrl]
+      );
+    } else {
+      const nextRecords = records.map((r, i) =>
+        i === target.index ? { src: target.src, crop } : r
+      );
+      const nextUrls = urls.map((u, i) => (i === target.index ? croppedDataUrl : u));
+      writePictures(entry.id, nextRecords, nextUrls);
+    }
+    advanceQueue();
+  };
+
+  /** Cancelling one of a batch skips just that picture, not the whole batch. */
+  const handleCropCancel = () => {
+    if (cropTarget?.index === null) advanceQueue();
+    else setCropTarget(null);
+  };
+
+  const removeImageAtIndex = (id: number, imageIndex: number) => {
+    const entry = entries.find((item) => item.id === id);
+    if (!entry) return;
+    writePictures(
       id,
+      entryImageRecords(entry).filter((_, index) => index !== imageIndex),
       getEntryImages(entry).filter((_, index) => index !== imageIndex)
     );
   };
@@ -151,7 +251,7 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
             const v = n % 100;
             return n + (s[(v - 20) % 10] || s[v] || s[0]);
           };
-          
+
           return (
             <div key={entry.id} className={`entry-item ${isEliminated ? 'eliminated' : ''}`}>
               <div className="entry-main-row">
@@ -163,11 +263,28 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
                     <span>{entry.name.charAt(0).toUpperCase()}</span>
                   )}
                 </div>
-                <span className="entry-name">
-                  {entry.name}
-                  {images.length > 1 && <span className="image-count-badge">{images.length} pics</span>}
-                  {isEliminated && order && <span className="eliminated-badge">{getOrdinal(order)}</span>}
-                </span>
+                {editingNameId === entry.id ? (
+                  <input
+                    type="text"
+                    className="entry-name-input"
+                    value={nameDraft}
+                    maxLength={20}
+                    autoFocus
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitRename();
+                      if (e.key === 'Escape') setEditingNameId(null);
+                    }}
+                    aria-label={`Rename ${entry.name}`}
+                  />
+                ) : (
+                  <span className="entry-name">
+                    {entry.name}
+                    {images.length > 1 && <span className="image-count-badge">{images.length} pics</span>}
+                    {isEliminated && order && <span className="eliminated-badge">{getOrdinal(order)}</span>}
+                  </span>
+                )}
                 <div className="entry-actions">
                   <input
                     ref={(node) => {
@@ -184,6 +301,15 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
                   />
                   <button
                     type="button"
+                    onClick={() => startRename(entry)}
+                    className="rename-button"
+                    title="Rename participant"
+                    aria-label={`Rename ${entry.name}`}
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => fileInputsRef.current[entry.id]?.click()}
                     className="image-button"
                     title="Add participant images"
@@ -193,7 +319,7 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
                   {images.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => updateEntryImages(entry.id, [])}
+                      onClick={() => writePictures(entry.id, [], [])}
                       className="remove-image-button"
                       title="Remove all participant images"
                     >
@@ -216,6 +342,14 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
                       <img src={imageDataUrl} alt="" className="entry-gallery-image" />
                       <button
                         type="button"
+                        className="entry-gallery-crop"
+                        title="Adjust crop"
+                        onClick={() => openRecrop(entry, imageIndex)}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
                         className="entry-gallery-remove"
                         title="Remove this image"
                         onClick={() => removeImageAtIndex(entry.id, imageIndex)}
@@ -233,6 +367,21 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
 
       {entries.length === 0 && (
         <p className="empty-message">Add at least 2 participants to start</p>
+      )}
+
+      {cropTarget && (
+        <ImageCropDialog
+          src={cropTarget.src}
+          crop={cropTarget.crop}
+          title={
+            cropTarget.queued
+              ? `${cropTarget.name} — picture ${cropTarget.queued.at} of ${cropTarget.queued.of}`
+              : cropTarget.name
+          }
+          confirmLabel={cropTarget.index === null ? 'Add picture' : 'Save crop'}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
       )}
     </div>
   );

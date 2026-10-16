@@ -269,3 +269,54 @@
   padding: 20px;
   margin: 0;
 }
+
+/* Rename sits in the action row, not in the name column: that column is only
+   a few tens of px wide in the two-column grid, so a control placed inside it
+   gets squeezed until the name wraps one letter per line. */
+.rename-button {
+  background: #2f6fd0;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 5px 7px;
+}
+
+.rename-button:hover {
+  background: #3a7ee6;
+}
+
+.entry-name-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid #4a7fb5;
+  background: #11161f;
+  color: #fff;
+}
+
+.entry-gallery-crop {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: #2f6fd0;
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.entry-gallery-crop:hover {
+  background: #3a7ee6;
+}
