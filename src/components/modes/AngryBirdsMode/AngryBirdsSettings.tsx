@@ -1,4 +1,5 @@
 import {
+  ANGRY_BIRDS_FACES,
   ANGRY_BIRDS_SPEEDS,
   ANGRY_BIRDS_SUB_MODES,
   updateAngryBirdsSettings,
@@ -20,6 +21,21 @@ export function AngryBirdsSettings() {
               onChange={() => updateAngryBirdsSettings({ subMode: m.value })}
             />
             <span>{m.label}</span>
+          </label>
+        ))}
+      </fieldset>
+
+      <fieldset>
+        <legend>Pig faces</legend>
+        {ANGRY_BIRDS_FACES.map((f) => (
+          <label key={f.value}>
+            <input
+              type="radio"
+              name="angry-birds-face"
+              checked={settings.face === f.value}
+              onChange={() => updateAngryBirdsSettings({ face: f.value })}
+            />
+            <span>{f.label}</span>
           </label>
         ))}
       </fieldset>

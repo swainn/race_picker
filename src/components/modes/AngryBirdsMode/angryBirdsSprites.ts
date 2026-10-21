@@ -42,6 +42,12 @@ export interface PigOptions {
   angle?: number;
   /** Dim the ones already out. */
   ghost?: boolean;
+  /**
+   * The participant's photo, cropped to the head. The ears and snout stay on
+   * top so it still reads as a pig; the eyes come off, since the face in the
+   * picture has its own. Ignored until the image has decoded.
+   */
+  avatar?: HTMLImageElement | null;
 }
 
 /** One pig, centred on (x, y). */
@@ -58,8 +64,10 @@ export function drawPig(
   ctx.rotate(opts.angle ?? 0);
   if (opts.ghost) ctx.globalAlpha = 0.3;
 
-  // Ears
-  ctx.fillStyle = darken(base, 0.18);
+  // Ears. Drawn before the head so they sit behind it, and tinted pink over a
+  // photo — the participant's colour would read as a hat, not an ear.
+  const earFill = opts.avatar ? '#E58AA0' : darken(base, 0.18);
+  ctx.fillStyle = earFill;
   for (const side of [-1, 1]) {
     ctx.beginPath();
     ctx.moveTo(side * r * 0.52, -r * 0.72);
@@ -67,21 +75,59 @@ export function drawPig(
     ctx.lineTo(side * r * 0.86, -r * 0.48);
     ctx.closePath();
     ctx.fill();
+    if (opts.avatar) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
   }
 
-  // Head
-  const body = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.2, 0, 0, r);
-  body.addColorStop(0, lighten(base, 0.3));
-  body.addColorStop(1, base);
-  ctx.fillStyle = body;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = darken(base, 0.4);
-  ctx.lineWidth = 1.4;
-  ctx.stroke();
+  const photo = opts.avatar && opts.avatar.complete && opts.avatar.naturalWidth > 0
+    ? opts.avatar
+    : null;
 
-  // Eyes
+  // Head — the photo when there is one, cropped to the same circle.
+  if (photo) {
+    // A black disc behind it first. Participant pictures are cut-outs with
+    // real transparency, so without this the sky and the tower show straight
+    // through the head.
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.clip();
+    // Cover-fit from the short side, so a portrait is not squashed into the
+    // circle; the crop the participant set already framed the face.
+    const scale = Math.max((r * 2) / photo.naturalWidth, (r * 2) / photo.naturalHeight);
+    const w = photo.naturalWidth * scale;
+    const h = photo.naturalHeight * scale;
+    ctx.drawImage(photo, -w / 2, -h / 2, w, h);
+    ctx.restore();
+    ctx.strokeStyle = darken(base, 0.4);
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    const body = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.2, 0, 0, r);
+    body.addColorStop(0, lighten(base, 0.3));
+    body.addColorStop(1, base);
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = darken(base, 0.4);
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+  }
+
+  // Eyes — drawn only on a drawn face. A photo brings its own, and a pair of
+  // cartoon eyes over someone's eyes looks like a mistake rather than a joke.
+  if (!photo) {
   ctx.fillStyle = '#ffffff';
   for (const side of [-1, 1]) {
     ctx.beginPath();
@@ -94,12 +140,18 @@ export function drawPig(
     ctx.arc(side * r * 0.34 - r * 0.07, -r * 0.26, r * 0.12, 0, Math.PI * 2);
     ctx.fill();
   }
+  }
 
-  // Snout
-  ctx.fillStyle = lighten(base, 0.42);
+  // Snout — kept over a photo, which is what makes it a pig and not a portrait
+  ctx.fillStyle = photo ? '#F3A6B4' : lighten(base, 0.42);
   ctx.beginPath();
   ctx.ellipse(0, r * 0.3, r * 0.42, r * 0.3, 0, 0, Math.PI * 2);
   ctx.fill();
+  if (photo) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
   ctx.fillStyle = darken(base, 0.5);
   for (const side of [-1, 1]) {
     ctx.beginPath();

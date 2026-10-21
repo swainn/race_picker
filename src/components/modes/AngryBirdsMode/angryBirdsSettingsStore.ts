@@ -15,6 +15,18 @@ const STORAGE_KEY = 'gamified_picker_angry_birds_settings';
  */
 export type AngryBirdsSubMode = 'pigs' | 'birds';
 
+/**
+ * What a participant pig wears. `avatar` crops their picture into the head and
+ * keeps the ears and snout on top; anyone without a picture falls back to a
+ * drawn pig, so a mixed roster still looks like one set.
+ */
+export type AngryBirdsFace = 'pig' | 'avatar';
+
+export const ANGRY_BIRDS_FACES: { value: AngryBirdsFace; label: string }[] = [
+  { value: 'pig', label: 'Classic pigs' },
+  { value: 'avatar', label: 'Avatars (with ears and snout)' },
+];
+
 export const ANGRY_BIRDS_SUB_MODES: { value: AngryBirdsSubMode; label: string }[] = [
   { value: 'pigs', label: '🐷 Pigs — last pig standing wins' },
   { value: 'birds', label: '🐦 Birds — best shot wins' },
@@ -30,6 +42,7 @@ export const ANGRY_BIRDS_SPEEDS: { value: AngryBirdsSpeed; label: string }[] = [
 
 export interface AngryBirdsSettings {
   subMode: AngryBirdsSubMode;
+  face: AngryBirdsFace;
   speed: AngryBirdsSpeed;
   sound: boolean;
   music: boolean;
@@ -37,6 +50,7 @@ export interface AngryBirdsSettings {
 
 const DEFAULT_SETTINGS: AngryBirdsSettings = {
   subMode: 'pigs',
+  face: 'pig',
   speed: 'normal',
   sound: true,
   music: true,
@@ -50,9 +64,10 @@ function loadSettings(): AngryBirdsSettings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<AngryBirdsSettings>;
     const subMode: AngryBirdsSubMode = parsed.subMode === 'birds' ? 'birds' : 'pigs';
+    const face: AngryBirdsFace = parsed.face === 'avatar' ? 'avatar' : 'pig';
     const speed: AngryBirdsSpeed =
       parsed.speed === 'slow' || parsed.speed === 'fast' ? parsed.speed : 'normal';
-    return { subMode, speed, sound: parsed.sound ?? true, music: parsed.music ?? true };
+    return { subMode, face, speed, sound: parsed.sound ?? true, music: parsed.music ?? true };
   } catch {
     return DEFAULT_SETTINGS;
   }

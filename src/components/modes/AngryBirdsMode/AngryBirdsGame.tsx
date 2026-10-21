@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Entry } from '../../../types';
 import { generateColor } from '../../../utils/colors';
+import { getPreferredEntryImage } from '../../../utils/entryImages';
 import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import type { WinnerTheme } from '../themes';
 import {
@@ -157,6 +158,27 @@ export function AngryBirdsGame(props: Props) {
   const chosenPigRef = useRef<number>(-1);
   /** The structure shape in play, kept so the lobby can preview it too. */
   const styleRef = useRef<TowerStyle>('tiers');
+  /**
+   * Decoded participant photos, keyed by entry id. The rAF loop draws them, so
+   * they live in a ref; the sprite falls back to a drawn pig until `complete`
+   * flips, and for anyone with no picture at all.
+   */
+  const imgCacheRef = useRef<Map<number, HTMLImageElement>>(new Map());
+  const faceRef = useRef(settings.face);
+  faceRef.current = settings.face;
+
+  /** The photo to wear, or null when this mode or participant has none. */
+  const avatarFor = (entry: Entry | undefined): HTMLImageElement | null => {
+    if (!entry || faceRef.current !== 'avatar') return null;
+    const cached = imgCacheRef.current.get(entry.id);
+    if (cached) return cached;
+    const url = getPreferredEntryImage(entry);
+    if (!url) return null;
+    const im = new Image();
+    im.src = url;
+    imgCacheRef.current.set(entry.id, im);
+    return im;
+  };
   /** Volleys this round, and which one is in the air (0-based). */
   const volleysRef = useRef(1);
   const volleyRef = useRef(0);
@@ -629,6 +651,7 @@ export function AngryBirdsGame(props: Props) {
         drawPig(ctx, spot.x, spot.y + bob, spot.r, {
           color: entry ? colorFor(entry, i) : undefined,
           initials: entry ? initials[i] : undefined,
+          avatar: avatarFor(entry),
         });
       });
 
@@ -668,6 +691,8 @@ export function AngryBirdsGame(props: Props) {
         drawPig(ctx, p.x, p.y, p.r, {
           color: birdsMode ? undefined : seat?.color,
           initials: birdsMode ? undefined : seat?.initials,
+          // Scenery pigs in `birds` mode are nobody, so they never wear a face.
+          avatar: birdsMode ? null : avatarFor(seat?.entry),
           angle: p.angle,
         });
       }
