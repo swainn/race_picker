@@ -80,6 +80,11 @@ const MATERIAL_OPTIONS: Record<BlockMaterial, IChamferableBodyDefinition> = {
 };
 const PIG_OPTIONS = { density: 0.0011, friction: 0.5, restitution: 0.22 };
 /** The bird carries no air drag, so the solved ballistic arc stays exact. */
+/** Below this speed the bird counts as stopped. */
+const BIRD_REST_SPEED = 0.4;
+/** How many consecutive still steps before it is cleared away (~0.4s). */
+const BIRD_REST_STEPS = 24;
+
 const BIRD_OPTIONS = { density: 0.0045, friction: 0.4, frictionAir: 0, restitution: 0.32 };
 
 /** Below this speed (px/step) everything is treated as having come to rest. */
@@ -102,6 +107,19 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
   );
   Composite.add(world, ground);
 
+  // An invisible wall just past the right edge, so a bird that overshoots and
+  // blocks knocked loose stop at the boundary instead of rolling out of sight.
+  // Its inner face sits exactly on the canvas edge, and it is never added to
+  // the snapshot, so nothing draws it.
+  const rightWall = Bodies.rectangle(
+    AB.CANVAS_W + 40,
+    AB.GROUND_Y - AB.CANVAS_H,
+    80,
+    AB.CANVAS_H * 3,
+    { isStatic: true, friction: 0.4, restitution: 0.1, label: 'wall' }
+  );
+  Composite.add(world, rightWall);
+
   const blockBodies = layout.blocks.map((b) => {
     const body = Bodies.rectangle(b.x, b.y, b.w, b.h, {
       ...MATERIAL_OPTIONS[b.material],
@@ -122,6 +140,8 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
   for (const p of pigBodies) pigByBodyId.set(p.body.id, p.id);
 
   let bird: BodyT | null = null;
+  /** Consecutive steps the bird has been essentially still. */
+  let birdStillSteps = 0;
   let listener: PigHitListener | null = null;
   let destroyed = false;
 
@@ -146,6 +166,7 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
     if (!bird) return;
     Composite.remove(world, bird);
     bird = null;
+    birdStillSteps = 0;
   };
 
   return {
@@ -160,6 +181,12 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
           bird.position.y > AB.CANVAS_H + 200)
       ) {
         removeBird();
+      } else if (bird) {
+        // The wall means a bird can no longer leave the field, so "gone" has
+        // to include "come to rest" — otherwise every flight would run to its
+        // full time cap waiting for an exit that cannot happen.
+        birdStillSteps = bird.speed < BIRD_REST_SPEED ? birdStillSteps + 1 : 0;
+        if (birdStillSteps >= BIRD_REST_STEPS) removeBird();
       }
     },
 
