@@ -67,12 +67,16 @@ export const AB = {
 export type BlockKind = 'column' | 'beam';
 
 /** An axis-aligned wooden block, positioned by its centre. */
+/** What a block is made of. Changes how it looks, weighs and slides. */
+export type BlockMaterial = 'wood' | 'stone' | 'ice';
+
 export interface BlockSpec {
   x: number;
   y: number;
   w: number;
   h: number;
   kind: BlockKind;
+  material: BlockMaterial;
   tier: number;
 }
 
@@ -103,53 +107,239 @@ export function tiersFor(count: number): number {
  * a tier's pigs and the underside of the tier above, so nothing starts the
  * round already intersecting — overlapping bodies explode apart on step one.
  */
-export function layoutTower(count: number): TowerLayout {
+/**
+ * What each style is built from, bottom tier first; the last entry repeats for
+ * any tier above it.
+ *
+ * Heavy at the base and light on top is both how you would really build one and
+ * what collapses well: a stone footing stays put while an ice top shears off.
+ * Material is decided by style and tier rather than at random so a shape reads
+ * the same every time you meet it — the variety comes from the shapes.
+ */
+export const STYLE_MATERIALS: Record<TowerStyle, BlockMaterial[]> = {
+  tiers: ['stone', 'wood', 'wood', 'ice'],
+  pyramid: ['stone', 'stone', 'wood', 'ice'],
+  twin: ['wood', 'wood', 'ice'],
+  bunker: ['stone', 'stone', 'wood'],
+};
+
+/** What a block on this tier of this style is made of. */
+export function materialFor(style: TowerStyle, tier: number): BlockMaterial {
+  const list = STYLE_MATERIALS[style];
+  return list[Math.min(tier, list.length - 1)];
+}
+
+/** The shapes a round's structure can take. Cosmetic: see pickTowerStyle. */
+export type TowerStyle = 'tiers' | 'pyramid' | 'twin' | 'bunker';
+
+export const TOWER_STYLES: TowerStyle[] = ['tiers', 'pyramid', 'twin', 'bunker'];
+
+/** Narrowest a pig's seat may be, so perched pigs never start overlapping. */
+const MIN_SEAT = AB.PIG_R * 2 + 6;
+
+/**
+ * Clear space between a column and the nearest pig.
+ *
+ * The tier above rests its columns at the same x as this tier's, and they hang
+ * only a few px above the perch. Without this gap the outer pig on every tier
+ * sits directly under a column and gets landed on the moment the sim starts —
+ * the pig was being crushed by the structure rather than by the bird.
+ */
+const PIG_CLEARANCE = 6;
+
+/**
+ * The stretch of a span a pig's centre may occupy.
+ *
+ * Clear of this tier's own columns, and of the tier above's — a pyramid steps
+ * inward, so the columns resting on *this* beam come down inside this span,
+ * over the seats near its ends. Only the top tier gets the full width, since
+ * nothing lands on it.
+ */
+function seatBandFor(
+  style: TowerStyle,
+  tier: number,
+  left: number,
+  right: number
+): [number, number] {
+  const inset = AB.COLUMN_W + AB.PIG_R + PIG_CLEARANCE;
+  let bandL = left + inset;
+  let bandR = right - inset;
+  if (tier + 1 < MAX_TIERS) {
+    for (const [upperL, upperR] of tierSpans(style, tier + 1)) {
+      // Only spans that actually sit over this one. A twin tower's other
+      // stack is a tier up but way off to the side; counting it shrank each
+      // band to nothing and left every upper tier unable to seat anyone.
+      if (upperR <= left || upperL >= right) continue;
+      if (upperL > left) bandL = Math.max(bandL, upperL + inset);
+      if (upperR < right) bandR = Math.min(bandR, upperR - inset);
+    }
+  }
+  return [bandL, bandR];
+}
+
+/** How much each tier of a pyramid steps in on both sides. */
+const PYRAMID_INSET = 14;
+
+/** The gap between the two stacks of a twin tower. */
+const TWIN_GAP = 30;
+
+/**
+ * How much wider a bunker is than the other shapes. It needs the extra width
+ * to seat more pigs per tier than a plain stack — without it the seat band
+ * caps it at the same five and the two shapes come out identical.
+ */
+const BUNKER_EXTRA = 40;
+
+/** Tallest a structure may get before it climbs off the top of the canvas. */
+const MAX_TIERS = 4;
+
+/** The horizontal extent of one tier, which is what makes the styles differ. */
+function tierSpans(style: TowerStyle, tier: number): [number, number][] {
+  const L = AB.TOWER_L;
+  const R = AB.TOWER_R;
+  switch (style) {
+    case 'pyramid': {
+      const inset = PYRAMID_INSET * tier;
+      return [[L + inset, R - inset]];
+    }
+    case 'twin': {
+      const half = (R - L - TWIN_GAP) / 2;
+      return [
+        [L, L + half],
+        [R - half, R],
+      ];
+    }
+    case 'bunker':
+      return [[L - BUNKER_EXTRA, R]];
+    default:
+      return [[L, R]];
+  }
+}
+
+/**
+ * Most pigs one span will take. A bunker packs them tighter so it comes out
+ * squat and wide rather than another tall stack — the shield alone would have
+ * left the pigs sitting in exactly the same seats as a plain tower.
+ */
+function seatCapFor(style: TowerStyle): number {
+  return style === 'bunker' ? AB.PIGS_PER_TIER + 1 : AB.PIGS_PER_TIER;
+}
+
+/** How many pigs a span can seat, clear of its columns and of each other. */
+function seatsIn(style: TowerStyle, tier: number, left: number, right: number): number {
+  const [bandL, bandR] = seatBandFor(style, tier, left, right);
+  const band = bandR - bandL;
+  if (band < 0) return 0;
+  return Math.min(seatCapFor(style), Math.floor(band / MIN_SEAT) + 1);
+}
+
+/** Most pigs a style can seat across all its tiers. */
+function capacityOf(style: TowerStyle): number {
+  let total = 0;
+  for (let tier = 0; tier < MAX_TIERS; tier++) {
+    total += tierSpans(style, tier).reduce((n, [l, r]) => n + seatsIn(style, tier, l, r), 0);
+  }
+  return total;
+}
+
+/**
+ * Build the structure for `count` pigs, bottom tier first.
+ *
+ * Seats are handed out tier by tier from the ground up, and each span only
+ * takes as many pigs as it can seat without them overlapping — which is what
+ * lets the narrower upper tiers of a pyramid, or the two halves of a twin,
+ * share the same code as a plain stack. Tier spacing leaves a few px of
+ * daylight under the next beam so nothing starts the round interpenetrating;
+ * overlapping bodies explode apart on step one.
+ */
+export function layoutTower(count: number, style: TowerStyle = 'tiers'): TowerLayout {
   if (count <= 0) return { blocks: [], pigs: [] };
 
-  const tiers = tiersFor(count);
-  const perTier = Math.ceil(count / tiers);
-  const span = AB.TOWER_R - AB.TOWER_L;
+  // Narrow shapes cannot seat a big roster once the pigs are kept clear of the
+  // columns. Rather than drop a pig — the pick is an index into this list, so a
+  // missing one would stall the round — fall back to the plain stack, which is
+  // the widest and always fits.
+  if (count > capacityOf(style)) style = 'tiers';
 
   const blocks: BlockSpec[] = [];
   const pigs: PigSpot[] = [];
+  let placed = 0;
 
-  for (let tier = 0; tier < tiers; tier++) {
+  for (let tier = 0; tier < MAX_TIERS && placed < count; tier++) {
     const base = AB.GROUND_Y - tier * AB.TIER_H;
     const columnMidY = base - AB.COLUMN_H / 2;
     const beamMidY = base - AB.COLUMN_H - AB.BEAM_H / 2;
-
-    blocks.push({
-      x: AB.TOWER_L + AB.COLUMN_W / 2,
-      y: columnMidY,
-      w: AB.COLUMN_W,
-      h: AB.COLUMN_H,
-      kind: 'column',
-      tier,
-    });
-    blocks.push({
-      x: AB.TOWER_R - AB.COLUMN_W / 2,
-      y: columnMidY,
-      w: AB.COLUMN_W,
-      h: AB.COLUMN_H,
-      kind: 'column',
-      tier,
-    });
-    blocks.push({
-      x: (AB.TOWER_L + AB.TOWER_R) / 2,
-      y: beamMidY,
-      w: span,
-      h: AB.BEAM_H,
-      kind: 'beam',
-      tier,
-    });
-
-    // The last tier can be short; spread whatever it holds across the beam.
-    const seats = Math.min(perTier, count - tier * perTier);
-    const step = span / seats;
     const perchY = base - AB.COLUMN_H - AB.BEAM_H - AB.PIG_R;
-    for (let seat = 0; seat < seats; seat++) {
-      pigs.push({ x: AB.TOWER_L + step * (seat + 0.5), y: perchY, r: AB.PIG_R, tier });
+    const spans = tierSpans(style, tier);
+
+    // Capacity of the whole tier, so a short last row can be spread evenly.
+    const capacity = spans.reduce((n, [l, r]) => n + seatsIn(style, tier, l, r), 0);
+    const wanted = Math.min(capacity, count - placed);
+
+    let remaining = wanted;
+    for (const [left, right] of spans) {
+      const cap = seatsIn(style, tier, left, right);
+      // Share what is left across the spans still to come in this tier.
+      const seats = Math.min(cap, remaining);
+      remaining -= seats;
+
+      const material = materialFor(style, tier);
+      blocks.push({
+        x: left + AB.COLUMN_W / 2,
+        y: columnMidY,
+        w: AB.COLUMN_W,
+        h: AB.COLUMN_H,
+        kind: 'column',
+        material,
+        tier,
+      });
+      blocks.push({
+        x: right - AB.COLUMN_W / 2,
+        y: columnMidY,
+        w: AB.COLUMN_W,
+        h: AB.COLUMN_H,
+        kind: 'column',
+        material,
+        tier,
+      });
+      blocks.push({
+        x: (left + right) / 2,
+        y: beamMidY,
+        w: right - left,
+        h: AB.BEAM_H,
+        kind: 'beam',
+        material,
+        tier,
+      });
+
+      const [bandL, bandR] = seatBandFor(style, tier, left, right);
+      if (seats === 1) {
+        pigs.push({ x: (bandL + bandR) / 2, y: perchY, r: AB.PIG_R, tier });
+      } else {
+        const gap = (bandR - bandL) / (seats - 1);
+        for (let seat = 0; seat < seats; seat++) {
+          pigs.push({ x: bandL + gap * seat, y: perchY, r: AB.PIG_R, tier });
+        }
+      }
     }
+    placed += wanted;
+  }
+
+  // A bunker puts a shield across the front, between the slingshot and the
+  // pigs, so the bird has to come over the top or break through.
+  if (style === 'bunker') {
+    const topTier = Math.max(0, Math.ceil(count / AB.PIGS_PER_TIER) - 1);
+    const h = Math.max(AB.TIER_H, (topTier + 1) * AB.TIER_H - 30);
+    blocks.push({
+      x: AB.TOWER_L - BUNKER_EXTRA - AB.COLUMN_W,
+      y: AB.GROUND_Y - h / 2,
+      w: AB.COLUMN_W,
+      h,
+      kind: 'column',
+      // A shield is only worth having if it is the hard stuff.
+      material: 'stone',
+      tier: 0,
+    });
   }
 
   return { blocks, pigs };
@@ -327,4 +517,21 @@ export function rankShots(entries: Entry[], winnerId: number): ShotScore[] {
 export function easeInOut(t: number): number {
   const c = Math.max(0, Math.min(1, t));
   return c < 0.5 ? 2 * c * c : 1 - Math.pow(-2 * c + 2, 2) / 2;
+}
+
+/** Fewest and most volleys a round may take, the telling one included. */
+export const VOLLEYS_MIN = 1;
+export const VOLLEYS_MAX = 3;
+
+/**
+ * How many birds this round throws before one of them finally does for the
+ * chosen pig. 1 means the first bird settles it; 3 means two go wide first.
+ *
+ * Theatre only. The victim is drawn before a single bird flies, so the extra
+ * volleys cannot change who goes — they only decide how long it takes. The
+ * earlier birds are aimed away from the pick and the pop is held back until
+ * the last one, so a near miss is genuinely a near miss.
+ */
+export function volleysForRound(rand: () => number = Math.random): number {
+  return VOLLEYS_MIN + Math.floor(rand() * (VOLLEYS_MAX - VOLLEYS_MIN + 1));
 }

@@ -8,10 +8,13 @@ import {
   aimAtPig,
   aimForRank,
   easeInOut,
+  TOWER_STYLES,
   layoutTower,
+  type TowerStyle,
   pickVictim,
   rankShots,
   solveLaunch,
+  volleysForRound,
   type LaunchSolution,
   type ShotScore,
   type TowerLayout,
@@ -23,6 +26,7 @@ import {
   useAngryBirdsSettings,
   type AngryBirdsSubMode,
 } from './angryBirdsSettingsStore';
+import { createShuffleBag } from '../../../utils/shuffleBag';
 import * as audio from './angryBirdsAudio';
 import './AngryBirdsGame.css';
 
@@ -47,6 +51,8 @@ interface Props {
   onShowFinalStandings?: () => void;
   isRacing: boolean;
   currentWinner: AngryBirdsWinnerDisplay | null;
+  /** Bumped by the wrapper to throw the round away and start it over. */
+  rerunKey: number;
 }
 
 type Phase = 'ready' | 'aim' | 'fly' | 'settle' | 'score' | 'done';
@@ -70,6 +76,16 @@ const T = {
 const GENERIC_PIGS = 6;
 
 /** A contact softer than this is a graze, not a hit. */
+/**
+ * The structure's shape, dealt so the whole set cycles before repeating. Set
+ * dressing only — the victim is drawn before any of this is built, so the shape
+ * cannot change who gets popped.
+ */
+const nextTowerStyle = createShuffleBag(TOWER_STYLES);
+
+/** Physics steps run before a round is shown, so the tower starts at rest. */
+const PRESETTLE_STEPS = 90;
+
 const HIT_IMPULSE = 1.6;
 /** Sub-mode `birds`: how hard a generic pig has to be hit to pop (cosmetic only). */
 const GENERIC_POP_IMPULSE = 4.2;
@@ -139,6 +155,13 @@ export function AngryBirdsGame(props: Props) {
   const seatsRef = useRef<Map<number, Seat>>(new Map());
   /** Sub-mode `pigs`: the pre-picked pig. -1 outside a round. */
   const chosenPigRef = useRef<number>(-1);
+  /** The structure shape in play, kept so the lobby can preview it too. */
+  const styleRef = useRef<TowerStyle>('tiers');
+  /** Volleys this round, and which one is in the air (0-based). */
+  const volleysRef = useRef(1);
+  const volleyRef = useRef(0);
+  /** Only the last volley may take the pick. */
+  const finalVolley = () => volleyRef.current >= volleysRef.current - 1;
   const solutionRef = useRef<LaunchSolution>({ vx: 0, vy: 0, flightSteps: 0 });
   const launchedAtRef = useRef(0);
   const poppedAtRef = useRef(0);
@@ -166,8 +189,13 @@ export function AngryBirdsGame(props: Props) {
   /** Stand a fresh tower up and wire the mode's hit rule to it. */
   const buildWorld = (pigCount: number, onHit: (pigId: number, impulse: number) => void) => {
     teardownWorld();
-    layoutRef.current = layoutTower(pigCount);
+    layoutRef.current = layoutTower(pigCount, styleRef.current);
     const world = createWorld(layoutRef.current);
+    // Settle it offscreen before anyone sees it. Bodies are laid out with a
+    // little daylight between tiers so they do not start interpenetrating, and
+    // that gap means the structure drops and jostles on the first frames —
+    // which is both visible and, until the guard below, able to pop a pig.
+    for (let i = 0; i < PRESETTLE_STEPS && !world.isSettled(); i++) world.step();
     world.setPigHitListener(onHit);
     worldRef.current = world;
   };
@@ -175,9 +203,16 @@ export function AngryBirdsGame(props: Props) {
   /** The only place a participant pig ever leaves the tower. */
   const popChosenPig = (now: number) => {
     const id = chosenPigRef.current;
-    if (id < 0) return;
     const spot = worldRef.current?.snapshot().pigs.find((p) => p.id === id);
-    if (!worldRef.current?.popPig(id)) return;
+    const removed = id >= 0 && (worldRef.current?.popPig(id) ?? false);
+    // Record the pop even when the body could not be removed. The backstop
+    // calls this every frame until poppedAt is set, so returning early on a
+    // failed removal left the round spinning with no way out — which is the
+    // "launch never resolves" stall. The pick was made before any of this and
+    // still stands, so the round must end regardless of what the sim did.
+    if (!removed) {
+      console.warn('angry-birds: chosen pig could not be removed; ending the round anyway');
+    }
     poppedAtRef.current = now;
     poppedPosRef.current = spot
       ? { x: spot.x, y: spot.y }
@@ -195,10 +230,15 @@ export function AngryBirdsGame(props: Props) {
     const chosenIndex = entries.findIndex((e) => e.id === chosen.id);
 
     buildWorld(entries.length, (pigId, impulse) => {
+      // Nothing counts until the bird is actually away. A settling knock is
+      // not a hit, and letting one through ended rounds before the launch.
+      if (launchedAtRef.current === 0) return;
       if (impulse < HIT_IMPULSE) return;
       audio.playThud(impulse / 3);
       // Only the pre-picked pig is ever removed; the sim never promotes a
-      // bystander into the result, however hard it gets hit.
+      // bystander into the result, however hard it gets hit. And only the last
+      // volley may remove it at all — the earlier birds are there to miss.
+      if (!finalVolley()) return;
       if (pigId === chosenPigRef.current && poppedAtRef.current === 0) {
         popChosenPig(performance.now());
       }
@@ -212,17 +252,39 @@ export function AngryBirdsGame(props: Props) {
     seatsRef.current = seats;
     chosenPigRef.current = chosenIndex;
 
-    const target = aimAtPig(layoutRef.current.pigs[chosenIndex]);
-    solutionRef.current = solveLaunch({ x: AB.SLING_X, y: AB.SLING_Y }, target);
-    captionRef.current = 'TAKING AIM…';
+    volleysRef.current = volleysForRound();
+    volleyRef.current = 0;
+    aimVolley(chosenIndex);
+    captionRef.current = volleysRef.current > 1 ? 'VOLLEY 1 — TAKING AIM…' : 'TAKING AIM…';
     audio.playStretch();
     setPhase('aim', now, dur(T.aim));
+  };
+
+  /**
+   * Point the slingshot for the volley in hand.
+   *
+   * The telling volley aims at the chosen pig. Earlier ones aim at a different
+   * pig's perch, so they land in the structure and throw blocks about without
+   * ever being able to take the pick — the listener above holds the pop back
+   * regardless, so this only has to look like a near miss.
+   */
+  const aimVolley = (chosenIndex: number) => {
+    const pigs = layoutRef.current.pigs;
+    let spot = pigs[chosenIndex];
+    if (!finalVolley() && pigs.length > 1) {
+      const others = pigs.filter((_, i) => i !== chosenIndex);
+      spot = others[Math.floor(Math.random() * others.length)];
+    }
+    solutionRef.current = solveLaunch({ x: AB.SLING_X, y: AB.SLING_Y }, aimAtPig(spot));
   };
 
   /** Sub-mode `birds`: stand the generic tower back up for the next shooter. */
   const armShot = (now: number) => {
     const shooter = shootersRef.current[shotIndexRef.current];
+    // Each shot stands a fresh tower, so each shot re-arms from scratch.
+    launchedAtRef.current = 0;
     buildWorld(GENERIC_PIGS, (pigId, impulse) => {
+      if (launchedAtRef.current === 0) return;
       if (impulse < HIT_IMPULSE) return;
       audio.playThud(impulse / 3);
       // These pigs are scenery, not participants, so physics may pop them
@@ -269,10 +331,14 @@ export function AngryBirdsGame(props: Props) {
     audio.startTrack();
     declaredRef.current = false;
     poppedAtRef.current = 0;
+    // Back to "no bird away yet", which is what makes settling knocks harmless
+    // at the start of every round, not just the first.
+    launchedAtRef.current = 0;
     poppedPosRef.current = null;
     boardRef.current = [];
     shootersRef.current = [];
     seatsRef.current = new Map();
+    styleRef.current = nextTowerStyle();
     if (subModeRef.current === 'birds') startBirdsRound(now, p.entries);
     else startPigsRound(now, p.entries);
   };
@@ -282,6 +348,12 @@ export function AngryBirdsGame(props: Props) {
     if (props.isRacing) startRound(performance.now());
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only the racing flag drives a round
   }, [props.isRacing]);
+
+  // ---- Re-run: bin the round in flight and deal a new one ----------------
+  useEffect(() => {
+    if (props.rerunKey > 0 && props.isRacing) startRound(performance.now());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the key drives a re-run
+  }, [props.rerunKey]);
 
   // The whole mode is remounted on reset, so the world has to go with it.
   useEffect(() => () => {
@@ -359,7 +431,10 @@ export function AngryBirdsGame(props: Props) {
           world?.step();
           const done =
             !!world?.birdIsGone() || poppedAtRef.current > 0 || now >= phaseUntilRef.current;
-          if (done) setPhase('settle', now, dur(T.settleMax));
+          if (done) {
+            if (!birds && !finalVolley()) captionRef.current = 'NEAR MISS!';
+            setPhase('settle', now, dur(T.settleMax));
+          }
           break;
         }
         case 'settle': {
@@ -371,8 +446,24 @@ export function AngryBirdsGame(props: Props) {
             if (over || (restful && held > dur(T.settleMin) + dur(T.shotGap))) nextShot(now);
             break;
           }
-          // Sub-mode `pigs`: the backstop. If the collapse never reached the
-          // chosen pig, pop it anyway — a round can never stall on physics.
+          // Sub-mode `pigs`: a volley that was never meant to tell. Let the
+          // dust settle, then send the next bird. No backstop here — missing
+          // is the whole point of these, so there is nothing to rescue.
+          if (!finalVolley()) {
+            if (restful || now >= phaseUntilRef.current) {
+              volleyRef.current += 1;
+              aimVolley(chosenPigRef.current);
+              // Re-arm the immunity: the structure is still shifting, and a
+              // settling knock must not count while the next bird is drawn.
+              launchedAtRef.current = 0;
+              captionRef.current = `VOLLEY ${volleyRef.current + 1} — TAKING AIM…`;
+              setPhase('aim', now, dur(T.aim));
+            }
+            break;
+          }
+
+          // The backstop. If the collapse never reached the chosen pig, pop it
+          // anyway — a round can never stall on physics.
           if (poppedAtRef.current === 0 && now - launchedAtRef.current > AB.FORCED_END_MS) {
             popChosenPig(now);
           }
@@ -522,8 +613,8 @@ export function AngryBirdsGame(props: Props) {
 
       // In `birds` the tower is scenery, so it stands at its fixed size and the
       // participants wait their turn on the ground instead.
-      const layout = layoutTower(birdsMode ? GENERIC_PIGS : list.length);
-      for (const b of layout.blocks) drawBlock(ctx, b.x, b.y, b.w, b.h, 0, b.kind);
+      const layout = layoutTower(birdsMode ? GENERIC_PIGS : list.length, styleRef.current);
+      for (const b of layout.blocks) drawBlock(ctx, b.x, b.y, b.w, b.h, 0, b.kind, b.material);
 
       const initials = computeInitials(list);
       const colorFor = (entry: Entry, i: number) => {
@@ -569,7 +660,7 @@ export function AngryBirdsGame(props: Props) {
       }
 
       const snap = worldRef.current?.snapshot() ?? { blocks: [], pigs: [], bird: null };
-      for (const b of snap.blocks) drawBlock(ctx, b.x, b.y, b.w, b.h, b.angle, b.kind);
+      for (const b of snap.blocks) drawBlock(ctx, b.x, b.y, b.w, b.h, b.angle, b.kind, b.material);
 
       const birdsMode = subModeRef.current === 'birds';
       for (const p of snap.pigs) {

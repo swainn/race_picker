@@ -9,8 +9,13 @@
  * FORCED_END_MS backstop), and no other participant pig is ever removed here.
  */
 import { Bodies, Body, Composite, Engine, Events } from 'matter-js';
-import type { Body as BodyT, Engine as EngineT, IEventCollision } from 'matter-js';
-import { AB, type BlockKind, type TowerLayout } from './angryBirdsEngine';
+import type {
+  Body as BodyT,
+  Engine as EngineT,
+  IChamferableBodyDefinition,
+  IEventCollision,
+} from 'matter-js';
+import { AB, type BlockKind, type BlockMaterial, type TowerLayout } from './angryBirdsEngine';
 
 export interface BlockView {
   x: number;
@@ -19,6 +24,7 @@ export interface BlockView {
   w: number;
   h: number;
   kind: BlockKind;
+  material: BlockMaterial;
 }
 
 export interface PigView {
@@ -62,7 +68,16 @@ export interface AngryBirdsWorld {
   destroy(): void;
 }
 
-const BLOCK_OPTIONS = { density: 0.0014, friction: 0.62, frictionStatic: 0.9, restitution: 0.03 };
+/**
+ * Per-material body properties. Stone is heavy and grippy so a base course
+ * stays where it is put; ice is light and slippery so a top course shears off
+ * and slides. Wood sits between them and is the old single setting.
+ */
+const MATERIAL_OPTIONS: Record<BlockMaterial, IChamferableBodyDefinition> = {
+  wood: { density: 0.0014, friction: 0.62, frictionStatic: 0.9, restitution: 0.03 },
+  stone: { density: 0.0032, friction: 0.74, frictionStatic: 1, restitution: 0.015 },
+  ice: { density: 0.0007, friction: 0.12, frictionStatic: 0.18, restitution: 0.1 },
+};
 const PIG_OPTIONS = { density: 0.0011, friction: 0.5, restitution: 0.22 };
 /** The bird carries no air drag, so the solved ballistic arc stays exact. */
 const BIRD_OPTIONS = { density: 0.0045, friction: 0.4, frictionAir: 0, restitution: 0.32 };
@@ -88,7 +103,10 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
   Composite.add(world, ground);
 
   const blockBodies = layout.blocks.map((b) => {
-    const body = Bodies.rectangle(b.x, b.y, b.w, b.h, { ...BLOCK_OPTIONS, label: 'block' });
+    const body = Bodies.rectangle(b.x, b.y, b.w, b.h, {
+      ...MATERIAL_OPTIONS[b.material],
+      label: 'block',
+    });
     return { body, spec: b };
   });
   Composite.add(world, blockBodies.map((b) => b.body));
@@ -196,6 +214,7 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
           w: spec.w,
           h: spec.h,
           kind: spec.kind,
+          material: spec.material,
         })),
         pigs: pigBodies
           .filter((p) => p.live)

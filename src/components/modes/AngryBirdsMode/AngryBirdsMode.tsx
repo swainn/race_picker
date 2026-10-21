@@ -37,6 +37,13 @@ export function AngryBirdsMode({
   const pigsMode = subMode === 'pigs';
   const [winnerDisplay, setWinnerDisplay] = useState<AngryBirdsWinnerDisplay | null>(null);
   const [showStandings, setShowStandings] = useState(false);
+  /**
+   * Bumping this throws the round in progress away and deals a new one. It is
+   * an escape hatch for a launch that fails to resolve — and because it draws a
+   * NEW participant rather than re-throwing at the same one, repeated use would
+   * stop the pick being uniform. The label says so.
+   */
+  const [rerunKey, setRerunKey] = useState(0);
 
   useEffect(() => {
     if (eliminatedIds.length === 0) {
@@ -98,6 +105,15 @@ export function AngryBirdsMode({
             {pigsMode ? `🐦 Launch the Bird (${entries.length} pigs)` : `🎯 Fire the Volley (${entries.length} birds)`}
           </button>
         )}
+        {isRacing && (
+          <button
+            onClick={() => setRerunKey((k) => k + 1)}
+            className="rerun-race-button"
+            title="Abandon this round and draw a new one (re-draws who gets picked)"
+          >
+            🔁 Re-run (re-draws)
+          </button>
+        )}
         {eliminatedIds.length > 0 && (
           <button onClick={onResetRace} className="reset-race-button">
             🔄 Reset
@@ -122,6 +138,7 @@ export function AngryBirdsMode({
         onShowFinalStandings={() => setShowStandings(true)}
         isRacing={isRacing}
         currentWinner={winnerDisplay}
+        rerunKey={rerunKey}
       />
 
       {showStandings && (

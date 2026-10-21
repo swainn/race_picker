@@ -6,7 +6,14 @@ import {
   aimForRank,
   easeInOut,
   flightStepsFor,
+  STYLE_MATERIALS,
+  TOWER_STYLES,
+  VOLLEYS_MAX,
+  VOLLEYS_MIN,
   layoutTower,
+  materialFor,
+  volleysForRound,
+  type TowerStyle,
   pickVictim,
   rankShots,
   solveLaunch,
@@ -265,5 +272,206 @@ describe('easeInOut', () => {
     expect(easeInOut(-3)).toBe(0);
     expect(easeInOut(4)).toBe(1);
     expect(easeInOut(0.5)).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe('tower styles', () => {
+  const COUNTS = Array.from({ length: 20 }, (_, i) => i + 1);
+
+  // The pick is an index into this list. If a style ever seated fewer pigs
+  // than asked for, the chosen index could point at nobody and the round
+  // would never resolve.
+  it('seats every participant, in every style, at every roster size', () => {
+    for (const style of TOWER_STYLES) {
+      for (const n of COUNTS) {
+        const { pigs } = layoutTower(n, style);
+        expect(pigs, `${style} with ${n}`).toHaveLength(n);
+      }
+    }
+  });
+
+  it('keeps every pig on the canvas and above the ground', () => {
+    for (const style of TOWER_STYLES) {
+      for (const n of COUNTS) {
+        for (const p of layoutTower(n, style).pigs) {
+          expect(p.x - p.r, `${style}/${n}`).toBeGreaterThanOrEqual(0);
+          expect(p.x + p.r, `${style}/${n}`).toBeLessThanOrEqual(AB.CANVAS_W);
+          expect(p.y - p.r).toBeGreaterThan(0);
+          expect(p.y + p.r).toBeLessThanOrEqual(AB.GROUND_Y + 1e-6);
+        }
+      }
+    }
+  });
+
+  // Bodies that start overlapping blow apart on the first physics step.
+  it('never starts two pigs overlapping', () => {
+    for (const style of TOWER_STYLES) {
+      for (const n of COUNTS) {
+        const { pigs } = layoutTower(n, style);
+        for (let i = 0; i < pigs.length; i++) {
+          for (let j = i + 1; j < pigs.length; j++) {
+            const dx = pigs[i].x - pigs[j].x;
+            const dy = pigs[i].y - pigs[j].y;
+            const gap = Math.hypot(dx, dy) - (pigs[i].r + pigs[j].r);
+            expect(gap, `${style}/${n}: pigs ${i} and ${j}`).toBeGreaterThan(0);
+          }
+        }
+      }
+    }
+  });
+
+  it('gives every style some blocks to knock down', () => {
+    for (const style of TOWER_STYLES) {
+      expect(layoutTower(8, style).blocks.length, style).toBeGreaterThan(0);
+    }
+  });
+
+  it('builds visibly different shapes', () => {
+    const shape = (style: TowerStyle) =>
+      JSON.stringify(layoutTower(12, style).pigs.map((p) => [Math.round(p.x), Math.round(p.y)]));
+    const shapes = TOWER_STYLES.map(shape);
+    expect(new Set(shapes).size).toBe(TOWER_STYLES.length);
+  });
+
+  it('puts the bunker shield between the slingshot and the pigs', () => {
+    const shield = layoutTower(10, 'bunker').blocks.find((b) => b.x < AB.TOWER_L);
+    expect(shield).toBeDefined();
+    expect(shield!.x).toBeGreaterThan(AB.SLING_X);
+  });
+});
+
+describe('pigs clear of columns', () => {
+  const COUNTS = Array.from({ length: 20 }, (_, i) => i + 1);
+
+  // The bug this guards: every tier rests its columns at the same x as the
+  // tier below, hanging a few px above the perch. A pig seated under one got
+  // landed on the instant the sim started, so it was the structure that
+  // popped it rather than the bird.
+  it('never seats a pig under or against a column', () => {
+    for (const style of TOWER_STYLES) {
+      for (const n of COUNTS) {
+        const { pigs, blocks } = layoutTower(n, style);
+        // Only the tier directly above matters: its columns rest on this
+        // tier's beam, right where these pigs are perched. Columns further up
+        // are carried by the beams between, so they can never reach down here.
+        const columns = blocks.filter((b) => b.kind === 'column');
+        for (const p of pigs) {
+          for (const c of columns.filter((b) => b.tier === p.tier + 1)) {
+            const overlap =
+              Math.min(c.x + c.w / 2, p.x + p.r) - Math.max(c.x - c.w / 2, p.x - p.r);
+            expect(
+              overlap,
+              `${style}/${n}: pig at ${Math.round(p.x)} overlaps column at ${Math.round(c.x)}`
+            ).toBeLessThanOrEqual(0);
+          }
+        }
+      }
+    }
+  });
+
+  it('leaves real daylight between a pig and the nearest column', () => {
+    for (const style of TOWER_STYLES) {
+      const { pigs, blocks } = layoutTower(12, style);
+      const columns = blocks.filter((b) => b.kind === 'column');
+      for (const p of pigs) {
+        const above = columns.filter((c) => c.tier === p.tier + 1);
+        if (above.length === 0) continue;
+        const nearest = Math.min(
+          ...above.map((c) =>
+            Math.max(c.x - c.w / 2 - (p.x + p.r), p.x - p.r - (c.x + c.w / 2))
+          )
+        );
+        expect(nearest, style).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  // The fallback that keeps the above possible: a shape too narrow for the
+  // roster hands over to the plain stack rather than dropping a pig.
+  it('still seats everyone when a narrow style cannot fit them', () => {
+    for (const style of TOWER_STYLES) {
+      for (const n of COUNTS) {
+        expect(layoutTower(n, style).pigs, `${style}/${n}`).toHaveLength(n);
+      }
+    }
+  });
+});
+
+describe('volleysForRound', () => {
+  it('stays inside the advertised range', () => {
+    for (let t = 0; t < 5000; t++) {
+      const n = volleysForRound();
+      expect(Number.isInteger(n)).toBe(true);
+      expect(n).toBeGreaterThanOrEqual(VOLLEYS_MIN);
+      expect(n).toBeLessThanOrEqual(VOLLEYS_MAX);
+    }
+  });
+
+  it('reaches both ends', () => {
+    const seen = new Set<number>();
+    for (let t = 0; t < 5000; t++) seen.add(volleysForRound());
+    expect(seen.size).toBe(VOLLEYS_MAX - VOLLEYS_MIN + 1);
+  });
+
+  it('spreads evenly', () => {
+    const trials = 12000;
+    const counts = new Map<number, number>();
+    for (let t = 0; t < trials; t++) {
+      const n = volleysForRound();
+      counts.set(n, (counts.get(n) ?? 0) + 1);
+    }
+    const expected = trials / (VOLLEYS_MAX - VOLLEYS_MIN + 1);
+    for (let n = VOLLEYS_MIN; n <= VOLLEYS_MAX; n++) {
+      expect(counts.get(n) ?? 0).toBeGreaterThan(expected * 0.85);
+      expect(counts.get(n) ?? 0).toBeLessThan(expected * 1.15);
+    }
+  });
+
+  it('is driven entirely by the supplied randomness', () => {
+    expect(volleysForRound(() => 0)).toBe(VOLLEYS_MIN);
+    expect(volleysForRound(() => 0.999999)).toBe(VOLLEYS_MAX);
+  });
+});
+
+describe('block materials', () => {
+  it('gives every block a material', () => {
+    for (const style of TOWER_STYLES) {
+      for (const b of layoutTower(14, style).blocks) {
+        expect(['wood', 'stone', 'ice']).toContain(b.material);
+      }
+    }
+  });
+
+  // Heavy at the base, light on top: a stone footing stays put while an ice
+  // top course shears off, which is what makes a collapse worth watching.
+  it('never puts a lighter course under a heavier one', () => {
+    const weight = { ice: 0, wood: 1, stone: 2 };
+    for (const style of TOWER_STYLES) {
+      const byTier = new Map<number, string>();
+      for (const b of layoutTower(20, style).blocks) {
+        // The bunker shield is a deliberate exception: it is stone at tier 0
+        // regardless, which cannot break the ordering anyway.
+        if (!byTier.has(b.tier)) byTier.set(b.tier, b.material);
+      }
+      const tiers = [...byTier.entries()].sort((a, b) => a[0] - b[0]);
+      for (let i = 1; i < tiers.length; i++) {
+        const below = weight[tiers[i - 1][1] as keyof typeof weight];
+        const above = weight[tiers[i][1] as keyof typeof weight];
+        expect(above, `${style} tier ${tiers[i][0]}`).toBeLessThanOrEqual(below);
+      }
+    }
+  });
+
+  it('is settled by style and tier, so a shape looks the same each time', () => {
+    for (const style of TOWER_STYLES) {
+      expect(materialFor(style, 0)).toBe(materialFor(style, 0));
+      // Tiers past the list keep the topmost material rather than falling off.
+      expect(materialFor(style, 99)).toBe(materialFor(style, STYLE_MATERIALS[style].length - 1));
+    }
+  });
+
+  it('uses more than one material across the set', () => {
+    const used = new Set(TOWER_STYLES.flatMap((s) => STYLE_MATERIALS[s]));
+    expect(used.size).toBeGreaterThanOrEqual(3);
   });
 });

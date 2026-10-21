@@ -33,3 +33,18 @@
   letter-spacing: 0.04em;
   opacity: 0.9;
 }
+
+.rerun-race-button {
+  background: #8a5a12;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rerun-race-button:hover {
+  background: #a66c18;
+}

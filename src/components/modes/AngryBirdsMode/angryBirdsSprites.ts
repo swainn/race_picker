@@ -3,7 +3,7 @@
  * drawn around their centre (which is what the sim reports) so the caller only
  * has to hand over a snapshot position and an angle.
  */
-import type { BlockKind } from './angryBirdsEngine';
+import type { BlockKind, BlockMaterial } from './angryBirdsEngine';
 
 function darken(color: string, amount = 0.35): string {
   const hex = color.replace('#', '');
@@ -211,9 +211,16 @@ export function drawBlock(
   w: number,
   h: number,
   angle: number,
-  kind: BlockKind
+  kind: BlockKind,
+  material: BlockMaterial = 'wood'
 ): void {
-  const base = kind === 'beam' ? '#C98A43' : '#B4762F';
+  // Beams catch more light than the uprights, whatever they are made of.
+  const PALETTE: Record<BlockMaterial, [string, string]> = {
+    wood: ['#C98A43', '#B4762F'],
+    stone: ['#9AA3AD', '#7E8792'],
+    ice: ['#9FD8EE', '#7FC4DF'],
+  };
+  const base = PALETTE[material][kind === 'beam' ? 0 : 1];
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
@@ -225,11 +232,21 @@ export function drawBlock(
   ctx.lineWidth = 1.6;
   ctx.stroke();
 
-  // Grain, along the long axis
-  ctx.strokeStyle = darken(base, 0.22);
+  // Ice reads as a slab, not a plank: a bright highlight instead of grain.
+  if (material === 'ice') {
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.roundRect(-w / 2 + 2, -h / 2 + 2, Math.max(1, w * 0.3), Math.max(1, h - 4), 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // Grain for wood, coarser mottling for stone, along the long axis
+  ctx.strokeStyle = darken(base, material === 'stone' ? 0.3 : 0.22);
   ctx.lineWidth = 1;
   const along = w >= h;
-  const lines = Math.max(1, Math.round((along ? h : w) / 7));
+  const lines = Math.max(1, Math.round((along ? h : w) / (material === 'stone' ? 11 : 7)));
   for (let i = 1; i < lines; i++) {
     const t = -0.5 + i / lines;
     ctx.beginPath();
