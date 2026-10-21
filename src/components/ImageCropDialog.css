@@ -113,35 +113,19 @@
   cursor: default;
 }
 
-.crop-dialog__tools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-.crop-dialog__tool {
-  background: transparent;
+.crop-dialog__zoom-pct {
+  width: 62px;
+  flex: 0 0 auto;
+  padding: 5px 6px;
+  border-radius: 6px;
   border: 1px solid #3a4461;
-  border-radius: 7px;
-  color: #c3ccdf;
-  cursor: pointer;
+  background: #11161f;
+  color: #e8ecf5;
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.crop-dialog__zoom-unit {
+  color: #8591ad;
   font-size: 0.78rem;
-  padding: 6px 10px;
-}
-
-.crop-dialog__tool:hover:not(:disabled) {
-  color: #fff;
-  border-color: #5a688a;
-}
-
-.crop-dialog__tool:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.crop-dialog__note {
-  font-size: 0.72rem;
-  color: #8fe0a8;
 }

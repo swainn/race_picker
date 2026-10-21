@@ -6,12 +6,27 @@ import {
   clampCrop,
   cropSourceRect,
   encodeCanvas,
-  removeBorderBackground,
 } from '../utils/imageCrop';
 import './ImageCropDialog.css';
 
 /** Side of the square preview, in CSS px. */
 const BOX = 300;
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/**
+ * The number box states the circle's size directly — its diameter as a
+ * percentage of the frame — so 100 is the biggest circle that fits and 20 is
+ * the tightest. Bigger number, bigger circle.
+ *
+ * It is NOT a magnification figure. That reads backwards here: people set this
+ * while looking at the circle, so the number should describe the circle, even
+ * though the slider beside it runs the other way (right = zoom in = smaller
+ * circle).
+ */
+const SIZE_MIN_PCT = Math.round(MIN_ZOOM * 100);
+const SIZE_MAX_PCT = 100;
+const zoomToSize = (zoom: number) => Math.round(zoom * 100);
 
 interface Props {
   /** The uncropped source to position the circle over. */
@@ -22,8 +37,7 @@ interface Props {
   /** Label for the confirm button; differs for adding vs re-cropping. */
   confirmLabel?: string;
   onCancel: () => void;
-  /** `src` comes back too, since the background tool can rewrite it. */
-  onConfirm: (crop: ImageCrop, croppedDataUrl: string, src: string) => void;
+  onConfirm: (crop: ImageCrop, croppedDataUrl: string) => void;
 }
 
 /**
@@ -40,9 +54,12 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
   const dragRef = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
   const [value, setValue] = useState<ImageCrop>(crop);
   const [ready, setReady] = useState(false);
-  /** Set once the background has been keyed out; this is what gets saved. */
-  const [workingSrc, setWorkingSrc] = useState(src);
-  const [bgNote, setBgNote] = useState<string | null>(null);
+  /**
+   * What is typed in the percentage box, while it is being typed. Null means
+   * "show the real value" — without this, typing the 1 of 150 would clamp to
+   * 100% and fight the keystroke.
+   */
+  const [pctDraft, setPctDraft] = useState<string | null>(null);
 
   // Load the source once; everything else draws from it.
   useEffect(() => {
@@ -52,11 +69,11 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
       setReady(true);
       setValue((v) => clampCrop(v, im.naturalWidth, im.naturalHeight));
     };
-    im.src = workingSrc;
+    im.src = src;
     return () => {
       im.onload = null;
     };
-  }, [workingSrc]);
+  }, [src]);
 
   /** Where the image sits inside the square preview, letterboxed. */
   const layout = () => {
@@ -148,23 +165,6 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
     setValue((v) => clampCrop({ ...v, zoom }, im.naturalWidth, im.naturalHeight));
   };
 
-  /**
-   * Key out a black background. Only reachable-from-the-edge darkness goes, so
-   * a dark subject survives — see keyOutBorder.
-   */
-  const stripBackground = () => {
-    const im = imgRef.current;
-    if (!im) return;
-    const next = removeBorderBackground(im);
-    if (!next) {
-      setBgNote('No dark background found around the edges.');
-      return;
-    }
-    setBgNote('Background removed.');
-    setReady(false);
-    setWorkingSrc(next);
-  };
-
   /** Render the circle's square of source pixels out at the stored size. */
   const confirm = () => {
     const im = imgRef.current;
@@ -179,7 +179,7 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
     ctx.drawImage(im, sx, sy, size, size, 0, 0, CROP_OUTPUT_PX, CROP_OUTPUT_PX);
     // Alpha is kept here too: a cut-out cropped for the critter face should not
     // pick up a black background behind the transparent parts.
-    onConfirm(c, encodeCanvas(out, true), workingSrc);
+    onConfirm(c, encodeCanvas(out, true));
   };
 
   return (
@@ -205,7 +205,7 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
           onPointerCancel={endDrag}
         />
 
-        <label className="crop-dialog__zoom">
+        <div className="crop-dialog__zoom">
           <span>Zoom</span>
           <input
             type="range"
@@ -215,16 +215,35 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
             // The slider runs backwards on purpose: dragging right should zoom
             // IN, which means a smaller circle over the source.
             value={MIN_ZOOM + 1 - value.zoom}
-            onChange={(e) => setZoom(MIN_ZOOM + 1 - Number(e.target.value))}
+            onChange={(e) => {
+              setPctDraft(null);
+              setZoom(MIN_ZOOM + 1 - Number(e.target.value));
+            }}
             aria-label="Zoom"
           />
-        </label>
-
-        <div className="crop-dialog__tools">
-          <button type="button" className="crop-dialog__tool" onClick={stripBackground} disabled={!ready}>
-            Remove black background
-          </button>
-          {bgNote && <span className="crop-dialog__note">{bgNote}</span>}
+          <input
+            type="number"
+            className="crop-dialog__zoom-pct"
+            min={SIZE_MIN_PCT}
+            max={SIZE_MAX_PCT}
+            step={1}
+            value={pctDraft ?? String(zoomToSize(value.zoom))}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setPctDraft(raw);
+              const pct = Number(raw);
+              if (raw === '' || !Number.isFinite(pct)) return;
+              // Applied on every keystroke, clamped rather than discarded. The
+              // first version ignored anything out of range, so typing a 5 on
+              // the way to 50 did nothing and the box felt dead.
+              setZoom(clamp(pct / 100, MIN_ZOOM, 1));
+            }}
+            // Snap the box back to the real value once editing stops, so a
+            // half-typed entry cannot be left showing.
+            onBlur={() => setPctDraft(null)}
+            aria-label="Crop circle size, percent of frame"
+          />
+          <span className="crop-dialog__zoom-unit">%</span>
         </div>
 
         <div className="crop-dialog__actions">

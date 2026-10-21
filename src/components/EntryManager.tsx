@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Entry, EntryImage, ImageCrop } from '../types';
 import { getEntryImages } from '../utils/entryImages';
-import { DEFAULT_CROP, SOURCE_MAX_PX, encodeCanvas, entryImageRecords } from '../utils/imageCrop';
+import { INITIAL_CROP, SOURCE_MAX_PX, encodeCanvas, entryImageRecords } from '../utils/imageCrop';
 import { ImageCropDialog } from './ImageCropDialog';
 import './EntryManager.css';
 
@@ -155,7 +155,7 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
       entryId: next.entryId,
       index: null,
       src: next.src,
-      crop: { ...DEFAULT_CROP },
+      crop: { ...INITIAL_CROP },
       name: next.name,
       queued: pendingTotalRef.current > 1 ? { at, of: pendingTotalRef.current } : null,
     });
@@ -198,7 +198,7 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
     });
   };
 
-  const handleCropConfirm = (crop: ImageCrop, croppedDataUrl: string, src: string) => {
+  const handleCropConfirm = (crop: ImageCrop, croppedDataUrl: string) => {
     const target = cropTarget;
     if (!target) return;
     const entry = entries.find((item) => item.id === target.entryId);
@@ -212,11 +212,13 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
     if (target.index === null) {
       writePictures(
         entry.id,
-        [...records, { src, crop }],
+        [...records, { src: target.src, crop }],
         [...urls, croppedDataUrl]
       );
     } else {
-      const nextRecords = records.map((r, i) => (i === target.index ? { src, crop } : r));
+      const nextRecords = records.map((r, i) =>
+        i === target.index ? { src: target.src, crop } : r
+      );
       const nextUrls = urls.map((u, i) => (i === target.index ? croppedDataUrl : u));
       writePictures(entry.id, nextRecords, nextUrls);
     }

@@ -7,7 +7,24 @@ import { getEntryImages } from './entryImages';
  * which is what keeps the preview honest: what you line up is what you get.
  */
 
+/**
+ * The whole frame. Used as the faithful stand-in for images saved before crops
+ * existed: their stored square *is* the full picture, so this describes it
+ * exactly. Not what a fresh upload starts at — see INITIAL_CROP.
+ */
 export const DEFAULT_CROP: ImageCrop = { cx: 0.5, cy: 0.5, zoom: 1 };
+
+/**
+ * Where a newly added picture starts: a 60% circle pinned to the top of the
+ * frame and centred horizontally — heads sit at the top of a portrait, so this
+ * lands on the face more often than not.
+ *
+ * `cy: 0` is deliberate rather than a computed value. How far up the centre can
+ * sit depends on the zoom and the image's aspect ratio, and `clampCrop` already
+ * works that out; asking for 0 and letting it clamp pins the circle's top edge
+ * exactly to the image's top edge for any picture.
+ */
+export const INITIAL_CROP: ImageCrop = { cx: 0.5, cy: 0, zoom: 0.6 };
 
 /** Tightest crop allowed, as a fraction of the shorter side. */
 export const MIN_ZOOM = 0.2;
@@ -96,104 +113,4 @@ export function encodeCanvas(
   const webp = canvas.toDataURL('image/webp', quality);
   if (webp.startsWith('data:image/webp')) return webp;
   return keepAlpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', quality);
-}
-
-/** Perceived brightness, for deciding what counts as "background black". */
-function luma(r: number, g: number, b: number): number {
-  return 0.299 * r + 0.587 * g + 0.114 * b;
-}
-
-/**
- * Clear dark pixels that are connected to the border, in place.
- *
- * This repairs pictures whose transparency was flattened onto black by an
- * earlier encoder: the lost alpha cannot be recovered, but the black it left
- * behind can be keyed back out.
- *
- * Deliberately a flood fill inward from the edges rather than "every dark
- * pixel": a subject with dark hair, a black jacket or a shadowed eye would
- * otherwise be punched full of holes. Only background reachable from outside
- * the subject is removed.
- *
- * The threshold is deliberately tight. Flattened transparency is *pure* black
- * (the encoder wrote 0,0,0), while real dark content — hair, a black jacket —
- * almost never is. A looser threshold eats a dark subject that happens to touch
- * the background, which no colour-based key can tell apart from it.
- *
- * Returns how many pixels were cleared, so a caller can tell the user when
- * there was nothing to do.
- */
-export function keyOutBorder(
-  data: Uint8ClampedArray,
-  width: number,
-  height: number,
-  maxLuma = 24
-): number {
-  if (width <= 0 || height <= 0) return 0;
-  const seen = new Uint8Array(width * height);
-  const stack: number[] = [];
-
-  const consider = (x: number, y: number) => {
-    if (x < 0 || y < 0 || x >= width || y >= height) return;
-    const p = y * width + x;
-    if (seen[p]) return;
-    seen[p] = 1;
-    const i = p * 4;
-    if (data[i + 3] === 0) {
-      // Already transparent: keep walking through it to reach black beyond.
-      stack.push(p);
-      return;
-    }
-    if (luma(data[i], data[i + 1], data[i + 2]) > maxLuma) return;
-    data[i + 3] = 0;
-    stack.push(p);
-  };
-
-  for (let x = 0; x < width; x++) {
-    consider(x, 0);
-    consider(x, height - 1);
-  }
-  for (let y = 0; y < height; y++) {
-    consider(0, y);
-    consider(width - 1, y);
-  }
-
-  let cleared = 0;
-  while (stack.length > 0) {
-    const p = stack.pop() as number;
-    cleared++;
-    const x = p % width;
-    const y = (p - x) / width;
-    consider(x - 1, y);
-    consider(x + 1, y);
-    consider(x, y - 1);
-    consider(x, y + 1);
-  }
-  return cleared;
-}
-
-/**
- * Re-encode an image with its black border background keyed out, or null when
- * there was nothing dark to remove.
- */
-export function removeBorderBackground(img: HTMLImageElement, maxLuma = 24): string | null {
-  const w = img.naturalWidth;
-  const h = img.naturalHeight;
-  if (w <= 0 || h <= 0) return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.drawImage(img, 0, 0);
-  let frame: ImageData;
-  try {
-    frame = ctx.getImageData(0, 0, w, h);
-  } catch {
-    return null;
-  }
-  const cleared = keyOutBorder(frame.data, w, h, maxLuma);
-  if (cleared === 0) return null;
-  ctx.putImageData(frame, 0, 0);
-  return encodeCanvas(canvas, true);
 }
