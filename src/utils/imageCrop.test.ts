@@ -7,6 +7,7 @@ import {
   cropFor,
   cropSourceRect,
   entryImageRecords,
+  keyOutBorder,
   sourceFor,
 } from './imageCrop';
 
@@ -114,5 +115,78 @@ describe('entry helpers', () => {
       { src: 'src.png', crop: { cx: 0.3, cy: 0.7, zoom: 0.4 } },
     ]);
     expect(entryImageRecords({ id: 3, name: 'None' })).toEqual([]);
+  });
+});
+
+describe('keyOutBorder', () => {
+  /** Build RGBA data from a grid: '#' black, '.' white, ' ' transparent. */
+  const build = (rows: string[]) => {
+    const h = rows.length;
+    const w = rows[0].length;
+    const data = new Uint8ClampedArray(w * h * 4);
+    rows.forEach((row, y) => {
+      [...row].forEach((ch, x) => {
+        const i = (y * w + x) * 4;
+        const v = ch === '.' ? 255 : 0;
+        data[i] = v;
+        data[i + 1] = v;
+        data[i + 2] = v;
+        data[i + 3] = ch === ' ' ? 0 : 255;
+      });
+    });
+    return { data, w, h };
+  };
+  const alphaAt = (d: Uint8ClampedArray, w: number, x: number, y: number) => d[(y * w + x) * 4 + 3];
+
+  it('clears a black background touching the edge', () => {
+    const { data, w, h } = build([
+      '#####',
+      '#...#',
+      '#...#',
+      '#####',
+    ]);
+    expect(keyOutBorder(data, w, h)).toBeGreaterThan(0);
+    expect(alphaAt(data, w, 0, 0)).toBe(0);
+    expect(alphaAt(data, w, 4, 3)).toBe(0);
+    // The light subject is untouched.
+    expect(alphaAt(data, w, 2, 1)).toBe(255);
+  });
+
+  // The whole reason this floods from the edge instead of thresholding every
+  // dark pixel: dark hair or a black jacket must survive.
+  it('keeps dark pixels enclosed by the subject', () => {
+    const { data, w, h } = build([
+      '#######',
+      '#.....#',
+      '#..#..#',
+      '#.....#',
+      '#######',
+    ]);
+    keyOutBorder(data, w, h);
+    expect(alphaAt(data, w, 3, 2)).toBe(255);
+    expect(alphaAt(data, w, 0, 0)).toBe(0);
+  });
+
+  it('reaches black that sits behind an already-transparent margin', () => {
+    const { data, w, h } = build([
+      '     ',
+      ' ### ',
+      ' #.# ',
+      ' ### ',
+      '     ',
+    ]);
+    keyOutBorder(data, w, h);
+    expect(alphaAt(data, w, 1, 1)).toBe(0);
+    expect(alphaAt(data, w, 2, 2)).toBe(255);
+  });
+
+  it('reports nothing cleared when there is no dark border', () => {
+    const { data, w, h } = build(['...', '...', '...']);
+    expect(keyOutBorder(data, w, h)).toBe(0);
+    expect(alphaAt(data, w, 0, 0)).toBe(255);
+  });
+
+  it('survives a degenerate size', () => {
+    expect(keyOutBorder(new Uint8ClampedArray(0), 0, 0)).toBe(0);
   });
 });

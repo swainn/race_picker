@@ -1,9 +1,33 @@
 import { useRef, useState } from 'react';
 import type { Entry, EntryImage, ImageCrop } from '../types';
 import { getEntryImages } from '../utils/entryImages';
-import { DEFAULT_CROP, SOURCE_MAX_PX, entryImageRecords } from '../utils/imageCrop';
+import { DEFAULT_CROP, SOURCE_MAX_PX, encodeCanvas, entryImageRecords } from '../utils/imageCrop';
 import { ImageCropDialog } from './ImageCropDialog';
 import './EntryManager.css';
+
+/**
+ * Whether any pixel is less than fully opaque. Sampled on a grid rather than
+ * every pixel: a cut-out has large transparent regions, so a coarse sweep
+ * finds it, and this runs on the UI thread during an upload.
+ */
+function hasTransparency(ctx: CanvasRenderingContext2D, width: number, height: number): boolean {
+  try {
+    const { data } = ctx.getImageData(0, 0, width, height);
+    const step = 4 * Math.max(1, Math.floor((width * height) / 4096));
+    for (let i = 3; i < data.length; i += step) {
+      if (data[i] < 250) return true;
+    }
+    // The border is where a cut-out is most likely to be transparent.
+    for (let x = 0; x < width; x++) {
+      if (data[(x + 0 * width) * 4 + 3] < 250) return true;
+      if (data[(x + (height - 1) * width) * 4 + 3] < 250) return true;
+    }
+    return false;
+  } catch {
+    // Tainted canvas or similar: assume opaque and keep the smaller encoding.
+    return false;
+  }
+}
 
 interface Props {
   entries: Entry[];
@@ -105,7 +129,11 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
             return;
           }
           ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
+          // Transparency has to survive: the avatars-only look in Whac-a-Mole
+          // draws the source untouched, and a flattened cut-out would arrive
+          // on a black square. WebP keeps alpha at roughly JPEG size; the
+          // alpha check only matters for the PNG/JPEG fallback.
+          resolve(encodeCanvas(canvas, hasTransparency(ctx, width, height)));
         };
         img.onerror = () => reject(new Error('Image could not be loaded.'));
         img.src = raw;
@@ -170,7 +198,7 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
     });
   };
 
-  const handleCropConfirm = (crop: ImageCrop, croppedDataUrl: string) => {
+  const handleCropConfirm = (crop: ImageCrop, croppedDataUrl: string, src: string) => {
     const target = cropTarget;
     if (!target) return;
     const entry = entries.find((item) => item.id === target.entryId);
@@ -184,13 +212,11 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
     if (target.index === null) {
       writePictures(
         entry.id,
-        [...records, { src: target.src, crop }],
+        [...records, { src, crop }],
         [...urls, croppedDataUrl]
       );
     } else {
-      const nextRecords = records.map((r, i) =>
-        i === target.index ? { src: target.src, crop } : r
-      );
+      const nextRecords = records.map((r, i) => (i === target.index ? { src, crop } : r));
       const nextUrls = urls.map((u, i) => (i === target.index ? croppedDataUrl : u));
       writePictures(entry.id, nextRecords, nextUrls);
     }

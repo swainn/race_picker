@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { Entry } from '../../../types';
 import { generateColor } from '../../../utils/colors';
 import { getPreferredEntryImage } from '../../../utils/entryImages';
+import { sourceFor } from '../../../utils/imageCrop';
 import { createShuffleBag } from '../../../utils/shuffleBag';
 import { WinnerDialog } from '../../shared/WinnerDialog/WinnerDialog';
 import type { WinnerTheme } from '../themes';
@@ -149,6 +150,8 @@ export function WhacAMoleGame(props: Props) {
   useEffect(() => { audio.setWhacMusicMuted(!settings.music); }, [settings.music]);
   const speedRef = useRef(settings.speed);
   speedRef.current = settings.speed;
+  const popperRef = useRef(settings.popper);
+  popperRef.current = settings.popper;
   const densityRef = useRef(settings.density);
   densityRef.current = settings.density;
   useEffect(() => () => { audio.stopTrack(); }, []);
@@ -203,6 +206,11 @@ export function WhacAMoleGame(props: Props) {
    * take it, so the sprite falls back to the drawn face until `complete` flips.
    */
   const imgCacheRef = useRef<Map<number, HTMLImageElement>>(new Map());
+  /**
+   * The uncropped originals, for the avatars-only look. That mode draws the
+   * picture whole, so it cannot use the cropped square the critters wear.
+   */
+  const srcCacheRef = useRef<Map<number, HTMLImageElement>>(new Map());
 
   const kindsRef = useRef<Map<number, CritterKind>>(new Map());
   const kindBagRef = useRef(createShuffleBag(CRITTER_KINDS));
@@ -238,6 +246,12 @@ export function WhacAMoleGame(props: Props) {
         const im = new Image();
         im.src = url;
         imgCacheRef.current.set(entry.id, im);
+      }
+      const rawUrl = sourceFor(entry, 0);
+      if (rawUrl && !srcCacheRef.current.has(entry.id)) {
+        const raw = new Image();
+        raw.src = rawUrl;
+        srcCacheRef.current.set(entry.id, raw);
       }
       return {
         entry,
@@ -498,7 +512,11 @@ export function WhacAMoleGame(props: Props) {
         ctx.translate(hole.x, hole.y);
         drawMole(ctx, mole.color, mole.initials, {
           kind: mole.kind,
-          avatar: imgCacheRef.current.get(mole.entry.id) ?? null,
+          avatar:
+            (popperRef.current === 'avatar'
+              ? srcCacheRef.current.get(mole.entry.id)
+              : imgCacheRef.current.get(mole.entry.id)) ?? null,
+          bare: popperRef.current === 'avatar',
           pop: mole.pop,
           phase: mole.phase + now / 420,
           alarm,

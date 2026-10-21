@@ -7,9 +7,18 @@ export type WhacSpeed = 'slow' | 'normal' | 'fast';
 /** How busy the board looks while the mallet is hunting. Cosmetic only. */
 export type WhacDensity = 'sparse' | 'normal' | 'busy';
 
+/**
+ * What pops out of the holes.
+ *  - `critter`: an animal, wearing the participant's photo as its face.
+ *  - `avatar` : the photo alone, with no animal around it.
+ * Participants without a photo fall back to a drawn face or a plain disc.
+ */
+export type WhacPopper = 'critter' | 'avatar';
+
 export interface WhacAMoleSettings {
   speed: WhacSpeed;
   density: WhacDensity;
+  popper: WhacPopper;
   sound: boolean;
   music: boolean;
 }
@@ -17,6 +26,7 @@ export interface WhacAMoleSettings {
 const DEFAULT_SETTINGS: WhacAMoleSettings = {
   speed: 'normal',
   density: 'normal',
+  popper: 'critter',
   sound: true,
   music: true,
 };
@@ -30,7 +40,14 @@ function loadSettings(): WhacAMoleSettings {
       parsed.speed === 'slow' || parsed.speed === 'fast' ? parsed.speed : 'normal';
     const density: WhacDensity =
       parsed.density === 'sparse' || parsed.density === 'busy' ? parsed.density : 'normal';
-    return { speed, density, sound: parsed.sound ?? true, music: parsed.music ?? true };
+    const popper: WhacPopper = parsed.popper === 'avatar' ? 'avatar' : 'critter';
+    return {
+      speed,
+      density,
+      popper,
+      sound: parsed.sound ?? true,
+      music: parsed.music ?? true,
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }

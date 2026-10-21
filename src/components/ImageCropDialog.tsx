@@ -5,6 +5,8 @@ import {
   MIN_ZOOM,
   clampCrop,
   cropSourceRect,
+  encodeCanvas,
+  removeBorderBackground,
 } from '../utils/imageCrop';
 import './ImageCropDialog.css';
 
@@ -20,7 +22,8 @@ interface Props {
   /** Label for the confirm button; differs for adding vs re-cropping. */
   confirmLabel?: string;
   onCancel: () => void;
-  onConfirm: (crop: ImageCrop, croppedDataUrl: string) => void;
+  /** `src` comes back too, since the background tool can rewrite it. */
+  onConfirm: (crop: ImageCrop, croppedDataUrl: string, src: string) => void;
 }
 
 /**
@@ -37,6 +40,9 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
   const dragRef = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
   const [value, setValue] = useState<ImageCrop>(crop);
   const [ready, setReady] = useState(false);
+  /** Set once the background has been keyed out; this is what gets saved. */
+  const [workingSrc, setWorkingSrc] = useState(src);
+  const [bgNote, setBgNote] = useState<string | null>(null);
 
   // Load the source once; everything else draws from it.
   useEffect(() => {
@@ -46,11 +52,11 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
       setReady(true);
       setValue((v) => clampCrop(v, im.naturalWidth, im.naturalHeight));
     };
-    im.src = src;
+    im.src = workingSrc;
     return () => {
       im.onload = null;
     };
-  }, [src]);
+  }, [workingSrc]);
 
   /** Where the image sits inside the square preview, letterboxed. */
   const layout = () => {
@@ -142,6 +148,23 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
     setValue((v) => clampCrop({ ...v, zoom }, im.naturalWidth, im.naturalHeight));
   };
 
+  /**
+   * Key out a black background. Only reachable-from-the-edge darkness goes, so
+   * a dark subject survives — see keyOutBorder.
+   */
+  const stripBackground = () => {
+    const im = imgRef.current;
+    if (!im) return;
+    const next = removeBorderBackground(im);
+    if (!next) {
+      setBgNote('No dark background found around the edges.');
+      return;
+    }
+    setBgNote('Background removed.');
+    setReady(false);
+    setWorkingSrc(next);
+  };
+
   /** Render the circle's square of source pixels out at the stored size. */
   const confirm = () => {
     const im = imgRef.current;
@@ -154,7 +177,9 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
     const ctx = out.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(im, sx, sy, size, size, 0, 0, CROP_OUTPUT_PX, CROP_OUTPUT_PX);
-    onConfirm(c, out.toDataURL('image/jpeg', 0.85));
+    // Alpha is kept here too: a cut-out cropped for the critter face should not
+    // pick up a black background behind the transparent parts.
+    onConfirm(c, encodeCanvas(out, true), workingSrc);
   };
 
   return (
@@ -194,6 +219,13 @@ export function ImageCropDialog({ src, crop, title, confirmLabel = 'Save crop', 
             aria-label="Zoom"
           />
         </label>
+
+        <div className="crop-dialog__tools">
+          <button type="button" className="crop-dialog__tool" onClick={stripBackground} disabled={!ready}>
+            Remove black background
+          </button>
+          {bgNote && <span className="crop-dialog__note">{bgNote}</span>}
+        </div>
 
         <div className="crop-dialog__actions">
           <button type="button" className="crop-dialog__cancel" onClick={onCancel}>

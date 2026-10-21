@@ -1,10 +1,15 @@
-import type { WhacDensity, WhacSpeed } from './whacAMoleSettingsStore';
+import type { WhacDensity, WhacPopper, WhacSpeed } from './whacAMoleSettingsStore';
 import { useWhacAMoleSettings, updateWhacAMoleSettings } from './whacAMoleSettingsStore';
 
 const SPEEDS: { value: WhacSpeed; label: string }[] = [
   { value: 'slow', label: 'Slow' },
   { value: 'normal', label: 'Normal' },
   { value: 'fast', label: 'Fast' },
+];
+
+const POPPERS: { value: WhacPopper; label: string }[] = [
+  { value: 'critter', label: 'Critters (photo as the face)' },
+  { value: 'avatar', label: 'Avatars only' },
 ];
 
 const DENSITIES: { value: WhacDensity; label: string }[] = [
@@ -17,6 +22,21 @@ export function WhacAMoleSettings() {
   const settings = useWhacAMoleSettings();
   return (
     <>
+      <fieldset>
+        <legend>What pops up</legend>
+        {POPPERS.map((o) => (
+          <label key={o.value}>
+            <input
+              type="radio"
+              name="whac-a-mole-popper"
+              checked={settings.popper === o.value}
+              onChange={() => updateWhacAMoleSettings({ popper: o.value })}
+            />
+            <span>{o.label}</span>
+          </label>
+        ))}
+      </fieldset>
+
       <fieldset>
         <legend>Mallet speed</legend>
         {SPEEDS.map((s) => (

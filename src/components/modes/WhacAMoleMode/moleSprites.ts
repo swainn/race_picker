@@ -155,6 +155,12 @@ export interface MoleOptions {
    * which critter it is still reads. Ignored until the image has decoded.
    */
   avatar?: HTMLImageElement | null;
+  /**
+   * Draw the photo alone, with no animal around it. Participants without a
+   * photo get a plain disc carrying their initials, so the board stays
+   * consistent rather than mixing bare photos with full critters.
+   */
+  bare?: boolean;
 }
 
 /**
@@ -187,6 +193,12 @@ export function drawMole(
   } else if (o.alarm > 0) {
     // Cringe: pull the head down into the shoulders a touch.
     ctx.translate(0, o.alarm * 3);
+  }
+
+  if (o.bare) {
+    drawBareAvatar(ctx, color, initials, o);
+    ctx.restore();
+    return;
   }
 
   // Ears / crown — the silhouette is what tells the critters apart at this size
@@ -653,4 +665,59 @@ export function drawImpactDust(
   ctx.ellipse(x, y, WHAC.HOLE_RX + 10 + t * 34, WHAC.HOLE_RY + 6 + t * 14, 0, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
+}
+
+/**
+ * The "avatars only" look: just the participant, rising out of the hole.
+ *
+ * The picture is drawn whole and untouched — no crop shape, no border, and the
+ * source's own transparency preserved — so a cut-out PNG reads as the thing
+ * itself popping up rather than a photo in a frame. It is fitted inside a box
+ * rather than filled to it, since cropping to fill is exactly what this mode
+ * exists to avoid.
+ *
+ * Shares the caller's sink, squash and alarm transform, so it pops and gets
+ * flattened exactly like a critter does.
+ */
+function drawBareAvatar(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  initials: string,
+  o: MoleOptions
+): void {
+  const photo = o.avatar && o.avatar.complete && o.avatar.naturalWidth > 0 ? o.avatar : null;
+  const BOX = 56;
+  const cy = -30;
+
+  // A soft contact shadow on the ground. Not a backdrop for the picture — it
+  // sits under it, so transparency is still transparent.
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(0, -3, 18, 4.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (photo) {
+    // Contain-fit: the whole picture, at its own aspect ratio.
+    const scale = Math.min(BOX / photo.naturalWidth, BOX / photo.naturalHeight);
+    const w = photo.naturalWidth * scale;
+    const h = photo.naturalHeight * scale;
+    // Sit it on the rim rather than centring it, so tall and wide pictures
+    // both look like they are standing in the hole.
+    ctx.drawImage(photo, -w / 2, -6 - h, w, h);
+  } else {
+    // Nothing to show but a name: a plain token, no border.
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(0, cy, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = darken(color, 0.65);
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(initials.slice(0, 3), 0, cy + 1);
+  }
+
+  // No crossed-out eyes here. The picture is the participant, not a cartoon
+  // face, so scribbling over it looks like damage rather than a knockout —
+  // the squash the caller applies, plus the dust and stars, carry the hit.
 }

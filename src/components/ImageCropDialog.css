@@ -112,3 +112,36 @@
   opacity: 0.5;
   cursor: default;
 }
+
+.crop-dialog__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.crop-dialog__tool {
+  background: transparent;
+  border: 1px solid #3a4461;
+  border-radius: 7px;
+  color: #c3ccdf;
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 6px 10px;
+}
+
+.crop-dialog__tool:hover:not(:disabled) {
+  color: #fff;
+  border-color: #5a688a;
+}
+
+.crop-dialog__tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.crop-dialog__note {
+  font-size: 0.72rem;
+  color: #8fe0a8;
+}
