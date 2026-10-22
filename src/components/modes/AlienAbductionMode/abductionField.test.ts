@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_PARTICIPANTS } from '../../../constants';
 import {
   FIELD_LEFT,
   FIELD_RIGHT,
@@ -13,7 +14,7 @@ import {
 
 describe('slotX', () => {
   it('keeps every mark inside the field', () => {
-    for (const count of [1, 2, 7, 20]) {
+    for (const count of [1, 2, 7, MAX_PARTICIPANTS]) {
       for (let slot = 0; slot < count; slot++) {
         const x = slotX(slot, count);
         expect(x).toBeGreaterThanOrEqual(FIELD_LEFT);
@@ -32,7 +33,7 @@ describe('slotX', () => {
 
 describe('startingSlots', () => {
   it('hands out every mark exactly once', () => {
-    for (const count of [1, 2, 9, 20]) {
+    for (const count of [1, 2, 9, MAX_PARTICIPANTS]) {
       const slots = startingSlots(count);
       expect(slots).toHaveLength(count);
       expect([...slots].sort((a, b) => a - b)).toEqual(

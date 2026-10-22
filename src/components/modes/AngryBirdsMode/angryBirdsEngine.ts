@@ -27,8 +27,14 @@ export const AB = {
   /** How far back the pouch is drawn at full draw. */
   SLING_PULL: 46,
 
-  /** Tower footprint, well clear of the slingshot on the left. */
-  TOWER_L: 520,
+  /**
+   * Tower footprint, well clear of the slingshot on the left.
+   *
+   * Widened when the roster cap went to 30: the structure only gets four tiers
+   * before it climbs off the top of the canvas, so the extra seats have to come
+   * from width rather than height.
+   */
+  TOWER_L: 420,
   TOWER_R: 800,
 
   /** One tier = two columns + a beam, with the tier's pigs perched on top. */
@@ -47,7 +53,7 @@ export const AB = {
   BEAM_H: 14,
   PIG_R: 16,
   /** Above this, the tower grows another tier instead of another seat. */
-  PIGS_PER_TIER: 5,
+  PIGS_PER_TIER: 8,
 
   BIRD_R: 13,
 
@@ -561,4 +567,56 @@ export const VOLLEYS_MAX = 3;
  */
 export function volleysForRound(rand: () => number = Math.random): number {
   return VOLLEYS_MIN + Math.floor(rand() * (VOLLEYS_MAX - VOLLEYS_MIN + 1));
+}
+
+/**
+ * Which seat in the structure each participant takes, in list order.
+ *
+ * Deliberately shuffled, and it carries real weight when the pick is resolved
+ * by the simulation rather than drawn up front. The physics is nowhere near
+ * even-handed about seats: a pig on an outside edge of the top tier is far
+ * easier to reach than one walled into the middle of a bunker. Handing seats
+ * out in list order would turn that into a standing advantage for wherever you
+ * happen to sit in the participant list.
+ *
+ * Shuffling fixes it exactly, not approximately. The simulation cannot tell
+ * participants apart, so if seat k is first to pop with probability p_k, a
+ * participant assigned a uniformly random seat is picked with probability
+ * sum(p_k)/n = 1/n — whatever the p_k happen to be.
+ */
+export function seatOrder(count: number, rand?: () => number): number[] {
+  const seats = Array.from({ length: count }, (_, i) => i);
+  return rand ? shuffleWith(seats, rand) : shuffle(seats);
+}
+
+/** Fisher-Yates against an injected source, so the test can be deterministic. */
+function shuffleWith<T>(items: readonly T[], rand: () => number): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * Impulse a pig must take to pop when the simulation is deciding the round.
+ * Above a solid glancing blow, so the first pop reads as a real hit.
+ */
+export const PIG_POP_IMPULSE = 4.2;
+
+/**
+ * Volleys after which pigs start getting easier to dislodge.
+ *
+ * A round has to end. Rather than reach in and choose a winner — which is the
+ * one thing this mode exists to avoid — the pigs simply become more fragile
+ * the longer nobody has been hit, so the simulation still decides who goes.
+ */
+export const PHYSICS_PATIENCE = 4;
+
+/** The pop threshold for a given volley, easing off once patience runs out. */
+export function popImpulseForVolley(volley: number): number {
+  if (volley < PHYSICS_PATIENCE) return PIG_POP_IMPULSE;
+  const eased = PIG_POP_IMPULSE * Math.pow(0.75, volley - PHYSICS_PATIENCE + 1);
+  return Math.max(DAMAGE_THRESHOLD, eased);
 }

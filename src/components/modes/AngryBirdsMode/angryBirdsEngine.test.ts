@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_PARTICIPANTS } from '../../../constants';
 import type { Entry } from '../../../types';
 import {
   AB,
@@ -8,12 +9,16 @@ import {
   flightStepsFor,
   DAMAGE_THRESHOLD,
   MATERIAL_STRENGTH,
+  PHYSICS_PATIENCE,
+  PIG_POP_IMPULSE,
   STYLE_MATERIALS,
   TOWER_STYLES,
   VOLLEYS_MAX,
   VOLLEYS_MIN,
   layoutTower,
   materialFor,
+  popImpulseForVolley,
+  seatOrder,
   volleysForRound,
   type TowerStyle,
   pickVictim,
@@ -25,7 +30,7 @@ import {
   type PigSpot,
 } from './angryBirdsEngine';
 
-const COUNTS = Array.from({ length: 20 }, (_, i) => i + 1);
+const COUNTS = Array.from({ length: MAX_PARTICIPANTS }, (_, i) => i + 1);
 
 interface Box {
   l: number;
@@ -102,12 +107,19 @@ describe('layoutTower', () => {
     }
   });
 
+  // Expressed against PIGS_PER_TIER rather than fixed numbers: the constant
+  // moved when the roster cap went up, and the rule is what matters.
   it('adds tiers only as the crowd grows', () => {
-    expect(tiersFor(5)).toBe(1);
-    expect(tiersFor(6)).toBe(2);
-    expect(tiersFor(10)).toBe(2);
-    expect(tiersFor(11)).toBe(3);
-    expect(tiersFor(20)).toBe(4);
+    const per = AB.PIGS_PER_TIER;
+    expect(tiersFor(1)).toBe(1);
+    expect(tiersFor(per)).toBe(1);
+    expect(tiersFor(per + 1)).toBe(2);
+    expect(tiersFor(per * 2)).toBe(2);
+    expect(tiersFor(per * 2 + 1)).toBe(3);
+  });
+
+  it('never asks for a tier when nobody is playing', () => {
+    expect(tiersFor(0)).toBe(0);
   });
 });
 
@@ -278,7 +290,7 @@ describe('easeInOut', () => {
 });
 
 describe('tower styles', () => {
-  const COUNTS = Array.from({ length: 20 }, (_, i) => i + 1);
+  const COUNTS = Array.from({ length: MAX_PARTICIPANTS }, (_, i) => i + 1);
 
   // The pick is an index into this list. If a style ever seated fewer pigs
   // than asked for, the chosen index could point at nobody and the round
@@ -343,7 +355,7 @@ describe('tower styles', () => {
 });
 
 describe('pigs clear of columns', () => {
-  const COUNTS = Array.from({ length: 20 }, (_, i) => i + 1);
+  const COUNTS = Array.from({ length: MAX_PARTICIPANTS }, (_, i) => i + 1);
 
   // The bug this guards: every tier rests its columns at the same x as the
   // tier below, hanging a few px above the perch. A pig seated under one got
@@ -501,5 +513,76 @@ describe('material strength', () => {
   it('needs several solid hits to bring down stone', () => {
     // A clean bird strike is a few units; stone should not go on one.
     expect(MATERIAL_STRENGTH.stone / MATERIAL_STRENGTH.ice).toBeGreaterThan(4);
+  });
+});
+
+describe('seatOrder', () => {
+  it('hands out every seat exactly once', () => {
+    for (const n of [1, 2, 7, MAX_PARTICIPANTS]) {
+      const order = seatOrder(n);
+      expect(order).toHaveLength(n);
+      expect([...order].sort((a, b) => a - b)).toEqual(Array.from({ length: n }, (_, i) => i));
+    }
+  });
+
+  /**
+   * The load-bearing fairness property once the simulation decides a round.
+   *
+   * Measured, the physics is nowhere near even per seat: some seats are popped
+   * first several times more often than an even share, and some never at all.
+   * That only stays fair because a participant is equally likely to be sat in
+   * any of them — so this has to be a uniform permutation, not merely random.
+   */
+  it('gives every participant an equal shot at every seat (fairness)', () => {
+    const n = 6;
+    const trials = 12000;
+    const grid = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+    for (let t = 0; t < trials; t++) {
+      seatOrder(n).forEach((seat, participant) => {
+        grid[participant][seat]++;
+      });
+    }
+    const expected = trials / n;
+    for (const row of grid) {
+      for (const cell of row) {
+        expect(cell).toBeGreaterThan(expected * 0.85);
+        expect(cell).toBeLessThan(expected * 1.15);
+      }
+    }
+  });
+
+  it('is driven entirely by the supplied randomness', () => {
+    expect(seatOrder(5, () => 0)).toEqual(seatOrder(5, () => 0));
+  });
+});
+
+describe('popImpulseForVolley', () => {
+  // A simulation-decided round has no backstop by design, so the only thing
+  // guaranteeing it ends is that pigs get easier to dislodge as it drags on.
+  it('holds the bar steady while the round is young', () => {
+    for (let v = 0; v < PHYSICS_PATIENCE; v++) {
+      expect(popImpulseForVolley(v)).toBe(PIG_POP_IMPULSE);
+    }
+  });
+
+  it('eases off once patience runs out, down to the floor and no further', () => {
+    let previous = popImpulseForVolley(PHYSICS_PATIENCE - 1);
+    let reachedFloor = false;
+    for (let v = PHYSICS_PATIENCE; v < PHYSICS_PATIENCE + 12; v++) {
+      const next = popImpulseForVolley(v);
+      // Strictly easier every volley until it bottoms out, then steady — it
+      // must not keep sliding below the point where an impact counts at all.
+      if (next === DAMAGE_THRESHOLD) reachedFloor = true;
+      if (reachedFloor) expect(next).toBe(DAMAGE_THRESHOLD);
+      else expect(next).toBeLessThan(previous);
+      previous = next;
+    }
+    expect(reachedFloor, 'should bottom out within a dozen volleys').toBe(true);
+  });
+
+  it('never eases below the point where an impact counts at all', () => {
+    for (let v = 0; v < 200; v++) {
+      expect(popImpulseForVolley(v)).toBeGreaterThanOrEqual(DAMAGE_THRESHOLD);
+    }
   });
 });

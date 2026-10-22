@@ -258,3 +258,15 @@
   opacity: 0.8;
   letter-spacing: 0.03em;
 }
+
+.poker-too-many {
+  margin: 0;
+  padding: 10px 16px;
+  max-width: 560px;
+  border-radius: 8px;
+  background: rgba(190, 60, 60, 0.15);
+  border: 1px solid rgba(220, 90, 90, 0.5);
+  color: #f0c9c9;
+  font-size: 0.9rem;
+  text-align: center;
+}

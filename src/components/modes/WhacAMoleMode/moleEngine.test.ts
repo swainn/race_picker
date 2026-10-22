@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_PARTICIPANTS } from '../../../constants';
 import type { Entry } from '../../../types';
 import {
   SWINGS_MAX,
@@ -13,7 +14,7 @@ import {
 } from './moleEngine';
 
 /** Every crowd size the grid has to cope with. */
-const COUNTS = Array.from({ length: 20 }, (_, i) => i + 1);
+const COUNTS = Array.from({ length: MAX_PARTICIPANTS }, (_, i) => i + 1);
 
 describe('layoutHoles', () => {
   it('cuts exactly one hole per participant', () => {

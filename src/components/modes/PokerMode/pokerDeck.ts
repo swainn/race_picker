@@ -63,6 +63,16 @@ export interface HoldemDeal {
  * Hold'em is the only variant that fits the app's 20-participant cap on a
  * single deck: 20 x 2 + 5 = 45 cards. Five-card draw would need 100.
  */
+/**
+ * Most players a Hold'em hand can seat: each needs two hole cards and the
+ * board takes five, all from one honest 52-card deck.
+ *
+ * This is the one hard ceiling in the app, and it sits below the participant
+ * cap. Dealing a bigger table would mean duplicate cards, which makes ranking
+ * hands meaningless — so the mode says it cannot deal rather than pretend.
+ */
+export const POKER_MAX_PLAYERS = Math.floor((52 - 5) / 2);
+
 export function dealHoldem(playerCount: number): HoldemDeal {
   const needed = playerCount * 2 + 5;
   if (playerCount < 1) throw new Error('dealHoldem needs at least one player');

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_PARTICIPANTS } from '../../../constants';
 import type { Entry } from '../../../types';
 import { CLAW, easeInOut, layoutToys, pickChosen, rowsFor } from './clawEngine';
 
-const COUNTS = [1, 2, 5, 6, 7, 12, 13, 20];
+const COUNTS = [1, 2, 5, 6, 7, 12, 13, 20, MAX_PARTICIPANTS];
 
 describe('layoutToys', () => {
   it('gives every participant exactly one spot', () => {

@@ -14,6 +14,8 @@ import {
   type TowerStyle,
   pickVictim,
   rankShots,
+  popImpulseForVolley,
+  seatOrder,
   solveLaunch,
   volleysForRound,
   type LaunchSolution,
@@ -184,8 +186,15 @@ export function AngryBirdsGame(props: Props) {
   /** Volleys this round, and which one is in the air (0-based). */
   const volleysRef = useRef(1);
   const volleyRef = useRef(0);
+  /** The seat that actually goes, whether drawn up front or hit by a bird. */
+  const resultPigRef = useRef<number>(-1);
+  const resolveRef = useRef(settings.resolve);
+  resolveRef.current = settings.resolve;
+  /** True when the simulation, not a draw, decides this round. */
+  const physicsPick = () => resolveRef.current === 'physics' && subModeRef.current === 'pigs';
   /** Only the last volley may take the pick. */
-  const finalVolley = () => volleyRef.current >= volleysRef.current - 1;
+  const finalVolley = () =>
+    physicsPick() || volleyRef.current >= volleysRef.current - 1;
   const solutionRef = useRef<LaunchSolution>({ vx: 0, vy: 0, flightSteps: 0 });
   const launchedAtRef = useRef(0);
   const poppedAtRef = useRef(0);
@@ -247,6 +256,7 @@ export function AngryBirdsGame(props: Props) {
     if (!removed) {
       console.warn('angry-birds: chosen pig could not be removed; ending the round anyway');
     }
+    resultPigRef.current = id;
     poppedAtRef.current = now;
     poppedPosRef.current = spot
       ? { x: spot.x, y: spot.y }
@@ -259,9 +269,11 @@ export function AngryBirdsGame(props: Props) {
     const initials = computeInitials(entries);
     const all = propsRef.current.allEntries;
 
-    // Uniform pick first. Everything the slingshot does after this is theatre.
-    const chosen = pickVictim(entries);
-    const chosenIndex = entries.findIndex((e) => e.id === chosen.id);
+    const bySim = resolveRef.current === 'physics';
+
+    // When the simulation decides, nobody is chosen in advance: the first pig
+    // a bird actually knocks out is the pick.
+    const chosenIndex = bySim ? -1 : entries.findIndex((e) => e.id === pickVictim(entries).id);
 
     buildWorld(entries.length, (pigId, impulse) => {
       // Nothing counts until the bird is actually away. A settling knock is
@@ -269,27 +281,49 @@ export function AngryBirdsGame(props: Props) {
       if (launchedAtRef.current === 0) return;
       if (impulse < HIT_IMPULSE) return;
       audio.playThud(impulse / 3);
+      if (poppedAtRef.current > 0) return;
+
+      if (bySim) {
+        // Whoever the bird actually dislodges first takes it. The threshold
+        // eases off after a few fruitless volleys so a round always ends.
+        if (impulse < popImpulseForVolley(volleyRef.current)) return;
+        chosenPigRef.current = pigId;
+        popChosenPig(performance.now());
+        return;
+      }
+
       // Only the pre-picked pig is ever removed; the sim never promotes a
       // bystander into the result, however hard it gets hit. And only the last
       // volley may remove it at all — the earlier birds are there to miss.
       if (!finalVolley()) return;
-      if (pigId === chosenPigRef.current && poppedAtRef.current === 0) {
-        popChosenPig(performance.now());
-      }
+      if (pigId === chosenPigRef.current) popChosenPig(performance.now());
     });
 
+    // Seats are shuffled, which is what keeps a simulation-decided round fair:
+    // the physics strongly favours exposed seats, so position must not track
+    // position in the participant list. See seatOrder.
+    const order = seatOrder(entries.length);
     const seats = new Map<number, Seat>();
     entries.forEach((entry, i) => {
       const idx = all.findIndex((e) => e.id === entry.id);
-      seats.set(i, { entry, color: generateColor(idx < 0 ? i : idx), initials: initials[i] });
+      seats.set(order[i], {
+        entry,
+        color: generateColor(idx < 0 ? i : idx),
+        initials: initials[i],
+      });
     });
     seatsRef.current = seats;
-    chosenPigRef.current = chosenIndex;
+    chosenPigRef.current = bySim ? -1 : order[chosenIndex];
+    resultPigRef.current = -1;
 
-    volleysRef.current = volleysForRound();
+    volleysRef.current = bySim ? 1 : volleysForRound();
     volleyRef.current = 0;
-    aimVolley(chosenIndex);
-    captionRef.current = volleysRef.current > 1 ? 'VOLLEY 1 — TAKING AIM…' : 'TAKING AIM…';
+    aimVolley(chosenPigRef.current);
+    captionRef.current = bySim
+      ? 'TAKING AIM…'
+      : volleysRef.current > 1
+        ? 'VOLLEY 1 — TAKING AIM…'
+        : 'TAKING AIM…';
     audio.playStretch();
     setPhase('aim', now, dur(T.aim));
   };
@@ -304,6 +338,20 @@ export function AngryBirdsGame(props: Props) {
    */
   const aimVolley = (chosenIndex: number) => {
     const pigs = layoutRef.current.pigs;
+    if (pigs.length === 0) return;
+
+    // Simulation deciding: there is no target to favour, so throw at one of
+    // the pigs still standing and let the collapse settle it. Aiming at a
+    // live pig rather than a seat keeps later volleys honest once the first
+    // ones have rearranged the structure.
+    if (physicsPick()) {
+      const standing = worldRef.current?.standingPigs() ?? [];
+      const pool = standing.length > 0 ? standing : pigs.map((_, i) => i);
+      const seat = pool[Math.floor(Math.random() * pool.length)];
+      solutionRef.current = solveLaunch({ x: AB.SLING_X, y: AB.SLING_Y }, aimAtPig(pigs[seat]));
+      return;
+    }
+
     let spot = pigs[chosenIndex];
     if (!finalVolley() && pigs.length > 1) {
       const others = pigs.filter((_, i) => i !== chosenIndex);
@@ -431,7 +479,7 @@ export function AngryBirdsGame(props: Props) {
         const entry = p.entries.find((e) => e.id === top?.entryId);
         if (entry) p.onWinner(entry, top.score);
       } else {
-        const seat = seatsRef.current.get(chosenPigRef.current);
+        const seat = seatsRef.current.get(resultPigRef.current);
         if (seat) p.onWinner(seat.entry);
       }
     };
@@ -480,6 +528,31 @@ export function AngryBirdsGame(props: Props) {
             if (over || (restful && held > dur(T.settleMin) + dur(T.shotGap))) nextShot(now);
             break;
           }
+          // Sub-mode `pigs`, simulation deciding: keep throwing birds until
+          // one of them actually knocks a pig out. No backstop and no cap —
+          // reaching in to choose a winner is the one thing this setting
+          // exists to avoid. Termination comes from popImpulseForVolley
+          // instead, which makes pigs easier to dislodge the longer nobody
+          // has been hit.
+          if (physicsPick()) {
+            if (poppedAtRef.current === 0) {
+              if (restful || now >= phaseUntilRef.current) {
+                volleyRef.current += 1;
+                aimVolley(-1);
+                launchedAtRef.current = 0;
+                captionRef.current = `NOBODY HIT — VOLLEY ${volleyRef.current + 1}`;
+                setPhase('aim', now, dur(T.aim));
+              }
+              break;
+            }
+            if (now - poppedAtRef.current > dur(T.settleMin)) {
+              captionRef.current = 'DIRECT HIT!';
+              setPhase('done', now, dur(T.done));
+              declare();
+            }
+            break;
+          }
+
           // Sub-mode `pigs`: a volley that was never meant to tell. Let the
           // dust settle, then send the next bird. No backstop here — missing
           // is the whole point of these, so there is nothing to rescue.

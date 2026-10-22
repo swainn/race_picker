@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Entry, EntryImage, ImageCrop } from '../types';
+import { MAX_PARTICIPANTS } from '../constants';
 import { getEntryImages } from '../utils/entryImages';
 import { INITIAL_CROP, SOURCE_MAX_PX, encodeCanvas, entryImageRecords } from '../utils/imageCrop';
 import { ImageCropDialog } from './ImageCropDialog';
@@ -59,7 +60,7 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
   const [nameDraft, setNameDraft] = useState('');
 
   const addEntry = () => {
-    if (input.trim() && entries.length < 20) {
+    if (input.trim() && entries.length < MAX_PARTICIPANTS) {
       const newEntry: Entry = {
         id: Date.now(),
         name: input.trim(),
@@ -257,16 +258,16 @@ export const EntryManager: React.FC<Props> = ({ entries, onEntriesChange, elimin
           onKeyPress={handleKeyPress}
           placeholder="Enter participant name..."
           maxLength={20}
-          disabled={entries.length >= 20}
+          disabled={entries.length >= MAX_PARTICIPANTS}
           className="entry-input"
         />
-        <button onClick={addEntry} disabled={entries.length >= 20} className="add-button">
+        <button onClick={addEntry} disabled={entries.length >= MAX_PARTICIPANTS} className="add-button">
           + Add
         </button>
       </div>
 
-      {entries.length >= 20 && (
-        <p className="limit-message">Maximum 20 participants reached</p>
+      {entries.length >= MAX_PARTICIPANTS && (
+        <p className="limit-message">Maximum {MAX_PARTICIPANTS} participants reached</p>
       )}
 
       <div className="entries-list">

@@ -6,6 +6,7 @@ import { getEntryImages, getPreferredEntryImage } from '../../../utils/entryImag
 import { PokerGame, type PokerRoundResult, type PokerWinnerDisplay } from './PokerGame';
 import { usePokerSettings } from './pokerSettingsStore';
 import { PokerStandingsDialog } from './PokerStandingsDialog';
+import { POKER_MAX_PLAYERS } from './pokerDeck';
 import './PokerGame.css';
 
 /**
@@ -109,10 +110,21 @@ export function PokerMode({
   return (
     <div className="poker-mode">
       <div className="race-controls">
-        {entries.length >= 1 && (
-          <button onClick={onStartRace} className="start-race-button">
-            🃏 Deal Hand ({entries.length})
-          </button>
+        {entries.length > POKER_MAX_PLAYERS ? (
+          // Refusing beats dealing a broken hand: a bigger table needs more
+          // than 52 cards, and duplicates would make the ranking meaningless.
+          <p className="poker-too-many">
+            Poker Night seats up to {POKER_MAX_PLAYERS} — a Hold&apos;em hand needs{' '}
+            {entries.length * 2 + 5} cards and the deck holds 52. Remove{' '}
+            {entries.length - POKER_MAX_PLAYERS} participant
+            {entries.length - POKER_MAX_PLAYERS === 1 ? '' : 's'}, or pick another mode.
+          </p>
+        ) : (
+          entries.length >= 1 && (
+            <button onClick={onStartRace} className="start-race-button">
+              🃏 Deal Hand ({entries.length})
+            </button>
+          )
         )}
         {eliminatedIds.length > 0 && (
           <button onClick={onResetRace} className="reset-race-button">

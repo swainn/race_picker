@@ -22,6 +22,25 @@ export type AngryBirdsSubMode = 'pigs' | 'birds';
  */
 export type AngryBirdsFace = 'pig' | 'avatar';
 
+/**
+ * How a round decides who gets picked.
+ *
+ *  - `preselect`: drawn uniformly before anything moves, and the launch is
+ *    solved to reach them. Every other mode in the app works this way.
+ *  - `physics`:   nobody is chosen in advance. Birds keep flying until a pig
+ *    is actually knocked out, and that pig is the pick.
+ *
+ * `physics` applies to the pigs sub-mode. In `birds` the participants are the
+ * projectiles, so there is nothing for the simulation to pick and rounds run
+ * pre-selected regardless.
+ */
+export type AngryBirdsResolve = 'preselect' | 'physics';
+
+export const ANGRY_BIRDS_RESOLVES: { value: AngryBirdsResolve; label: string }[] = [
+  { value: 'preselect', label: 'Drawn before the launch' },
+  { value: 'physics', label: 'Decided by the simulation (pigs mode)' },
+];
+
 export const ANGRY_BIRDS_FACES: { value: AngryBirdsFace; label: string }[] = [
   { value: 'pig', label: 'Classic pigs' },
   { value: 'avatar', label: 'Avatars (with ears and snout)' },
@@ -43,6 +62,7 @@ export const ANGRY_BIRDS_SPEEDS: { value: AngryBirdsSpeed; label: string }[] = [
 export interface AngryBirdsSettings {
   subMode: AngryBirdsSubMode;
   face: AngryBirdsFace;
+  resolve: AngryBirdsResolve;
   speed: AngryBirdsSpeed;
   sound: boolean;
   music: boolean;
@@ -51,6 +71,7 @@ export interface AngryBirdsSettings {
 const DEFAULT_SETTINGS: AngryBirdsSettings = {
   subMode: 'pigs',
   face: 'pig',
+  resolve: 'preselect',
   speed: 'normal',
   sound: true,
   music: true,
@@ -65,9 +86,17 @@ function loadSettings(): AngryBirdsSettings {
     const parsed = JSON.parse(raw) as Partial<AngryBirdsSettings>;
     const subMode: AngryBirdsSubMode = parsed.subMode === 'birds' ? 'birds' : 'pigs';
     const face: AngryBirdsFace = parsed.face === 'avatar' ? 'avatar' : 'pig';
+    const resolve: AngryBirdsResolve = parsed.resolve === 'physics' ? 'physics' : 'preselect';
     const speed: AngryBirdsSpeed =
       parsed.speed === 'slow' || parsed.speed === 'fast' ? parsed.speed : 'normal';
-    return { subMode, face, speed, sound: parsed.sound ?? true, music: parsed.music ?? true };
+    return {
+      subMode,
+      face,
+      resolve,
+      speed,
+      sound: parsed.sound ?? true,
+      music: parsed.music ?? true,
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }

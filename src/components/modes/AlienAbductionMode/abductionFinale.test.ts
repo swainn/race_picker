@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_PARTICIPANTS } from '../../../constants';
 import {
   DISGUISE,
   FINALE_CAPTIONS,
@@ -59,7 +60,7 @@ describe('beat ordering', () => {
 
 describe('parachutePlan', () => {
   it('gives one plan per participant', () => {
-    for (const n of [1, 2, 7, 20]) {
+    for (const n of [1, 2, 7, MAX_PARTICIPANTS]) {
       expect(parachutePlan(n)).toHaveLength(n);
     }
     expect(parachutePlan(0)).toEqual([]);
@@ -68,7 +69,7 @@ describe('parachutePlan', () => {
 
   // A full roster is 20, and anyone landing off the edge would be invisible.
   it('lands everyone inside the field at every roster size', () => {
-    for (let n = 1; n <= 20; n++) {
+    for (let n = 1; n <= MAX_PARTICIPANTS; n++) {
       for (let trial = 0; trial < 50; trial++) {
         for (const p of parachutePlan(n)) {
           expect(p.x).toBeGreaterThanOrEqual(FIELD_LEFT);
