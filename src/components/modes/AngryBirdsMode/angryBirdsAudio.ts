@@ -144,3 +144,20 @@ export function stopTrack(): void {
     musicTimer = null;
   }
 }
+
+/** A block giving way. Glass tinkles, wood cracks, stone thuds and crumbles. */
+export function playBreak(material: 'wood' | 'stone' | 'ice'): void {
+  if (muted) return;
+  if (material === 'ice') {
+    noise(0.16, 0.2, 7000, 2600);
+    [1800, 2400, 3100].forEach((f, i) =>
+      setTimeout(() => { if (!muted) tone(f, 0.09, 'triangle', 0.045, f * 1.3); }, i * 45)
+    );
+  } else if (material === 'wood') {
+    noise(0.2, 0.26, 2600, 500);
+    tone(260, 0.16, 'square', 0.05, 120);
+  } else {
+    noise(0.3, 0.3, 1200, 180);
+    tone(110, 0.28, 'sawtooth', 0.07, 50);
+  }
+}

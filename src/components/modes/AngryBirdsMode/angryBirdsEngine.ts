@@ -34,7 +34,16 @@ export const AB = {
   /** One tier = two columns + a beam, with the tier's pigs perched on top. */
   TIER_H: 100,
   COLUMN_W: 18,
-  COLUMN_H: 48,
+  /**
+   * Must be TIER_H - BEAM_H, so a tier's columns reach from the beam below to
+   * its own beam and the stack rests on itself.
+   *
+   * It used to be 48, leaving a 38px void under every tier — so each one
+   * free-fell onto the one beneath the instant the sim ran, and the structure
+   * shook itself apart before a bird was ever thrown. The pigs perch in the
+   * headroom beside these columns, not under them (see seatBandFor).
+   */
+  COLUMN_H: 86,
   BEAM_H: 14,
   PIG_R: 16,
   /** Above this, the tower grows another tier instead of another seat. */
@@ -122,6 +131,24 @@ export const STYLE_MATERIALS: Record<TowerStyle, BlockMaterial[]> = {
   twin: ['wood', 'wood', 'ice'],
   bunker: ['stone', 'stone', 'wood'],
 };
+
+/**
+ * How much punishment a block takes before it breaks, in impulse units.
+ *
+ * Ice goes first, then wood, then stone — the same order as their weight, so
+ * the heavy stuff at the base is also the stuff that survives. The numbers are
+ * what a bird strike actually delivers: a solid hit is a few units, so ice
+ * shatters on one, wood wants a couple, and stone needs the tower to come down
+ * on it.
+ */
+export const MATERIAL_STRENGTH: Record<BlockMaterial, number> = {
+  ice: 5,
+  wood: 14,
+  stone: 34,
+};
+
+/** Below this an impact is a nudge, not damage — stops a settle eroding things. */
+export const DAMAGE_THRESHOLD = 1.2;
 
 /** What a block on this tier of this style is made of. */
 export function materialFor(style: TowerStyle, tier: number): BlockMaterial {

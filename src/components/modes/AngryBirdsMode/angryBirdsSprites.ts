@@ -264,7 +264,8 @@ export function drawBlock(
   h: number,
   angle: number,
   kind: BlockKind,
-  material: BlockMaterial = 'wood'
+  material: BlockMaterial = 'wood',
+  damage = 0
 ): void {
   // Beams catch more light than the uprights, whatever they are made of.
   const PALETTE: Record<BlockMaterial, [string, string]> = {
@@ -290,6 +291,9 @@ export function drawBlock(
     ctx.beginPath();
     ctx.roundRect(-w / 2 + 2, -h / 2 + 2, Math.max(1, w * 0.3), Math.max(1, h - 4), 2);
     ctx.fill();
+    // Ice takes the same fractures as everything else — it just gets there
+    // soonest, so this branch must not skip them on its way out.
+    drawCracks(ctx, w, h, damage);
     ctx.restore();
     return;
   }
@@ -311,7 +315,50 @@ export function drawBlock(
     }
     ctx.stroke();
   }
+  drawCracks(ctx, w, h, damage);
   ctx.restore();
+}
+
+/**
+ * Fracture lines across a damaged block, in two stages: a single split once it
+ * is a third gone, a web of them once it is two thirds.
+ *
+ * Derived from the block's own dimensions rather than from randomness, so a
+ * given block's cracks stay put instead of reshuffling every frame.
+ */
+function drawCracks(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  damage: number
+): void {
+  if (damage < 0.34) return;
+  const heavy = damage >= 0.67;
+  ctx.strokeStyle = `rgba(20,16,12,${heavy ? 0.75 : 0.5})`;
+  ctx.lineWidth = heavy ? 1.6 : 1.2;
+  ctx.lineCap = 'round';
+  const along = w >= h;
+  const span = along ? w : h;
+  const cross = along ? h : w;
+
+  // Cracks run across the short axis; `along` just swaps which axis that is.
+  const line = (a: number, b: number, c: number, d: number) => {
+    ctx.beginPath();
+    if (along) {
+      ctx.moveTo(a, b);
+      ctx.lineTo(c, d);
+    } else {
+      ctx.moveTo(b, a);
+      ctx.lineTo(d, c);
+    }
+    ctx.stroke();
+  };
+
+  line(-span * 0.06, -cross / 2, span * 0.1, cross / 2);
+  if (!heavy) return;
+  line(-span * 0.3, -cross / 2, -span * 0.16, cross * 0.12);
+  line(span * 0.34, cross / 2, span * 0.2, -cross * 0.1);
+  line(-span * 0.06, -cross * 0.1, -span * 0.26, cross * 0.4);
 }
 
 /**

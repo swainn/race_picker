@@ -15,7 +15,14 @@ import type {
   IChamferableBodyDefinition,
   IEventCollision,
 } from 'matter-js';
-import { AB, type BlockKind, type BlockMaterial, type TowerLayout } from './angryBirdsEngine';
+import {
+  AB,
+  DAMAGE_THRESHOLD,
+  MATERIAL_STRENGTH,
+  type BlockKind,
+  type BlockMaterial,
+  type TowerLayout,
+} from './angryBirdsEngine';
 
 export interface BlockView {
   x: number;
@@ -25,6 +32,8 @@ export interface BlockView {
   h: number;
   kind: BlockKind;
   material: BlockMaterial;
+  /** 0 = pristine, 1 = about to give. Drives how cracked it looks. */
+  damage: number;
 }
 
 export interface PigView {
@@ -51,6 +60,9 @@ export interface WorldSnapshot {
 
 export type PigHitListener = (pigId: number, impulse: number) => void;
 
+/** Told when a block finally gives, so the mode can make a noise about it. */
+export type BlockBreakListener = (material: BlockMaterial, x: number, y: number) => void;
+
 export interface AngryBirdsWorld {
   /** One fixed timestep. Never a variable dt — rigid bodies jitter on those. */
   step(): void;
@@ -65,6 +77,7 @@ export interface AngryBirdsWorld {
   isSettled(): boolean;
   snapshot(): WorldSnapshot;
   setPigHitListener(listener: PigHitListener | null): void;
+  setBlockBreakListener(listener: BlockBreakListener | null): void;
   destroy(): void;
 }
 
@@ -120,6 +133,8 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
   );
   Composite.add(world, rightWall);
 
+  /** Damage taken so far, keyed by body id. */
+  const blockDamage = new Map<number, number>();
   const blockBodies = layout.blocks.map((b) => {
     const body = Bodies.rectangle(b.x, b.y, b.w, b.h, {
       ...MATERIAL_OPTIONS[b.material],
@@ -138,17 +153,46 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
   /** body.id -> pig id, so a collision pair can be resolved in O(1). */
   const pigByBodyId = new Map<number, number>();
   for (const p of pigBodies) pigByBodyId.set(p.body.id, p.id);
+  const blockByBodyId = new Map<number, (typeof blockBodies)[number]>();
+  for (const b of blockBodies) blockByBodyId.set(b.body.id, b);
 
   let bird: BodyT | null = null;
   /** Consecutive steps the bird has been essentially still. */
   let birdStillSteps = 0;
+  /** Blocks only wear once a bird is in play; see onCollision. */
+  let armed = false;
+  const brokenBodies = new Set<number>();
+  let breakListener: BlockBreakListener | null = null;
   let listener: PigHitListener | null = null;
   let destroyed = false;
 
   const relativeImpulse = (a: BodyT, b: BodyT): number =>
     Math.hypot(a.velocity.x - b.velocity.x, a.velocity.y - b.velocity.y);
 
+  /** Wear a block down, and take it out of the world once it gives. */
+  const damageBlock = (body: BodyT, spec: { material: BlockMaterial }, impulse: number): void => {
+    if (impulse < DAMAGE_THRESHOLD) return;
+    const taken = (blockDamage.get(body.id) ?? 0) + impulse;
+    blockDamage.set(body.id, taken);
+    if (taken < MATERIAL_STRENGTH[spec.material]) return;
+    Composite.remove(world, body);
+    brokenBodies.add(body.id);
+    breakListener?.(spec.material, body.position.x, body.position.y);
+  };
+
   const onCollision = (event: IEventCollision<EngineT>): void => {
+    // Blocks only start taking damage once a bird is away. Standing the tower
+    // up is a series of collisions too, and without this the structure would
+    // wear itself out before the round began.
+    if (armed) {
+      for (const pair of event.pairs) {
+        const impulse = relativeImpulse(pair.bodyA, pair.bodyB);
+        for (const body of [pair.bodyA, pair.bodyB]) {
+          const entry = blockByBodyId.get(body.id);
+          if (entry) damageBlock(entry.body, entry.spec, impulse);
+        }
+      }
+    }
     if (!listener) return;
     for (const pair of event.pairs) {
       const pigA = pigByBodyId.get(pair.bodyA.id);
@@ -192,6 +236,7 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
 
     launchBird(from, vx, vy) {
       if (destroyed) return;
+      armed = true;
       removeBird();
       bird = Bodies.circle(from.x, from.y, AB.BIRD_R, { ...BIRD_OPTIONS, label: 'bird' });
       Composite.add(world, bird);
@@ -234,15 +279,21 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
     snapshot() {
       if (destroyed) return { blocks: [], pigs: [], bird: null };
       return {
-        blocks: blockBodies.map(({ body, spec }) => ({
-          x: body.position.x,
-          y: body.position.y,
-          angle: body.angle,
-          w: spec.w,
-          h: spec.h,
-          kind: spec.kind,
-          material: spec.material,
-        })),
+        blocks: blockBodies
+          .filter(({ body }) => !brokenBodies.has(body.id))
+          .map(({ body, spec }) => ({
+            x: body.position.x,
+            y: body.position.y,
+            angle: body.angle,
+            w: spec.w,
+            h: spec.h,
+            kind: spec.kind,
+            material: spec.material,
+            damage: Math.min(
+              1,
+              (blockDamage.get(body.id) ?? 0) / MATERIAL_STRENGTH[spec.material]
+            ),
+          })),
         pigs: pigBodies
           .filter((p) => p.live)
           .map((p) => ({
@@ -256,6 +307,10 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
           ? { x: bird.position.x, y: bird.position.y, r: AB.BIRD_R, angle: bird.angle }
           : null,
       };
+    },
+
+    setBlockBreakListener(next) {
+      breakListener = next;
     },
 
     setPigHitListener(next) {
@@ -275,6 +330,10 @@ export function createWorld(layout: TowerLayout): AngryBirdsWorld {
       Composite.clear(world, false);
       Engine.clear(engine);
       pigByBodyId.clear();
+      blockByBodyId.clear();
+      blockDamage.clear();
+      brokenBodies.clear();
+      breakListener = null;
       blockBodies.length = 0;
       pigBodies.length = 0;
     },

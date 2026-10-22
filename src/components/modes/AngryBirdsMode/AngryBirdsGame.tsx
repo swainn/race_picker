@@ -85,7 +85,9 @@ const GENERIC_PIGS = 6;
 const nextTowerStyle = createShuffleBag(TOWER_STYLES);
 
 /** Physics steps run before a round is shown, so the tower starts at rest. */
-const PRESETTLE_STEPS = 90;
+const PRESETTLE_STEPS = 160;
+/** Always step at least this far before believing the world has settled. */
+const PRESETTLE_MIN_STEPS = 40;
 
 const HIT_IMPULSE = 1.6;
 /** Sub-mode `birds`: how hard a generic pig has to be hit to pop (cosmetic only). */
@@ -213,11 +215,21 @@ export function AngryBirdsGame(props: Props) {
     teardownWorld();
     layoutRef.current = layoutTower(pigCount, styleRef.current);
     const world = createWorld(layoutRef.current);
+    world.setBlockBreakListener((material) => audio.playBreak(material));
     // Settle it offscreen before anyone sees it. Bodies are laid out with a
     // little daylight between tiers so they do not start interpenetrating, and
     // that gap means the structure drops and jostles on the first frames —
-    // which is both visible and, until the guard below, able to pop a pig.
-    for (let i = 0; i < PRESETTLE_STEPS && !world.isSettled(); i++) world.step();
+    // which is both visible and able to damage the structure the moment the
+    // first bird arms it.
+    //
+    // The minimum matters: a world that has not stepped yet has no velocity in
+    // it, so `isSettled()` is true before anything has had a chance to fall.
+    // Testing it first meant this loop exited on iteration zero and never
+    // settled anything at all.
+    for (let i = 0; i < PRESETTLE_STEPS; i++) {
+      world.step();
+      if (i >= PRESETTLE_MIN_STEPS && world.isSettled()) break;
+    }
     world.setPigHitListener(onHit);
     worldRef.current = world;
   };
@@ -683,7 +695,9 @@ export function AngryBirdsGame(props: Props) {
       }
 
       const snap = worldRef.current?.snapshot() ?? { blocks: [], pigs: [], bird: null };
-      for (const b of snap.blocks) drawBlock(ctx, b.x, b.y, b.w, b.h, b.angle, b.kind, b.material);
+      for (const b of snap.blocks) {
+        drawBlock(ctx, b.x, b.y, b.w, b.h, b.angle, b.kind, b.material, b.damage);
+      }
 
       const birdsMode = subModeRef.current === 'birds';
       for (const p of snap.pigs) {

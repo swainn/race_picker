@@ -6,6 +6,8 @@ import {
   aimForRank,
   easeInOut,
   flightStepsFor,
+  DAMAGE_THRESHOLD,
+  MATERIAL_STRENGTH,
   STYLE_MATERIALS,
   TOWER_STYLES,
   VOLLEYS_MAX,
@@ -473,5 +475,31 @@ describe('block materials', () => {
   it('uses more than one material across the set', () => {
     const used = new Set(TOWER_STYLES.flatMap((s) => STYLE_MATERIALS[s]));
     expect(used.size).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('material strength', () => {
+  // The whole point of having three materials: glass goes first, stone last.
+  it('breaks ice easier than wood, and wood easier than stone', () => {
+    expect(MATERIAL_STRENGTH.ice).toBeLessThan(MATERIAL_STRENGTH.wood);
+    expect(MATERIAL_STRENGTH.wood).toBeLessThan(MATERIAL_STRENGTH.stone);
+  });
+
+  it('gives every material a positive strength', () => {
+    for (const m of ['wood', 'stone', 'ice'] as const) {
+      expect(MATERIAL_STRENGTH[m]).toBeGreaterThan(0);
+    }
+  });
+
+  // A tower standing on its own produces a stream of small contacts. If those
+  // counted, a structure would erode itself before the bird was ever thrown.
+  it('ignores impacts below the damage threshold', () => {
+    expect(DAMAGE_THRESHOLD).toBeGreaterThan(0);
+    expect(DAMAGE_THRESHOLD).toBeLessThan(MATERIAL_STRENGTH.ice);
+  });
+
+  it('needs several solid hits to bring down stone', () => {
+    // A clean bird strike is a few units; stone should not go on one.
+    expect(MATERIAL_STRENGTH.stone / MATERIAL_STRENGTH.ice).toBeGreaterThan(4);
   });
 });
