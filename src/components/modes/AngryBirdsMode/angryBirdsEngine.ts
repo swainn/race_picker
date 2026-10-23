@@ -21,16 +21,34 @@ export const AB = {
   /** Top of the grass. Everything rests on this line. */
   GROUND_Y: 520,
 
-  /** The slingshot's fork — where a bird leaves the pouch. */
-  SLING_X: 120,
-  SLING_Y: 420,
+  /**
+   * The slingshot's fork — where a bird leaves the pouch.
+   *
+   * Stood further in from the edge than the artwork strictly needs, because a
+   * hand-aimed draw is now 160px: the pouch has to have somewhere to go
+   * without leaving the canvas. 190 across and 200 down of clearance covers a
+   * full draw in any backward direction.
+   */
+  SLING_X: 190,
+  SLING_Y: 400,
   /** How far back the pouch is drawn at full draw. */
   SLING_PULL: 46,
 
-  /** Furthest the pouch may be dragged when a player is aiming by hand. */
-  MAX_PULL: 110,
-  /** Launch speed, in physics-step units, at that full draw. */
-  MAX_LAUNCH_SPEED: 27,
+  /**
+   * Furthest the pouch may be dragged when a player is aiming by hand, and the
+   * launch speed at that full draw.
+   *
+   * These two only matter as a ratio: 19.6/160 is the speed gained per pixel
+   * of draw, and it is deliberately half what it was (27/110). Range goes with
+   * the square of speed, so halving the response means the same shot now wants
+   * twice the pull — the catapult was far too eager off a short drag.
+   *
+   * The pair cannot be scaled freely. The far corner of a full tower needs
+   * about 16.1 to reach, so the maximum has to stay comfortably above that or
+   * the top row becomes unhittable.
+   */
+  MAX_PULL: 160,
+  MAX_LAUNCH_SPEED: 19.6,
 
   /**
    * Tower footprint, well clear of the slingshot on the left.
