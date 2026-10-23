@@ -1,4 +1,5 @@
 import {
+  ANGRY_BIRDS_AIMS,
   ANGRY_BIRDS_FACES,
   ANGRY_BIRDS_RESOLVES,
   ANGRY_BIRDS_SPEEDS,
@@ -22,6 +23,26 @@ export function AngryBirdsSettings() {
               onChange={() => updateAngryBirdsSettings({ subMode: m.value })}
             />
             <span>{m.label}</span>
+          </label>
+        ))}
+      </fieldset>
+
+      <fieldset>
+        <legend>Who takes the shot</legend>
+        {ANGRY_BIRDS_AIMS.map((a) => (
+          <label key={a.value}>
+            <input
+              type="radio"
+              name="angry-birds-aim"
+              checked={settings.aim === a.value}
+              onChange={() =>
+                updateAngryBirdsSettings(
+                  // Aiming by hand only means anything if the shot decides it.
+                  a.value === 'manual' ? { aim: a.value, resolve: 'physics' } : { aim: a.value }
+                )
+              }
+            />
+            <span>{a.label}</span>
           </label>
         ))}
       </fieldset>

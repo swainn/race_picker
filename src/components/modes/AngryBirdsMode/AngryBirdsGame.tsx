@@ -15,6 +15,9 @@ import {
   pickVictim,
   rankShots,
   popImpulseForVolley,
+  pouchAtPull,
+  pullToLaunch,
+  sampleTrajectory,
   seatOrder,
   solveLaunch,
   volleysForRound,
@@ -190,8 +193,16 @@ export function AngryBirdsGame(props: Props) {
   const resultPigRef = useRef<number>(-1);
   const resolveRef = useRef(settings.resolve);
   resolveRef.current = settings.resolve;
+  const aimModeRef = useRef(settings.aim);
+  aimModeRef.current = settings.aim;
+  /** The live drag while a player is pulling the pouch, in canvas units. */
+  const pullRef = useRef<{ dx: number; dy: number } | null>(null);
+  /** True while the player holds the pouch and the round waits on them. */
+  const handAimingRef = useRef(false);
   /** True when the simulation, not a draw, decides this round. */
   const physicsPick = () => resolveRef.current === 'physics' && subModeRef.current === 'pigs';
+  /** Player-aimed rounds only make sense where there are pigs to knock down. */
+  const handAimed = () => aimModeRef.current === 'manual' && subModeRef.current === 'pigs';
   /** Only the last volley may take the pick. */
   const finalVolley = () =>
     physicsPick() || volleyRef.current >= volleysRef.current - 1;
@@ -265,6 +276,67 @@ export function AngryBirdsGame(props: Props) {
     audio.playCollapse();
   };
 
+  /** Pointer position in canvas units; the element is scaled by CSS. */
+  const toCanvas = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * AB.CANVAS_W,
+      y: ((e.clientY - rect.top) / rect.height) * AB.CANVAS_H,
+    };
+  };
+
+  const onAimPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!handAimingRef.current) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const p = toCanvas(e);
+    pullRef.current = { dx: p.x - AB.SLING_X, dy: p.y - AB.SLING_Y };
+  };
+
+  const onAimPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!handAimingRef.current || !pullRef.current) return;
+    const p = toCanvas(e);
+    pullRef.current = { dx: p.x - AB.SLING_X, dy: p.y - AB.SLING_Y };
+  };
+
+  const onAimPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    const pull = pullRef.current;
+    pullRef.current = null;
+    if (!handAimingRef.current || !pull) return;
+    const sol = pullToLaunch(pull.dx, pull.dy);
+    // A tap with no real draw is not a shot; leave them holding the pouch.
+    if (Math.hypot(sol.vx, sol.vy) < 2) return;
+    solutionRef.current = sol;
+    handAimingRef.current = false;
+    const now = performance.now();
+    worldRef.current?.launchBird({ x: AB.SLING_X, y: AB.SLING_Y }, sol.vx, sol.vy);
+    launchedAtRef.current = now;
+    audio.playLaunch();
+    captionRef.current = 'INCOMING!';
+    setPhase('fly', now, dur(T.flyMax));
+  };
+
+  /**
+   * Start an aim.
+   *
+   * When the player is taking the shot this hands them the pouch and stops the
+   * clock entirely — `advance` will not fire for them, the release handler
+   * does. Every other case keeps the usual timed wind-up.
+   */
+  const beginAim = (now: number) => {
+    if (handAimed()) {
+      handAimingRef.current = true;
+      pullRef.current = null;
+      captionRef.current = 'DRAG THE POUCH BACK AND LET GO';
+      setPhase('aim', now, Number.POSITIVE_INFINITY);
+      return;
+    }
+    handAimingRef.current = false;
+    setPhase('aim', now, dur(T.aim));
+  };
+
   const startPigsRound = (now: number, entries: Entry[]) => {
     const initials = computeInitials(entries);
     const all = propsRef.current.allEntries;
@@ -325,7 +397,7 @@ export function AngryBirdsGame(props: Props) {
         ? 'VOLLEY 1 — TAKING AIM…'
         : 'TAKING AIM…';
     audio.playStretch();
-    setPhase('aim', now, dur(T.aim));
+    beginAim(now);
   };
 
   /**
@@ -501,9 +573,13 @@ export function AngryBirdsGame(props: Props) {
       if (phase === 'ready') return;
       const world = worldRef.current;
       const birds = subModeRef.current === 'birds';
+      const handAiming = handAimingRef.current;
 
       switch (phase) {
         case 'aim': {
+          // Hand-aimed: the round waits on the player, with no timer at all.
+          // The release handler is what moves it on.
+          if (handAiming) break;
           if (now < phaseUntilRef.current) break;
           launch();
           setPhase('fly', now, dur(T.flyMax));
@@ -541,7 +617,7 @@ export function AngryBirdsGame(props: Props) {
                 aimVolley(-1);
                 launchedAtRef.current = 0;
                 captionRef.current = `NOBODY HIT — VOLLEY ${volleyRef.current + 1}`;
-                setPhase('aim', now, dur(T.aim));
+                beginAim(now);
               }
               break;
             }
@@ -564,7 +640,7 @@ export function AngryBirdsGame(props: Props) {
               // settling knock must not count while the next bird is drawn.
               launchedAtRef.current = 0;
               captionRef.current = `VOLLEY ${volleyRef.current + 1} — TAKING AIM…`;
-              setPhase('aim', now, dur(T.aim));
+              beginAim(now);
             }
             break;
           }
@@ -792,10 +868,44 @@ export function AngryBirdsGame(props: Props) {
 
       // Slingshot, with the bird in the pouch while aiming
       const aiming = phase === 'aim';
+      const pull = pullRef.current;
       const aimT = aiming
         ? (now - phaseStartRef.current) / Math.max(1, phaseUntilRef.current - phaseStartRef.current)
         : 0;
-      const pouch = aiming ? pouchAt(aimT) : null;
+      // Hand-aimed: the pouch sits where it is being dragged, and rests in the
+      // fork until then. Otherwise it runs the scripted wind-up.
+      const pouch = !aiming
+        ? null
+        : handAimingRef.current
+          ? pull
+            ? pouchAtPull(sling, pull.dx, pull.dy)
+            : { x: sling.x, y: sling.y }
+          : pouchAt(aimT);
+
+      // Show where the shot would go, so a draw can be judged before release.
+      if (aiming && handAimingRef.current && pull) {
+        const sol = pullToLaunch(pull.dx, pull.dy);
+        const arc = sampleTrajectory(pouch ?? sling, sol, sol.flightSteps, 4);
+        ctx.save();
+        // Outlined dots, because the arc crosses pale sky, dark structure and
+        // grass alike — a plain white dot vanished against the sky.
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.strokeStyle = 'rgba(20,30,45,0.55)';
+        ctx.lineWidth = 1.2;
+        let fade = 1;
+        for (const pt of arc) {
+          if (pt.y > AB.GROUND_Y || pt.x > AB.CANVAS_W) break;
+          ctx.globalAlpha = fade;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 3.1, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          // Thin out along the arc: the far end is a guess, not a promise.
+          fade = Math.max(0.25, fade - 0.045);
+        }
+        ctx.restore();
+      }
+
       drawSlingshot(ctx, sling.x, AB.GROUND_Y, sling.y, pouch);
 
       const shooter = birdsMode ? shootersRef.current[shotIndexRef.current] : undefined;
@@ -842,7 +952,11 @@ export function AngryBirdsGame(props: Props) {
           ref={canvasRef}
           width={AB.CANVAS_W}
           height={AB.CANVAS_H}
-          className="game-canvas"
+          className={`game-canvas${settings.aim === 'manual' ? ' game-canvas--aimable' : ''}`}
+          onPointerDown={onAimPointerDown}
+          onPointerMove={onAimPointerMove}
+          onPointerUp={onAimPointerUp}
+          onPointerCancel={onAimPointerUp}
         />
       </div>
 

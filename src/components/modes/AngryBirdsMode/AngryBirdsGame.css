@@ -48,3 +48,14 @@
 .rerun-race-button:hover {
   background: #a66c18;
 }
+
+/* Hand-aimed rounds: the canvas is a control, so it needs to look like one
+   and must not scroll the page out from under a drag on touch. */
+.game-canvas--aimable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.game-canvas--aimable:active {
+  cursor: grabbing;
+}

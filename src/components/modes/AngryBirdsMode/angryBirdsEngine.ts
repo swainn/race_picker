@@ -27,6 +27,11 @@ export const AB = {
   /** How far back the pouch is drawn at full draw. */
   SLING_PULL: 46,
 
+  /** Furthest the pouch may be dragged when a player is aiming by hand. */
+  MAX_PULL: 110,
+  /** Launch speed, in physics-step units, at that full draw. */
+  MAX_LAUNCH_SPEED: 27,
+
   /**
    * Tower footprint, well clear of the slingshot on the left.
    *
@@ -619,4 +624,34 @@ export function popImpulseForVolley(volley: number): number {
   if (volley < PHYSICS_PATIENCE) return PIG_POP_IMPULSE;
   const eased = PIG_POP_IMPULSE * Math.pow(0.75, volley - PHYSICS_PATIENCE + 1);
   return Math.max(DAMAGE_THRESHOLD, eased);
+}
+
+/**
+ * Turn a drag of the pouch into a launch.
+ *
+ * The bird leaves along the reverse of the drag, at a speed proportional to
+ * how far it was pulled — so dragging down-left fires up-right, like a real
+ * slingshot. The pull is clamped rather than scaled down, so hauling the
+ * pointer off the canvas just means full power rather than a wild shot.
+ *
+ * `flightSteps` is only used to decide how much of the arc to preview; the
+ * bird itself flies until it hits something.
+ */
+export function pullToLaunch(dx: number, dy: number): LaunchSolution {
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6) return { vx: 0, vy: 0, flightSteps: 0 };
+  const draw = Math.min(dist, AB.MAX_PULL);
+  const speed = (draw / AB.MAX_PULL) * AB.MAX_LAUNCH_SPEED;
+  return {
+    vx: (-dx / dist) * speed,
+    vy: (-dy / dist) * speed,
+    flightSteps: Math.round(AB.MIN_FLIGHT_STEPS + (draw / AB.MAX_PULL) * AB.MAX_FLIGHT_STEPS),
+  };
+}
+
+/** Where the pouch sits for a given drag, clamped to the maximum draw. */
+export function pouchAtPull(from: Vec, dx: number, dy: number): Vec {
+  const dist = Math.hypot(dx, dy);
+  if (dist <= AB.MAX_PULL) return { x: from.x + dx, y: from.y + dy };
+  return { x: from.x + (dx / dist) * AB.MAX_PULL, y: from.y + (dy / dist) * AB.MAX_PULL };
 }

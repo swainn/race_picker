@@ -18,6 +18,8 @@ import {
   layoutTower,
   materialFor,
   popImpulseForVolley,
+  pouchAtPull,
+  pullToLaunch,
   seatOrder,
   volleysForRound,
   type TowerStyle,
@@ -583,6 +585,45 @@ describe('popImpulseForVolley', () => {
   it('never eases below the point where an impact counts at all', () => {
     for (let v = 0; v < 200; v++) {
       expect(popImpulseForVolley(v)).toBeGreaterThanOrEqual(DAMAGE_THRESHOLD);
+    }
+  });
+});
+
+describe('pullToLaunch', () => {
+  it('fires along the reverse of the drag', () => {
+    // Pulled down-left, so the bird leaves up-right.
+    const sol = pullToLaunch(-50, 40);
+    expect(sol.vx).toBeGreaterThan(0);
+    expect(sol.vy).toBeLessThan(0);
+  });
+
+  it('scales speed with how far it was drawn', () => {
+    const speed = (d: number) => {
+      const s = pullToLaunch(-d, 0);
+      return Math.hypot(s.vx, s.vy);
+    };
+    expect(speed(20)).toBeLessThan(speed(60));
+    expect(speed(60)).toBeLessThan(speed(AB.MAX_PULL));
+  });
+
+  // Hauling the pointer right off the canvas should mean full power, not a
+  // shot that leaves at some absurd speed.
+  it('clamps at full draw rather than scaling past it', () => {
+    const full = pullToLaunch(-AB.MAX_PULL, 0);
+    const absurd = pullToLaunch(-4000, 0);
+    expect(Math.hypot(absurd.vx, absurd.vy)).toBeCloseTo(AB.MAX_LAUNCH_SPEED, 6);
+    expect(Math.hypot(full.vx, full.vy)).toBeCloseTo(AB.MAX_LAUNCH_SPEED, 6);
+  });
+
+  it('does nothing at all for a tap with no drag', () => {
+    expect(pullToLaunch(0, 0)).toEqual({ vx: 0, vy: 0, flightSteps: 0 });
+  });
+
+  it('keeps the pouch within the maximum draw', () => {
+    const from = { x: AB.SLING_X, y: AB.SLING_Y };
+    for (const [dx, dy] of [[-10, 5], [-200, 160], [0, 400], [-900, -900]]) {
+      const pouch = pouchAtPull(from, dx, dy);
+      expect(Math.hypot(pouch.x - from.x, pouch.y - from.y)).toBeLessThanOrEqual(AB.MAX_PULL + 1e-6);
     }
   });
 });

@@ -36,6 +36,25 @@ export type AngryBirdsFace = 'pig' | 'avatar';
  */
 export type AngryBirdsResolve = 'preselect' | 'physics';
 
+/**
+ * Who takes the shot.
+ *
+ *  - `auto`:   the mode solves the launch and fires it, as every other mode
+ *              in the app plays itself.
+ *  - `manual`: you drag the pouch back and let go.
+ *
+ * Manual aiming forces `physics` resolution: if you are the one aiming, the
+ * round has to be settled by where the bird actually lands. Drawing a winner
+ * up front and then letting you shoot at someone else would be theatre with
+ * the result already written.
+ */
+export type AngryBirdsAim = 'auto' | 'manual';
+
+export const ANGRY_BIRDS_AIMS: { value: AngryBirdsAim; label: string }[] = [
+  { value: 'auto', label: 'The mode takes the shot' },
+  { value: 'manual', label: 'I pull the slingshot (pigs mode)' },
+];
+
 export const ANGRY_BIRDS_RESOLVES: { value: AngryBirdsResolve; label: string }[] = [
   { value: 'preselect', label: 'Drawn before the launch' },
   { value: 'physics', label: 'Decided by the simulation (pigs mode)' },
@@ -63,6 +82,7 @@ export interface AngryBirdsSettings {
   subMode: AngryBirdsSubMode;
   face: AngryBirdsFace;
   resolve: AngryBirdsResolve;
+  aim: AngryBirdsAim;
   speed: AngryBirdsSpeed;
   sound: boolean;
   music: boolean;
@@ -72,6 +92,7 @@ const DEFAULT_SETTINGS: AngryBirdsSettings = {
   subMode: 'pigs',
   face: 'pig',
   resolve: 'preselect',
+  aim: 'auto',
   speed: 'normal',
   sound: true,
   music: true,
@@ -86,13 +107,18 @@ function loadSettings(): AngryBirdsSettings {
     const parsed = JSON.parse(raw) as Partial<AngryBirdsSettings>;
     const subMode: AngryBirdsSubMode = parsed.subMode === 'birds' ? 'birds' : 'pigs';
     const face: AngryBirdsFace = parsed.face === 'avatar' ? 'avatar' : 'pig';
-    const resolve: AngryBirdsResolve = parsed.resolve === 'physics' ? 'physics' : 'preselect';
+    const aim: AngryBirdsAim = parsed.aim === 'manual' ? 'manual' : 'auto';
+    // Aiming by hand only makes sense with the simulation deciding; see
+    // AngryBirdsAim. Coerced here so a stale saved pair cannot contradict.
+    const resolve: AngryBirdsResolve =
+      aim === 'manual' || parsed.resolve === 'physics' ? 'physics' : 'preselect';
     const speed: AngryBirdsSpeed =
       parsed.speed === 'slow' || parsed.speed === 'fast' ? parsed.speed : 'normal';
     return {
       subMode,
       face,
       resolve,
+      aim,
       speed,
       sound: parsed.sound ?? true,
       music: parsed.music ?? true,
