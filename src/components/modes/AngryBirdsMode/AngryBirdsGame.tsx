@@ -89,6 +89,9 @@ const GENERIC_PIGS = 6;
  */
 const nextTowerStyle = createShuffleBag(TOWER_STYLES);
 
+/** How far ahead the aim preview is plotted; it stops at the ground or an edge. */
+const PREVIEW_STEPS = 300;
+
 /** Physics steps run before a round is shown, so the tower starts at rest. */
 const PRESETTLE_STEPS = 160;
 /** Always step at least this far before believing the world has settled. */
@@ -885,7 +888,15 @@ export function AngryBirdsGame(props: Props) {
       // Show where the shot would go, so a draw can be judged before release.
       if (aiming && handAimingRef.current && pull) {
         const sol = pullToLaunch(pull.dx, pull.dy);
-        const arc = sampleTrajectory(pouch ?? sling, sol, sol.flightSteps, 4);
+        // From the fork, not the pouch. The bird is released at the fork — see
+        // launchBird in onAimPointerUp — so sampling from where the pouch has
+        // been dragged back to drew the whole arc offset by the length of the
+        // draw, which is 160px at full power.
+        //
+        // Sampled generously and cut short below, rather than trusting the
+        // step estimate: a gentle draw crawls, and the arc should run to where
+        // it actually lands either way.
+        const arc = sampleTrajectory(sling, sol, PREVIEW_STEPS, 4);
         ctx.save();
         // Outlined dots, because the arc crosses pale sky, dark structure and
         // grass alike — a plain white dot vanished against the sky.
@@ -894,7 +905,7 @@ export function AngryBirdsGame(props: Props) {
         ctx.lineWidth = 1.2;
         let fade = 1;
         for (const pt of arc) {
-          if (pt.y > AB.GROUND_Y || pt.x > AB.CANVAS_W) break;
+          if (pt.y > AB.GROUND_Y || pt.x > AB.CANVAS_W || pt.x < 0) break;
           ctx.globalAlpha = fade;
           ctx.beginPath();
           ctx.arc(pt.x, pt.y, 3.1, 0, Math.PI * 2);
