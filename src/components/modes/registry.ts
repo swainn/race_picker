@@ -6,6 +6,7 @@ import {
   angryBirdsTheme,
   clawTheme,
   whacAMoleTheme,
+  trickOrTreatTheme,
   pokerTheme,
   battleBotsTheme,
   battleshipTheme,
@@ -32,6 +33,7 @@ import { PokerSettings } from './PokerMode/PokerSettings';
 import { ClawSettings } from './ClawMode/ClawSettings';
 import { WhacAMoleSettings } from './WhacAMoleMode/WhacAMoleSettings';
 import { AngryBirdsSettings } from './AngryBirdsMode/AngryBirdsSettings';
+import { TrickOrTreatSettings } from './TrickOrTreatMode/TrickOrTreatSettings';
 
 // Mode views are code-split: each mode's chunk (engine, drawing, audio, CSS)
 // loads on first use instead of in the initial bundle. Settings panels stay
@@ -55,6 +57,7 @@ const WhacAMoleMode = lazy(() => import('./WhacAMoleMode/WhacAMoleMode').then((m
 // Angry Birds pulls matter-js into its chunk; code-splitting keeps that out of
 // the initial bundle for everyone who never opens the mode.
 const AngryBirdsMode = lazy(() => import('./AngryBirdsMode/AngryBirdsMode').then((m) => ({ default: m.AngryBirdsMode })));
+const TrickOrTreatMode = lazy(() => import('./TrickOrTreatMode/TrickOrTreatMode').then((m) => ({ default: m.TrickOrTreatMode })));
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -94,6 +97,9 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   // correct default for the pigs sub-mode but is otherwise unused: the shared
   // standings dialog never opens for this mode. See AngryBirdsMode.tsx.
   'angry-birds':     { View: AngryBirdsMode, Settings: AngryBirdsSettings, theme: angryBirdsTheme, label: '🐦 Angry Birds', survivalOrder: true },
+  // One candy goes in one bag per doorbell and that bag's owner is the pick,
+  // so this orders like Racing: the first treated places first.
+  'trick-or-treat':  { View: TrickOrTreatMode, Settings: TrickOrTreatSettings, theme: trickOrTreatTheme, label: '🎃 Trick-or-Treat' },
 };
 
 /** Labels lead with an emoji, so sort on the name that follows it. */

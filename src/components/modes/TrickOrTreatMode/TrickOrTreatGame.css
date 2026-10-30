@@ -1,0 +1,25 @@
+.trick-or-treat-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  width: 100%;
+}
+
+.trick-or-treat-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 720 / 560;
+  width: min(100%, calc((100svh - 240px) * (720 / 560)), calc(100vw - 64px));
+  max-width: 780px;
+}
+
+.trick-or-treat-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  border: 3px solid #3a2550;
+  background-color: #0b0a1e;
+  border-radius: 10px;
+  display: block;
+}

@@ -1,6 +1,6 @@
 # 🎮 Aquaveo Picker
 
-A gamified random-selection tool with sixteen game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, a battleship grid, a spinning wheel, a kung-fu brawl, a retro Space Invaders assault (as the invaders or the defenders), a one-on-one Street Duel, an alien abduction, a hand of poker, a claw machine, a mallet hunting moles, or a slingshot flattening a tower — all sharing the same participant list.
+A gamified random-selection tool with seventeen game modes — race cars, battle bots, light cycles, Plinko balls, wall climbers, a battleship grid, a spinning wheel, a kung-fu brawl, a retro Space Invaders assault (as the invaders or the defenders), a one-on-one Street Duel, an alien abduction, a hand of poker, a claw machine, a mallet hunting moles, a slingshot flattening a tower, or a line of trick-or-treaters on a lit porch — all sharing the same participant list.
 
 ## Game Modes
 
@@ -25,7 +25,9 @@ Pick a mode from the dropdown at the top of the page (use the 🎲 button next t
 
 - **🐦 Angry Birds** — A slingshot on the left, a wooden tower on the right, and a sub-mode setting that decides who the participants are. In **Pigs**, they perch in the tower: one bird is launched per round, the structure comes down under real rigid-body physics (matter.js), and the chosen pig pops — an elimination, so the last pig still perched is champion. In **Birds**, they are the flock: every remaining bird shoots in turn at a tower of scenery pigs, a scoreboard ranks the volley, and the best shot is that round's pick, placing first. The result is drawn uniformly before anything moves and the launch is solved to produce it, so the physics is there to look convincing and is never consulted about who was picked. Because the two sub-modes rank opposite ways, this mode renders its own final standings with the sort the current sub-mode needs.
 
-All modes share the same participant list and saved groups. Modes with a 🎛 Settings button (Racing, Wall Climber, Battleship, Wheel, Kung Fu, Space Invaders, Space Defenders, Street Duel, Alien Abduction, Poker Night, The Claw, Whac-a-Mole, Angry Birds) expose extra per-mode options in the ☰ header menu, which also holds the participant manager and a global sound mute. Switching modes mid-race prompts a confirmation and resets the current race.
+- **🎃 Trick-or-Treat** — The participants are trick-or-treaters lined up in costume on a lit porch, each holding an open bag. A hand reaches out of the doorway, glides over a couple of bags and dips toward them as if deciding, then commits and drops a candy into exactly one — and whoever's bag it lands in is the pick, placing first. The bag is drawn uniformly *before* the hand leaves the doorway and the feints are chosen from everyone else, so where someone stands in the line (or which costume they drew) has no bearing on who gets treated. Seven costumes — ghost, vampire, witch, pumpkin, skeleton, cat and mummy — are assigned round-robin for variety, and a setting wears each participant's own photo as the face under the costume. Pacing and sound settings, with a synth doorstep: the doorbell, a chorused "trick or treat!", the candy landing in paper, a delighted cheer, and a minor-key vamp.
+
+All modes share the same participant list and saved groups. Modes with a 🎛 Settings button (Racing, Wall Climber, Battleship, Wheel, Kung Fu, Space Invaders, Space Defenders, Street Duel, Alien Abduction, Poker Night, The Claw, Whac-a-Mole, Angry Birds, Trick-or-Treat) expose extra per-mode options in the ☰ header menu, which also holds the participant manager and a global sound mute. Switching modes mid-race prompts a confirmation and resets the current race.
 
 ## Screenshots
 

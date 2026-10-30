@@ -204,3 +204,17 @@ export const angryBirdsTheme: WinnerTheme = {
   letterSpacing: '1px',
   buttonStyle: 'solid',
 };
+
+/** Trick-or-Treat — porch-light orange on a deep Halloween night. */
+export const trickOrTreatTheme: WinnerTheme = {
+  accent: '#FF9A3C',
+  accentSoft: 'rgba(255, 154, 60, 0.45)',
+  bgGradient: 'linear-gradient(145deg, #3a1f4e, #140d23)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#FFC46B',
+  fontFamily: '"Arial Black", system-ui, sans-serif',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};
