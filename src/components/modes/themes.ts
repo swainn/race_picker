@@ -246,3 +246,17 @@ export const turkeyEscapeTheme: WinnerTheme = {
   letterSpacing: '1px',
   buttonStyle: 'solid',
 };
+
+/** Corn Maze — tassel gold on a deep stalk green. */
+export const cornMazeTheme: WinnerTheme = {
+  accent: '#E8B923',
+  accentSoft: 'rgba(232, 185, 35, 0.45)',
+  bgGradient: 'linear-gradient(145deg, #3d4a17, #1a2109)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#FFE27A',
+  fontFamily: '"Arial Black", system-ui, sans-serif',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};

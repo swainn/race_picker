@@ -9,6 +9,7 @@ import {
   trickOrTreatTheme,
   pieEatingTheme,
   turkeyEscapeTheme,
+  cornMazeTheme,
   pokerTheme,
   battleBotsTheme,
   battleshipTheme,
@@ -38,6 +39,7 @@ import { AngryBirdsSettings } from './AngryBirdsMode/AngryBirdsSettings';
 import { TrickOrTreatSettings } from './TrickOrTreatMode/TrickOrTreatSettings';
 import { PieEatingSettings } from './PieEatingMode/PieEatingSettings';
 import { TurkeyEscapeSettings } from './TurkeyEscapeMode/TurkeyEscapeSettings';
+import { CornMazeSettings } from './CornMazeMode/CornMazeSettings';
 
 // Mode views are code-split: each mode's chunk (engine, drawing, audio, CSS)
 // loads on first use instead of in the initial bundle. Settings panels stay
@@ -64,6 +66,7 @@ const AngryBirdsMode = lazy(() => import('./AngryBirdsMode/AngryBirdsMode').then
 const TrickOrTreatMode = lazy(() => import('./TrickOrTreatMode/TrickOrTreatMode').then((m) => ({ default: m.TrickOrTreatMode })));
 const PieEatingMode = lazy(() => import('./PieEatingMode/PieEatingMode').then((m) => ({ default: m.PieEatingMode })));
 const TurkeyEscapeMode = lazy(() => import('./TurkeyEscapeMode/TurkeyEscapeMode').then((m) => ({ default: m.TurkeyEscapeMode })));
+const CornMazeMode = lazy(() => import('./CornMazeMode/CornMazeMode').then((m) => ({ default: m.CornMazeMode })));
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -110,6 +113,8 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   'pie-eating':      { View: PieEatingMode, Settings: PieEatingSettings, theme: pieEatingTheme, label: '🥧 Pie Eating Contest' },
   // The farmer catches one turkey a round, so the one he never catches is champion.
   'turkey-escape':   { View: TurkeyEscapeMode, Settings: TurkeyEscapeSettings, theme: turkeyEscapeTheme, label: '🦃 Turkey Escape', survivalOrder: true },
+  // First out of the maze is the pick, so this orders like Racing: first out places first.
+  'corn-maze':       { View: CornMazeMode, Settings: CornMazeSettings, theme: cornMazeTheme, label: '🌽 Corn Maze' },
 };
 
 /** Labels lead with an emoji, so sort on the name that follows it. */

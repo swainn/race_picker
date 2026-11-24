@@ -1,0 +1,25 @@
+.corn-maze-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  width: 100%;
+}
+
+.corn-maze-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 720 / 560;
+  width: min(100%, calc((100svh - 240px) * (720 / 560)), calc(100vw - 64px));
+  max-width: 780px;
+}
+
+.corn-maze-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  border: 3px solid #3d4a17;
+  background-color: #c9a66b;
+  border-radius: 10px;
+  display: block;
+}
