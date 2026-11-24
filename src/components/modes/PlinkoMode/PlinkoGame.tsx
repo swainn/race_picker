@@ -1104,12 +1104,26 @@ export const PlinkoGame: React.FC<Props> = ({
       const greenWallsAreActive = wallModeRef.current === 'green';
       const currentTime = Date.now();
 
+      // Match the backing store to the displayed size in device pixels so the
+      // browser never upscales the bitmap (CSS stretches the canvas well past
+      // 400x600, and high-DPI screens multiply that again). Everything below
+      // still draws in logical CANVAS_WIDTH x CANVAS_HEIGHT coordinates.
+      const dpr = window.devicePixelRatio || 1;
+      const targetWidth = Math.max(CANVAS_WIDTH, Math.round(canvas.clientWidth * dpr));
+      const targetHeight = Math.round(targetWidth * (CANVAS_HEIGHT / CANVAS_WIDTH));
+      if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+      }
+      const renderScale = canvas.width / CANVAS_WIDTH;
+      ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+
       // Clear canvas with gradient background
       const bgGradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
       bgGradient.addColorStop(0, '#1a1a2e');
       bgGradient.addColorStop(1, '#16213e');
       ctx.fillStyle = bgGradient;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // Draw side walls to show play area boundaries
     const wallGradient = ctx.createLinearGradient(0, 0, CANVAS_WIDTH, 0);
@@ -1279,23 +1293,29 @@ export const PlinkoGame: React.FC<Props> = ({
       // Add glow effect for special balls
       if (player.isOnFire) {
         ctx.shadowColor = '#ff6b00';
-        ctx.shadowBlur = 15;
+        ctx.shadowBlur = 15 * renderScale; // shadowBlur ignores the transform
       } else if (player.isIce) {
         ctx.shadowColor = '#67b8ff';
-        ctx.shadowBlur = 14;
+        ctx.shadowBlur = 14 * renderScale; // shadowBlur ignores the transform
       } else if (player.isGreen) {
         ctx.shadowColor = '#2ecc71';
-        ctx.shadowBlur = 14;
+        ctx.shadowBlur = 14 * renderScale; // shadowBlur ignores the transform
       } else if (lightningIsAnimating) {
         ctx.shadowColor = '#fff3b0';
-        ctx.shadowBlur = 24;
+        ctx.shadowBlur = 24 * renderScale; // shadowBlur ignores the transform
       } else if (player.isLightningStruck) {
         ctx.shadowColor = '#ffd84d';
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 12 * renderScale; // shadowBlur ignores the transform
       }
       
-      // Player circle
-      ctx.fillStyle = player.isGreen ? '#2ecc71' : player.color;
+      const cachedImage = player.selectedImageDataUrl
+        ? playerImagesRef.current.get(player.selectedImageDataUrl)
+        : undefined;
+      const hasAvatar = !!cachedImage && cachedImage.complete && cachedImage.naturalWidth > 0 && cachedImage.naturalHeight > 0;
+
+      // Player circle — avatars sit on black so transparent areas of the image
+      // don't show the player colour through.
+      ctx.fillStyle = hasAvatar ? '#000' : player.isGreen ? '#2ecc71' : player.color;
       ctx.strokeStyle = player.isOnFire
         ? '#ff8800'
         : player.isIce
@@ -1310,10 +1330,7 @@ export const PlinkoGame: React.FC<Props> = ({
       ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
       ctx.fill();
 
-      const cachedImage = player.selectedImageDataUrl
-        ? playerImagesRef.current.get(player.selectedImageDataUrl)
-        : undefined;
-      if (cachedImage && cachedImage.complete && cachedImage.naturalWidth > 0 && cachedImage.naturalHeight > 0) {
+      if (hasAvatar) {
         const sourceSize = Math.min(cachedImage.naturalWidth, cachedImage.naturalHeight);
         const sx = (cachedImage.naturalWidth - sourceSize) / 2;
         const sy = (cachedImage.naturalHeight - sourceSize) / 2;
@@ -1389,7 +1406,7 @@ export const PlinkoGame: React.FC<Props> = ({
       // Reset shadow
       ctx.shadowBlur = 0;
 
-      if (!cachedImage || !cachedImage.complete || cachedImage.naturalWidth === 0 || cachedImage.naturalHeight === 0) {
+      if (!hasAvatar) {
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
