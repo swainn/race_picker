@@ -8,6 +8,7 @@ import {
   whacAMoleTheme,
   trickOrTreatTheme,
   pieEatingTheme,
+  turkeyEscapeTheme,
   pokerTheme,
   battleBotsTheme,
   battleshipTheme,
@@ -36,6 +37,7 @@ import { WhacAMoleSettings } from './WhacAMoleMode/WhacAMoleSettings';
 import { AngryBirdsSettings } from './AngryBirdsMode/AngryBirdsSettings';
 import { TrickOrTreatSettings } from './TrickOrTreatMode/TrickOrTreatSettings';
 import { PieEatingSettings } from './PieEatingMode/PieEatingSettings';
+import { TurkeyEscapeSettings } from './TurkeyEscapeMode/TurkeyEscapeSettings';
 
 // Mode views are code-split: each mode's chunk (engine, drawing, audio, CSS)
 // loads on first use instead of in the initial bundle. Settings panels stay
@@ -61,6 +63,7 @@ const WhacAMoleMode = lazy(() => import('./WhacAMoleMode/WhacAMoleMode').then((m
 const AngryBirdsMode = lazy(() => import('./AngryBirdsMode/AngryBirdsMode').then((m) => ({ default: m.AngryBirdsMode })));
 const TrickOrTreatMode = lazy(() => import('./TrickOrTreatMode/TrickOrTreatMode').then((m) => ({ default: m.TrickOrTreatMode })));
 const PieEatingMode = lazy(() => import('./PieEatingMode/PieEatingMode').then((m) => ({ default: m.PieEatingMode })));
+const TurkeyEscapeMode = lazy(() => import('./TurkeyEscapeMode/TurkeyEscapeMode').then((m) => ({ default: m.TurkeyEscapeMode })));
 
 export interface ModeRegistryEntry {
   View: ComponentType<ModeViewProps>;
@@ -105,6 +108,8 @@ export const MODE_REGISTRY: Record<GameMode, ModeRegistryEntry> = {
   'trick-or-treat':  { View: TrickOrTreatMode, Settings: TrickOrTreatSettings, theme: trickOrTreatTheme, label: '🎃 Trick-or-Treat' },
   // First clean plate is the pick, so this orders like Racing: first finished places first.
   'pie-eating':      { View: PieEatingMode, Settings: PieEatingSettings, theme: pieEatingTheme, label: '🥧 Pie Eating Contest' },
+  // The farmer catches one turkey a round, so the one he never catches is champion.
+  'turkey-escape':   { View: TurkeyEscapeMode, Settings: TurkeyEscapeSettings, theme: turkeyEscapeTheme, label: '🦃 Turkey Escape', survivalOrder: true },
 };
 
 /** Labels lead with an emoji, so sort on the name that follows it. */

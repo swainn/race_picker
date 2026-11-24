@@ -232,3 +232,17 @@ export const pieEatingTheme: WinnerTheme = {
   letterSpacing: '1px',
   buttonStyle: 'solid',
 };
+
+/** Turkey Escape — roast-brown and harvest orange. */
+export const turkeyEscapeTheme: WinnerTheme = {
+  accent: '#D9772B',
+  accentSoft: 'rgba(217, 119, 43, 0.45)',
+  bgGradient: 'linear-gradient(145deg, #5a2f14, #2a1608)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#FFD08A',
+  fontFamily: '"Arial Black", system-ui, sans-serif',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};

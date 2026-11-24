@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A gamified random-selection tool ("Aquaveo Picker"). One shared participant list is run through one of several **game modes** (Racing, Battle Bots, Light Cycles, Plinko, Wall Climber, Battleship, Wheel, Alien Abduction, Poker Night, The Claw, Whac-a-Mole, Angry Birds, Trick-or-Treat, Pie Eating Contest). Each race eliminates the winner from the pool and repeats until everyone is ranked. Pure client-side React app — no backend, all state lives in React state + `localStorage`.
+A gamified random-selection tool ("Aquaveo Picker"). One shared participant list is run through one of several **game modes** (Racing, Battle Bots, Light Cycles, Plinko, Wall Climber, Battleship, Wheel, Alien Abduction, Poker Night, The Claw, Whac-a-Mole, Angry Birds, Trick-or-Treat, Pie Eating Contest, Turkey Escape). Each race eliminates the winner from the pool and repeats until everyone is ranked. Pure client-side React app — no backend, all state lives in React state + `localStorage`.
 
 ## Commands
 
@@ -36,7 +36,7 @@ Every mode is a self-contained folder under `src/components/modes/<ModeName>/` a
 - `Settings` — optional settings panel component (rendered in the shared `SettingsModal` when present; a 🎛 Settings button appears automatically).
 - `theme` — a `WinnerTheme` (see below).
 - `label` — dropdown label with emoji.
-- `survivalOrder?` — set `true` for elimination modes where the **last survivor wins** (Battle Bots, Light Cycles, Battleship). `winOrder` is recorded in elimination order; `FinalStandingsDialog` reverses the sort so the survivor shows as 1st.
+- `survivalOrder?` — set `true` for elimination modes where the **last survivor wins** (Battle Bots, Light Cycles, Battleship, Turkey Escape). `winOrder` is recorded in elimination order; `FinalStandingsDialog` reverses the sort so the survivor shows as 1st.
 
 `ModeViewProps` is the full interface between `App` and a mode (entries, eliminatedIds, winOrder, isRacing, currentWinner, and callbacks `onWinner`/`onRaceComplete`/`onShowFinalStandings`/`onStartRace`/`onResetRace`). A mode calls `onWinner(entry, extras?)` to declare a winner; it never mutates shared state directly.
 
