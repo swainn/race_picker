@@ -218,3 +218,17 @@ export const trickOrTreatTheme: WinnerTheme = {
   letterSpacing: '1px',
   buttonStyle: 'solid',
 };
+
+/** Pie Eating Contest — pumpkin filling on a barn-wood brown. */
+export const pieEatingTheme: WinnerTheme = {
+  accent: '#E2711D',
+  accentSoft: 'rgba(226, 113, 29, 0.45)',
+  bgGradient: 'linear-gradient(145deg, #6b2d1a, #2b120a)',
+  finalsAccent: FINALS_GOLD,
+  finalsAccentSoft: FINALS_GOLD_SOFT,
+  finalsBgGradient: FINALS_GOLD_GRADIENT,
+  headlineColor: '#FFD9A0',
+  fontFamily: '"Arial Black", system-ui, sans-serif',
+  letterSpacing: '1px',
+  buttonStyle: 'solid',
+};

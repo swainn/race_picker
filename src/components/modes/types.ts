@@ -17,7 +17,8 @@ export type GameMode =
   | 'claw'
   | 'whac-a-mole'
   | 'angry-birds'
-  | 'trick-or-treat';
+  | 'trick-or-treat'
+  | 'pie-eating';
 
 /** Per-mode metadata that gets stashed on a winner record. */
 export interface ModeWinnerExtras {

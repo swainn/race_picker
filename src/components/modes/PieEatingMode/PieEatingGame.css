@@ -1,0 +1,25 @@
+.pie-eating-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  width: 100%;
+}
+
+.pie-eating-canvas-host {
+  position: relative;
+  display: block;
+  aspect-ratio: 720 / 560;
+  width: min(100%, calc((100svh - 240px) * (720 / 560)), calc(100vw - 64px));
+  max-width: 780px;
+}
+
+.pie-eating-canvas-host .game-canvas {
+  width: 100%;
+  height: 100%;
+  border: 3px solid #5a2f14;
+  background-color: #2b120a;
+  border-radius: 10px;
+  display: block;
+}
